@@ -20,7 +20,7 @@ Just tap-tap, clink-clink and some music.
 *   **Alchemical Sort** – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
     
 More small experiments and quiet mechanics will be added over time.
-## 🛠 Built With
+## Built With
 *   Godot Engine 4.3
 *   Designed for Android (16:9 on purpose, but might reconsider later) and Web export
 *   Open source under GNU GPL-3.0

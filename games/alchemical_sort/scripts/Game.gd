@@ -36,7 +36,8 @@ var _palette: Array[Color] = []  # active slice of PALETTE
 var _selected: Vial = null
 var _move_count: int = 0
 var _best_moves: int = 0
-var _board_active: bool = false
+var _board_active: bool = false  # blocks ALL input (startup, reshuffle)
+var _pouring: bool = false       # blocks pour-initiation only; selection still works
 var _undo_snapshot: Array = []
 var _undo_available: bool = false
 
@@ -197,7 +198,9 @@ func _on_vial_tapped(vial: Vial) -> void:
 		_selected = null
 		return
 
-	if _can_pour(_selected, vial):
+	# Don't start a new pour while one is already animating, but do move the
+	# selection so the player can pre-aim the next pour.
+	if not _pouring and _can_pour(_selected, vial):
 		_do_pour(_selected, vial)
 		return
 
@@ -220,7 +223,7 @@ func _can_pour(src: Vial, dst: Vial) -> bool:
 
 
 func _do_pour(src: Vial, dst: Vial) -> void:
-	_board_active = false
+	_pouring = true
 	src.show_selected(false)
 	_selected = null
 
@@ -246,7 +249,7 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 		dst.celebrate()
 		await get_tree().create_timer(0.28).timeout
 
-	_board_active = true
+	_pouring = false
 
 	if _check_win():
 		await get_tree().create_timer(0.35).timeout

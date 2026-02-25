@@ -138,7 +138,7 @@ stream = ExtResource("4_5wuru")
 
 [node name="ClearPanel" type="Control" parent="."]
 visible = false
-z_index = 120
+z_index = 130
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -153,7 +153,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
 color = Color(0.04, 0.1, 0.14, 0.78)
 
 [node name="ClearLabel" type="Label" parent="ClearPanel"]
@@ -171,6 +170,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="NewGameButton" type="Button" parent="ClearPanel"]
+z_index = 999
 layout_mode = 0
 offset_left = 155.0
 offset_top = 490.0

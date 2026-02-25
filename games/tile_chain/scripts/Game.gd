@@ -3,8 +3,8 @@ extends Control
 
 signal back_to_menu
 
-const ROWS := 8
-const COLS := 5
+const ROWS := 8 #8
+const COLS := 5 #5
 const CELL_SIZE := 90  # must match BoardCell.CELL_SIZE
 const SAVE_PATH := "user://tile_chain_save.cfg"
 
@@ -401,6 +401,7 @@ func _on_board_cleared() -> void:
 	if _selected:
 		_selected.show_outline(false)
 		_selected = null
+	_clear_panel.move_to_front()  # must be last sibling to win input over board cells
 	_clear_panel.visible = true
 
 
