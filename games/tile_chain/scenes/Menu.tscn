@@ -1,0 +1,73 @@
+[gd_scene load_steps=4 format=3 uid="uid://duywbnc0r7iy7"]
+
+[ext_resource type="Script" path="res://games/tile_chain/scripts/Menu.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="Texture2D" uid="uid://ctk3hiyrn2v6t" path="res://games/tile_chain/assets/bg.png" id="2_y8n05"]
+
+[node name="Menu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+modulate = Color(1, 1, 1, 0.784314)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.1, 0.14, 1)
+
+[node name="Bg" type="Sprite2D" parent="Bg"]
+position = Vector2(270.136, 481.164)
+scale = Vector2(0.302369, 0.302369)
+texture = ExtResource("2_y8n05")
+
+[node name="TitleLabel" type="Label" parent="."]
+layout_mode = 0
+offset_top = 300.0
+offset_right = 540.0
+offset_bottom = 400.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 58
+text = "TILE CHAIN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StartButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 155.0
+offset_top = 450.0
+offset_right = 385.0
+offset_bottom = 518.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 30
+text = "START GAME"
+flat = true
+
+[node name="QuitButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 195.0
+offset_top = 548.0
+offset_right = 345.0
+offset_bottom = 606.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "QUIT"
+flat = true
+
+[connection signal="pressed" from="StartButton" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="QuitButton" to="." method="_on_quit_pressed"]

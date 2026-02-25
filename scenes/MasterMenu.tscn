@@ -1,0 +1,139 @@
+[gd_scene load_steps=5 format=3 uid="uid://e7bfq35scdwp"]
+
+[ext_resource type="Script" path="res://scripts/MasterMenu.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="Texture2D" uid="uid://dl0wetvwuq73w" path="res://games/gem_match/assets/Logo_gem.png" id="3_logo"]
+[ext_resource type="Texture2D" uid="uid://dum8jx465xdsr" path="res://assets/bg_master.png" id="4_jjcy0"]
+
+[node name="MasterMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+modulate = Color(1, 1, 1, 0.537255)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 43.0
+offset_right = -47.0
+offset_bottom = -43.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.1, 0.14, 1)
+
+[node name="TitleLabel" type="Label" parent="."]
+layout_mode = 0
+offset_top = 60.0
+offset_right = 540.0
+offset_bottom = 145.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 52
+text = "ZEN GAMES"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SubLabel" type="Label" parent="."]
+layout_mode = 0
+offset_top = 150.0
+offset_right = 540.0
+offset_bottom = 190.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "choose your game"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GemMatchTile" type="Button" parent="."]
+layout_mode = 0
+offset_left = 136.0
+offset_top = 248.0
+offset_right = 405.0
+offset_bottom = 432.0
+flat = true
+
+[node name="Logo" type="Sprite2D" parent="GemMatchTile"]
+position = Vector2(145, 91)
+scale = Vector2(0.295, 0.295)
+texture = ExtResource("3_logo")
+
+[node name="TileLabel" type="Label" parent="GemMatchTile"]
+visible = false
+layout_mode = 0
+offset_top = 320.0
+offset_right = 323.0
+offset_bottom = 352.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 26
+text = "GEM MATCH"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TileChainTile" type="Button" parent="."]
+layout_mode = 0
+offset_left = 136.0
+offset_top = 474.0
+offset_right = 405.0
+offset_bottom = 642.0
+flat = true
+
+[node name="TileLabel" type="Label" parent="TileChainTile"]
+layout_mode = 0
+offset_top = 38.0
+offset_right = 269.0
+offset_bottom = 130.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "TILE CHAIN"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AlchSortTile" type="Button" parent="."]
+layout_mode = 0
+offset_left = 136.0
+offset_top = 700.0
+offset_right = 405.0
+offset_bottom = 868.0
+flat = true
+
+[node name="TileLabel" type="Label" parent="AlchSortTile"]
+layout_mode = 0
+offset_top = 38.0
+offset_right = 269.0
+offset_bottom = 130.0
+theme_override_colors/font_color = Color(0.6, 0.9, 0.75, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.08, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 32
+text = "ALCHEMICAL
+SORT"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BgMaster" type="Sprite2D" parent="."]
+z_index = -99
+position = Vector2(269.25, 480.814)
+scale = Vector2(0.299944, 0.299944)
+texture = ExtResource("4_jjcy0")
+
+[connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]
+[connection signal="pressed" from="TileChainTile" to="." method="_on_tile_chain_pressed"]
+[connection signal="pressed" from="AlchSortTile" to="." method="_on_alch_sort_pressed"]
