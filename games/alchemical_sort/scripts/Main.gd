@@ -11,15 +11,13 @@ var _music: AudioStreamPlayer = null
 func _ready() -> void:
 	_game.visible = false
 
-	# Optional ambient music.
-	var music_path := "res://games/alchemical_sort/assets/music/theme.mp3"
-	if ResourceLoader.exists(music_path):
-		_music = AudioStreamPlayer.new()
-		_music.stream = load(music_path)
-		_music.volume_db = linear_to_db(0.5)
-		_music.finished.connect(func(): _music.play())
-		add_child(_music)
-		_music.play()
+	# Ambient music.
+	_music = AudioStreamPlayer.new()
+	_music.stream = load("res://games/alchemical_sort/assets/music/menuet.mp3")
+	_music.volume_db = linear_to_db(0.5)
+	_music.finished.connect(func(): _music.play())
+	add_child(_music)
+	_music.play()
 
 	_menu.start_game.connect(_on_start_game)
 	_menu.back_to_master.connect(_on_back_to_master)

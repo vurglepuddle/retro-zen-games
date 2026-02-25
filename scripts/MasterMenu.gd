@@ -6,17 +6,17 @@ extends Control
 
 var _fade_rect: ColorRect = null
 
+@onready var _sfx_click: AudioStreamPlayer = $SfxClick
+
 
 func _ready() -> void:
-	# Optional ambient music — plays only if the track exists in assets.
-	var music_path := "res://assets/music/master_menu.mp3"
-	if ResourceLoader.exists(music_path):
-		var music := AudioStreamPlayer.new()
-		music.stream = load(music_path)
-		music.volume_db = linear_to_db(0.5)
-		music.finished.connect(func(): music.play())
-		add_child(music)
-		music.play()
+	# Ambient music.
+	var music := AudioStreamPlayer.new()
+	music.stream = load("res://assets/music/999_turbo.mp3")
+	music.volume_db = linear_to_db(0.5)
+	music.finished.connect(func(): music.play())
+	add_child(music)
+	music.play()
 
 	# Full-screen black rect for transitions — starts opaque then fades in.
 	var layer := CanvasLayer.new()
@@ -45,15 +45,18 @@ func _fade_from_black() -> void:
 
 
 func _on_gem_match_pressed() -> void:
+	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/gem_match/scenes/Main.tscn")
 
 
 func _on_tile_chain_pressed() -> void:
+	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/tile_chain/scenes/Main.tscn")
 
 
 func _on_alch_sort_pressed() -> void:
+	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/alchemical_sort/scenes/Main.tscn")

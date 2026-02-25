@@ -69,7 +69,8 @@
 
 * ~~Looping ambient track~~ ✓ (999.mp3 at 50% volume)
 
-* ~~MasterMenu ambient music (optional)~~ ✓ (auto-plays `assets/music/master_menu.mp3` if it exists)
+* ~~MasterMenu ambient music~~ ✓ (`assets/music/999_turbo.mp3`)
+* ~~MasterMenu button SFX node~~ ✓ (SfxClick AudioStreamPlayer — assign sound in Inspector)
 
 **Design Decisions**
 
@@ -180,11 +181,11 @@
 **Sound**
 * Pouring / glugging SFX
 * Vial-complete chime
-* Ambient track (`games/alchemical_sort/assets/music/theme.mp3`)
+* ~~Ambient track~~ ✓ (`games/alchemical_sort/music/menuet.mp3`)
 
 **Design Decisions**
 * Final color count and palette — currently 8 colors, placeholder `PALETTE` array in `Game.gd`
 * ~~Should pouring animate one layer at a time or all at once?~~ ✓ All at once (entire top run pours together)
 * ~~Move counter vs. timer — which metric to display and save?~~ ✓ Move counter
 * Bottle capacity — currently 4 layers; tune after playtesting
-* Difficulty — currently fixed at 8 colors / 2 empty vials; selector pending
+* ~~Difficulty — currently fixed at 8 colors / 2 empty vials; selector pending~~ ✓ (Easy/Medium/Hard/Zen)

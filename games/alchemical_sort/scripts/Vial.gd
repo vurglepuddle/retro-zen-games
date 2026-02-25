@@ -28,6 +28,16 @@ func _init() -> void:
 	pivot_offset = Vector2(VIAL_W * 0.5, VIAL_H * 0.5)
 
 
+func _ready() -> void:
+	# Re-apply size after Godot's layout pass, which can overwrite the value
+	# set in _init() for Control children added via code.  This ensures the
+	# full bottle rect is the tap target, not just the rendered outline.
+	# Also future-proofs against transparent bottle sprites: the outer Control
+	# owns all input so transparent pixels never leak clicks to the background.
+	size = Vector2(VIAL_W, VIAL_H)
+	mouse_filter = Control.MOUSE_FILTER_STOP
+
+
 # Call after adding to scene tree; configures layers and builds visuals.
 func setup(initial_layers: Array[int], color_palette: Array[Color]) -> void:
 	_palette = color_palette.duplicate()
