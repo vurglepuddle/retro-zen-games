@@ -1,0 +1,145 @@
+[gd_scene load_steps=15 format=3 uid="uid://c3xktbl4pdy6g"]
+
+[ext_resource type="Script" path="res://games/gem_match/scripts/Game.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="AudioStream" uid="uid://cmt76y7nrvbxb" path="res://games/gem_match/assets/sfx/match.mp3" id="3_bl23u"]
+[ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="3_mjmgh"]
+[ext_resource type="AudioStream" uid="uid://bhacttek74peh" path="res://games/gem_match/assets/sfx/shuffle.mp3" id="4_1fs05"]
+[ext_resource type="AudioStream" uid="uid://5ooa26io1j2e" path="res://games/gem_match/assets/sfx/combo/note_1.mp3" id="5_n1"]
+[ext_resource type="AudioStream" uid="uid://xqm8lh3t36tl" path="res://games/gem_match/assets/sfx/combo/note_2.mp3" id="5_n2"]
+[ext_resource type="AudioStream" uid="uid://bca15e277q2ac" path="res://games/gem_match/assets/sfx/combo/note_3.mp3" id="5_n3"]
+[ext_resource type="AudioStream" uid="uid://vut6ujq8ih24" path="res://games/gem_match/assets/sfx/combo/note_4.mp3" id="5_n4"]
+[ext_resource type="AudioStream" uid="uid://dsvles0ag2pj1" path="res://games/gem_match/assets/sfx/combo/note_5.mp3" id="5_n5"]
+[ext_resource type="AudioStream" uid="uid://bwtse3adi0kb1" path="res://games/gem_match/assets/sfx/combo/note_6.mp3" id="5_n6"]
+[ext_resource type="AudioStream" uid="uid://lsnh8wc8a4ui" path="res://games/gem_match/assets/sfx/combo/note_7.mp3" id="5_n7"]
+[ext_resource type="Texture2D" uid="uid://1iymo6a4x26p" path="res://games/gem_match/assets/BG.png" id="13_d4bl2"]
+[ext_resource type="Texture2D" uid="uid://bw4bekkncwaua" path="res://games/gem_match/assets/BG_top.png" id="14_nd3sr"]
+
+[node name="Game" type="Node2D"]
+script = ExtResource("1")
+sfx_fall_delay = 0.3
+
+[node name="ScoreLabel" type="Label" parent="."]
+z_index = 999
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 218.0
+offset_right = 319.0
+offset_bottom = 48.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 5
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 40
+text = "Score: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShuffleLabel" type="Label" parent="."]
+visible = false
+offset_top = 440.0
+offset_right = 540.0
+offset_bottom = 520.0
+theme_override_colors/font_color = Color(1, 0.88, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 34
+text = "Shuffling..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ComboLabel" type="Label" parent="."]
+visible = false
+offset_top = 400.0
+offset_right = 540.0
+offset_bottom = 480.0
+theme_override_colors/font_color = Color(1, 0.82, 0.08, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 10
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 88
+horizontal_alignment = 1
+
+[node name="BackButton" type="Button" parent="."]
+z_index = 501
+offset_left = 5.0
+offset_top = -23.0
+offset_right = 60.0
+offset_bottom = 62.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 44
+text = "‹"
+flat = true
+
+[node name="Board" type="Node2D" parent="."]
+
+[node name="SfxSwap" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_mjmgh")
+
+[node name="SfxMatch" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_bl23u")
+
+[node name="SfxNote1" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n1")
+
+[node name="SfxNote2" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n2")
+
+[node name="SfxNote3" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n3")
+
+[node name="SfxNote4" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n4")
+
+[node name="SfxNote5" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n5")
+
+[node name="SfxNote6" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n6")
+
+[node name="SfxNote7" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_n7")
+
+[node name="SfxNoMatch" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_mjmgh")
+
+[node name="SfxShuffle" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_1fs05")
+
+[node name="SfxFall" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_1fs05")
+volume_db = -10.972
+
+[node name="SfxExplosion" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_mjmgh")
+
+[node name="SfxVoiceGood" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceExcellent" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceAwesome" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceSpectacular" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceExtraordinary" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceUnbelievable" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxVoiceInconceivable" type="AudioStreamPlayer" parent="."]
+
+[node name="Bg" type="Sprite2D" parent="."]
+z_index = -999
+position = Vector2(270, 480)
+scale = Vector2(0.499284, 0.499284)
+texture = ExtResource("13_d4bl2")
+
+[node name="BgTop" type="Sprite2D" parent="."]
+z_index = 500
+position = Vector2(270, 34)
+scale = Vector2(0.499, 0.499)
+texture = ExtResource("14_nd3sr")

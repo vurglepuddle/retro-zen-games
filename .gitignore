@@ -1,0 +1,50 @@
+# =============================================================
+#  Godot 4 — Zen Garden project
+# =============================================================
+
+# Godot import cache, uid map, shader cache, etc.
+# Regenerated automatically by the editor — never commit.
+.godot/
+.nomedia
+
+# Compiled translation files (generated from .po sources)
+*.translation
+
+# Export presets — can contain Android signing key paths/passwords
+.import/
+export_presets.cfg
+export_credentials.cfg
+
+# =============================================================
+#  OS / editor junk
+# =============================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VSCode workspace (machine-specific settings)
+.vscode/
+
+# Vim / Emacs swap files
+*~
+*.swp
+*.swo
+
+# Generic backups
+*.bak
+*.tmp
+*.orig
+*.import
+
+# Mono-specific ignores
+.mono/
+data_*/
+mono_crash.*.json

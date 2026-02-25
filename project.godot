@@ -1,0 +1,29 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Zen Games"
+run/main_scene="res://scenes/MasterMenu.tscn"
+config/features=PackedStringArray("4.3")
+config/icon="res://assets/game_icon.png"
+
+[display]
+
+window/size/viewport_width=540
+window/size/viewport_height=960
+window/stretch/mode="canvas_items"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+environment/default_clear_color=Color(0.04, 0.1, 0.14, 1)

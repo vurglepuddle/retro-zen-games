@@ -1,0 +1,222 @@
+[gd_scene load_steps=13 format=3 uid="uid://dusr86c0r7iy7"]
+
+[ext_resource type="Script" path="res://games/tile_chain/scripts/Game.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="Texture2D" uid="uid://ctk3hiyrn2v6t" path="res://games/tile_chain/assets/bg.png" id="3_c8qen"]
+[ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="4_5wuru"]
+[ext_resource type="Texture2D" uid="uid://cwsmog52oinfa" path="res://games/tile_chain/assets/Star.png" id="5_8rp5i"]
+[ext_resource type="Texture2D" uid="uid://cjgtxx5bqdfe" path="res://games/tile_chain/assets/bg_small.png" id="6_i74q3"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_diea6"]
+atlas = ExtResource("5_8rp5i")
+region = Rect2(0, 0, 44, 44)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3u35x"]
+atlas = ExtResource("5_8rp5i")
+region = Rect2(44, 0, 44, 44)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gt27m"]
+atlas = ExtResource("5_8rp5i")
+region = Rect2(88, 0, 44, 44)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3ygw8"]
+atlas = ExtResource("5_8rp5i")
+region = Rect2(132, 0, 44, 44)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t8doe"]
+atlas = ExtResource("5_8rp5i")
+region = Rect2(176, 0, 44, 44)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_a20c6"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_diea6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3u35x")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gt27m")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_3ygw8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t8doe")
+}],
+"loop": false,
+"name": &"sparkle_star",
+"speed": 5.0
+}]
+
+[node name="Game" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="ComboLabel" type="Label" parent="."]
+z_index = 10
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 290.0
+offset_bottom = 70.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "Combo: 0"
+
+[node name="BestLabel" type="Label" parent="."]
+z_index = 10
+layout_mode = 0
+offset_left = 270.0
+offset_top = 20.0
+offset_right = 520.0
+offset_bottom = 65.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 22
+text = "Best: 0"
+horizontal_alignment = 2
+
+[node name="BackButton" type="Button" parent="."]
+z_index = 10
+layout_mode = 0
+offset_left = 20.0
+offset_top = 894.0
+offset_right = 170.0
+offset_bottom = 944.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 20
+text = "< BACK"
+flat = true
+
+[node name="Bg" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.1, 0.14, 1)
+
+[node name="Bg2" type="Sprite2D" parent="."]
+position = Vector2(270.136, 485.164)
+scale = Vector2(0.302369, 0.302369)
+texture = ExtResource("3_c8qen")
+
+[node name="ShuffleLabel" type="Label" parent="."]
+visible = false
+z_index = 20
+layout_mode = 0
+offset_top = 410.0
+offset_right = 540.0
+offset_bottom = 550.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 26
+text = "Reshuffling…"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SfxRemove" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_5wuru")
+
+[node name="ClearPanel" type="Control" parent="."]
+visible = false
+z_index = 120
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Overlay" type="ColorRect" parent="ClearPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.04, 0.1, 0.14, 0.78)
+
+[node name="ClearLabel" type="Label" parent="ClearPanel"]
+layout_mode = 0
+offset_top = 370.0
+offset_right = 540.0
+offset_bottom = 470.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 44
+text = "Board Cleared!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NewGameButton" type="Button" parent="ClearPanel"]
+layout_mode = 0
+offset_left = 155.0
+offset_top = 490.0
+offset_right = 385.0
+offset_bottom = 552.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "NEW GAME"
+flat = true
+
+[node name="SfxBreak" type="AudioStreamPlayer" parent="."]
+
+[node name="SfxMilestone" type="AudioStreamPlayer" parent="."]
+
+[node name="SparkleTemplate" type="AnimatedSprite2D" parent="."]
+visible = false
+position = Vector2(120, 96)
+scale = Vector2(0.522727, 0.522727)
+sprite_frames = SubResource("SpriteFrames_a20c6")
+animation = &"sparkle_star"
+
+[node name="MilestoneLabel" type="Label" parent="."]
+visible = false
+z_index = 115
+layout_mode = 0
+offset_top = 390.0
+offset_right = 540.0
+offset_bottom = 450.0
+pivot_offset = Vector2(270, 30)
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "COMBO ×10"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BgSmall" type="Sprite2D" parent="."]
+z_index = 100
+position = Vector2(270, 485.5)
+scale = Vector2(0.302521, 0.302355)
+texture = ExtResource("6_i74q3")
+
+[connection signal="pressed" from="BackButton" to="." method="_on_back_pressed"]
+[connection signal="pressed" from="ClearPanel/NewGameButton" to="." method="_on_new_game_pressed"]
