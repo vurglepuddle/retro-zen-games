@@ -2,12 +2,26 @@
 extends Area2D
 class_name Tile
 
-@export var level: int = 1: set = set_level, get = get_level
-var row: int
-var col: int
-var game: Node
+# Special gem types — set after set_level() to mark a gem as powered-up.
+const SPECIAL_NONE       := 0   # plain gem
+const SPECIAL_BOMB       := 1   # 3×3 explosion  — orange indicator
+const SPECIAL_CROSS      := 2   # row+col blast   — blue indicator
+const SPECIAL_COLOR_BOMB := 3   # destroy all of tier — near-black indicator
 
-# Maps level number to animation name in the SpriteFrames resource.
+const INDICATOR_COLORS: Array[Color] = [
+	Color(0.0,  0.0,  0.0,  0.0 ),  # NONE       — invisible
+	Color(1.0,  0.52, 0.08, 0.70),  # BOMB       — orange
+	Color(0.18, 0.52, 1.0,  0.70),  # CROSS      — blue
+	Color(0.10, 0.10, 0.10, 0.82),  # COLOR_BOMB — near-black
+]
+
+@export var level: int = 1: set = set_level, get = get_level
+var row:          int
+var col:          int
+var game:         Node
+var special_type: int = SPECIAL_NONE
+
+# Maps level number → animation name in the SpriteFrames resource.
 const ANIM_NAMES := {
 	1: "1_pearl",
 	2: "2_yellow",
@@ -17,21 +31,24 @@ const ANIM_NAMES := {
 	6: "6_star"
 }
 
-# Idle-spin state machine (runs in _process).
+# Idle-spin state machine.
 var _idle_timer: float = 0.0
 var _spin_timer: float = 0.0
-var _spinning: bool = false
+var _spinning:   bool  = false
 
-# Hint pulsing — set by Game when this tile is part of a hint pair.
-var _hinting: bool = false
+# Hint pulsing.
+var _hinting:    bool  = false
 var _hint_phase: float = 0.0
+
+# Current indicator colour (driven by special_type).
+var _indicator_color: Color = Color(0, 0, 0, 0)
 
 @onready var _anim: AnimatedSprite2D = $Tile
 
 
 func _ready() -> void:
 	input_pickable = true
-	# Hide the legacy SVG Sprite2D — visuals now come from the AnimatedSprite2D.
+	# Hide the legacy SVG Sprite2D — visuals come from the AnimatedSprite2D.
 	var sprite := get_node_or_null("Sprite")
 	if sprite:
 		sprite.visible = false
@@ -41,6 +58,10 @@ func _ready() -> void:
 
 func set_level(v: int) -> void:
 	level = clamp(v, 1, ANIM_NAMES.size())
+	# Upgrading always resets the special type; caller sets it afterwards if needed.
+	special_type     = SPECIAL_NONE
+	_indicator_color = Color(0, 0, 0, 0)
+	queue_redraw()
 	_update_animation()
 
 
@@ -48,8 +69,21 @@ func get_level() -> int:
 	return level
 
 
+# Stamp the gem as a special and update the visual indicator tile.
+func set_special(type: int) -> void:
+	special_type = type
+	_indicator_color = INDICATOR_COLORS[type] if type < INDICATOR_COLORS.size() \
+		else Color(0, 0, 0, 0)
+	queue_redraw()
+
+
+# Draw the coloured indicator square behind the gem sprite.
+func _draw() -> void:
+	if _indicator_color.a > 0.01:
+		draw_rect(Rect2(-34, -34, 68, 68), _indicator_color, true)
+
+
 func _update_animation() -> void:
-	# _anim may be null before _ready (property setter fires at init time).
 	var anim: AnimatedSprite2D = _anim
 	if anim == null:
 		anim = get_node_or_null("Tile") as AnimatedSprite2D
@@ -62,27 +96,22 @@ func _update_animation() -> void:
 	anim.frame = 0
 
 
-# Called by Game to start/stop the hint pulse on this tile.
 func start_hint() -> void:
-	_hinting = true
+	_hinting    = true
 	_hint_phase = 0.0
 
 
 func stop_hint() -> void:
-	_hinting = false
+	_hinting    = false
 	_hint_phase = 0.0
-	scale = Vector2.ONE
+	scale       = Vector2.ONE
 
 
-# Each tile independently decides when to play its spin animation so the board
-# looks alive without all gems spinning in sync.
 func _process(delta: float) -> void:
-	# Hint pulse overrides the idle-spin scale and takes visual priority.
 	if _hinting:
-		_hint_phase += delta * TAU * 1.5   # 1.5 Hz gentle pulse
-		var p := sin(_hint_phase) * 0.5 + 0.5   # 0 → 1
+		_hint_phase += delta * TAU * 1.5
+		var p := sin(_hint_phase) * 0.5 + 0.5
 		scale = Vector2(1.0 + p * 0.15, 1.0 + p * 0.15)
-		# Still allow the animation to spin during hint for extra liveliness.
 
 	if _anim == null:
 		return
@@ -96,8 +125,8 @@ func _process(delta: float) -> void:
 	else:
 		_idle_timer -= delta
 		if _idle_timer <= 0.0:
-			_spinning = true
-			_spin_timer = 1.1   # ~15 frames at 14 fps = one full rotation
+			_spinning  = true
+			_spin_timer = 1.1
 			_anim.play()
 
 
@@ -108,8 +137,6 @@ func update_position(cell_size: Vector2) -> void:
 	)
 
 
-# On press, tell Game which tile was pressed and where.
-# Game._input() tracks the drag globally from there.
 func _input_event(_viewport, event, _shape_idx) -> void:
 	if game == null:
 		return

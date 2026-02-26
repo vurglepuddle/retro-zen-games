@@ -125,13 +125,26 @@ Scenes communicate via **Godot signals** (loose coupling):
 ### Board & Game Logic (`Game.gd`)
 
 - **Board**: 10×7 grid stored as `board: Array[Array]`; valid cells defined by the `SHAPE` constant (diamond/irregular mask)
-- **Tile levels**: 1–6; matched tiles are removed and one is upgraded; score = `group_size × 10 × upgraded_tile.level × cascade_multiplier`
-- **Resolution loop**: after every swap, the game repeatedly runs match detection → tile removal/upgrade → gravity collapse → refill until no matches remain
-- **Dead-state prevention**: `_check_for_shuffle()` randomizes the board when no valid moves exist
+- **Tile levels**: 1–6; matched tiles are removed; score = `group_size × 10 × tile.level × cascade_multiplier`
+- **Special gem creation**: matching 4+ gems of the same level creates a powered-up survivor (upgraded 1 tier, gains special type based on match shape):
+  - **BOMB** (orange indicator) — 4-5 in a straight line → 3×3 explosion when matched; detonates other BOMB/CROSS specials it catches
+  - **CROSS** (blue indicator) — T / L / + shaped match → destroys full row + column when matched; fainter screen shake; also chains BOMB/CROSS
+  - **COLOR_BOMB** (near-black indicator) — 5+ in a straight line → fires by swapping with any gem; destroys all gems of that level on the board
+- **Plain 3-match**: all 3 tiles removed, no survivor, no upgrade
+- **Special already in a group**: fires immediately (existing special takes priority over creating a new one)
+- **COLOR_BOMB is immune to normal matches** — skipped entirely during match resolution; only removed silently by BOMB/CROSS chain explosions
+- **COLOR_BOMB cannot be chained** by BOMB/CROSS explosions — it is silently removed instead
+- **Chain detonation**: BFS queue; BOMB/CROSS specials caught in a blast zone are added to the queue and also fire
+- **Dead-state prevention**: `_check_for_shuffle()` randomizes the board when no valid moves exist (also recognises COLOR_BOMB + any adjacent gem as a valid move)
+- **Tink SFX**: soft crystal-clink (`no_match.mp3` at −14 dB via `SfxTink`) plays when gems settle after collapse or fill
 
 ### Tile Entity (`Tile.gd`)
 
-- Extends `Area2D` for collision/input
+- Extends `Area2D`; `class_name Tile`
+- `special_type: int` — `SPECIAL_NONE / BOMB / CROSS / COLOR_BOMB` (0–3)
+- `set_special(type)` — stamps type and redraws the indicator
+- `_draw()` — draws a coloured 68×68 square behind the gem sprite (orange / blue / near-black)
+- `set_level()` always resets `special_type` to NONE — caller sets it afterwards if needed
 - Drag detection threshold: 30px; direction passed to `game._attempt_swap()`
 - Animations via `AnimatedSprite2D` + `SpriteFrames` (PNG spritesheets per gem level)
 
@@ -141,8 +154,11 @@ Scenes communicate via **Godot signals** (loose coupling):
 User drag input (Tile._input_event)
   → Game._input() calculates direction
   → Game._attempt_swap()
-  → _find_matches() → _resolve_matches_animated() → _animate_collapse() → _animate_fill()
-  → repeat until stable
+       → COLOR_BOMB intercept? → _fire_color_bomb() → collapse → fill → _find_matches() loop
+       → normal: _find_matches() → _resolve_matches_animated()
+            → per group: fire existing special OR remove/upgrade
+            → chain detonation BFS (_collect_special_zone)
+            → _animate_collapse() → _animate_fill() → repeat until stable
   → _check_for_shuffle() if no moves remain
 ```
 
@@ -187,17 +203,24 @@ User tap (BoardCell._gui_input)
 
 ### Concept
 
-Color-sort puzzle themed as an alchemist's workshop. Vials contain up to 4 layers of colored liquid. Pour one vial into another when the target is empty or has a matching top color. Win when every vial holds only one pure color (or is empty).
+Color-sort puzzle themed as an alchemist's workshop. Vials contain up to 5 layers of colored liquid. Pour one vial into another when the target is empty or has a matching top color. Win when every vial holds only one pure color (or is empty).
 
 ### Key Constants (`Game.gd`)
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `COLOR_COUNT` | 8 | Distinct potion colors; increase for harder puzzles |
-| `EMPTY_VIALS` | 2 | Spare vials; must be ≥ 1 |
-| `Vial.MAX_LAYERS` | 4 | Layers per vial |
+| `Vial.MAX_LAYERS` | **5** | Layers per vial |
 
-Total vials = `COLOR_COUNT + EMPTY_VIALS`. Layout: up to 5 per row, centred on 540-wide screen.
+Difficulty-controlled layout (set by `Game.set_difficulty()` before `prepare_board()`):
+
+| Difficulty | Colors | Empty vials | Vials/row | Undos |
+|------------|--------|-------------|-----------|-------|
+| Easy       | 6      | 2           | 4         | 3     |
+| Medium     | 8      | 2           | 5         | 2     |
+| Hard       | 10     | 2           | 4         | 1     |
+| Zen        | random (Easy–Hard) | same | same | ∞ |
+
+Total vials = `color_count + empty_vials`. Centred on 540-wide screen.
 
 ### Vial Entity (`Vial.gd`)
 
@@ -210,7 +233,10 @@ Total vials = `COLOR_COUNT + EMPTY_VIALS`. Layout: up to 5 per row, centred on 5
 ### Pour Rules
 
 - `_can_pour(src, dst)`: dst must not be full; dst either empty OR `dst.top_color() == src.top_color()`
-- `_do_pour(src, dst)`: moves `min(src.top_run_count(), dst.free_slots())` layers at once (pours the entire same-color run, limited by available space)
+- `_do_pour(src, dst)`: moves `min(src.top_run_count(), dst.free_slots())` layers at once (pours the entire same-color run, limited by available space); saves an undo snapshot before pouring
+- **Board generation**: randomly distributes all `color_count × MAX_LAYERS` tokens across the color vials (creating mixed vials); empty vials appended last. **Note:** a scramble-from-solved approach does NOT work here — valid game pours can only move same-color runs, so the board would stay "pure" and the win condition would fire immediately. Random distribution + 2 empty vials produces solvable boards in the vast majority of cases; the dead-board detector handles the rare stuck positions by reshuffling in-place.
+- **Undo stack**: `_undo_stack` (Array of snapshots); depth capped by `_max_undo_depth` per difficulty (−1 = unlimited for Zen); button shows `UNDO ×N` while charges remain
+- **Tap queuing**: taps during a pour animation are silently queued in `_queued_vial` and processed after the animation finishes
 
 ### Win Condition
 
@@ -233,7 +259,7 @@ User tap (Vial._gui_input)
 ```
 games/alchemical_sort/
   assets/
-    music/theme.mp3       optional ambient track (auto-loaded if present)
+    music/menuet.mp3      ambient track (auto-loaded by Main.gd)
     bottles/              TODO: pixel-art bottle sprites per color
   scenes/
     Main.tscn             orchestrator (Menu ↔ Game, fades)

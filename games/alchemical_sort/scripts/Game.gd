@@ -4,8 +4,9 @@ extends Control
 signal back_to_menu
 
 # ---- difficulty configuration -----------------------------------------------
-# 0=Easy  1=Medium  2=Hard  3=Zen (random each game)
-const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen"]
+# 0=Easy  1=Medium  2=Hard  3=Zen (random each game)  4=Mystery (dev/test only)
+# Mystery fog-of-war fires as a 25 % random event on Medium, Hard, and Zen.
+const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen", "mystery"]
 const SAVE_PATH := "user://alch_sort_save.cfg"
 
 const VIAL_SPACING := 14  # pixels between vials
@@ -25,10 +26,11 @@ const PALETTE: Array[Color] = [
 ]
 
 # ---- difficulty state --------------------------------------------------------
-var _difficulty: int    = 1   # set by set_difficulty() before prepare_board()
-var _color_count: int   = 8
-var _empty_vials: int   = 2
-var _vials_per_row: int = 5
+var _difficulty:        int = 1  # set by set_difficulty(); persists across new games
+var _actual_difficulty: int = 1  # resolved each game (Zen re-rolls; Mystery overrides)
+var _color_count:       int = 8
+var _empty_vials:       int = 2
+var _vials_per_row:     int = 5
 
 # ---- game state -------------------------------------------------------------
 var _vials: Array = []           # Array[Vial]
@@ -37,9 +39,12 @@ var _selected: Vial = null
 var _move_count: int = 0
 var _best_moves: int = 0
 var _board_active: bool = false  # blocks ALL input (startup, reshuffle)
-var _pouring: bool = false       # blocks pour-initiation only; selection still works
-var _undo_snapshot: Array = []
-var _undo_available: bool = false
+var _fog_mode: bool = false      # true for Mystery difficulty
+var _pouring: bool = false       # true while pour animation plays
+var _queued_vial: Vial = null    # last tap during a pour; processed when animation ends
+var _undo_stack: Array = []      # stack of board snapshots (each = Array of vial snaps)
+var _max_undo_depth: int = 1     # -1 = unlimited (Zen); otherwise Easy=3, Medium=2, Hard=1
+var _droplet_mat: ShaderMaterial = null  # lazily built, shared across all pours
 
 @onready var _move_label:    Label   = $MoveLabel
 @onready var _best_label:    Label   = $BestLabel
@@ -47,6 +52,8 @@ var _undo_available: bool = false
 @onready var _win_panel:     Control = $WinPanel
 @onready var _win_moves_lbl: Label   = $WinPanel/WinMovesLabel
 @onready var _reshuffle_lbl: Label   = $ReshuffleLabel
+@onready var _reshuffle_btn: Button  = $ReshuffleButton
+@onready var _mystery_label: Label   = $MysteryLabel
 
 
 func _notification(what: int) -> void:
@@ -54,33 +61,64 @@ func _notification(what: int) -> void:
 		_on_back_pressed()
 
 
-# Call before prepare_board(); sets difficulty parameters and loads save.
+# Call before prepare_board(); records the chosen difficulty and loads save.
+# Layout parameters (_color_count etc.) are set per-game in _apply_difficulty_layout().
 func set_difficulty(d: int) -> void:
 	_difficulty = d
-	# Zen picks a random difficulty each game.
-	var actual := d if d != 3 else randi() % 3
-	match actual:
-		0:  # Easy
-			_color_count   = 6
-			_empty_vials   = 2
-			_vials_per_row = 4
-		1:  # Medium
-			_color_count   = 8
-			_empty_vials   = 2
-			_vials_per_row = 5
-		2:  # Hard
-			_color_count   = 10
-			_empty_vials   = 1
-			_vials_per_row = 4
+	match d:
+		0: _max_undo_depth = 3   # Easy
+		1: _max_undo_depth = 2   # Medium
+		2: _max_undo_depth = 1   # Hard
+		3: _max_undo_depth = -1  # Zen = unlimited
+		4: _max_undo_depth = 2   # Mystery (dev button)
 	_load_save()
+
+
+# Called at the start of every prepare_board() so Zen re-rolls and Mystery can
+# fire as a random event.  This is the only place that writes _color_count,
+# _empty_vials, _vials_per_row, and _fog_mode.
+func _apply_difficulty_layout() -> void:
+	# Zen picks a random base difficulty each game (Easy/Medium/Hard).
+	_actual_difficulty = _difficulty if _difficulty != 3 else randi() % 3
+
+	# Mystery fog-of-war fires as a 25 % random event when the player chose
+	# Medium, Hard, or Zen.  The explicit Mystery button (d=4) always fires.
+	if _difficulty == 4:
+		_fog_mode = true
+	elif _difficulty == 0:
+		_fog_mode = false  # Easy is never Mystery
+	else:
+		_fog_mode = (randi() % 4 == 0)
+
+	if _fog_mode:
+		# Mystery: fewer colors, fog of war
+		_color_count   = 5
+		_empty_vials   = 2
+		_vials_per_row = 4
+	else:
+		match _actual_difficulty:
+			0:  # Easy
+				_color_count   = 6
+				_empty_vials   = 2
+				_vials_per_row = 4
+			1:  # Medium
+				_color_count   = 8
+				_empty_vials   = 2
+				_vials_per_row = 5
+			2:  # Hard
+				_color_count   = 10
+				_empty_vials   = 2
+				_vials_per_row = 4
 
 
 # Called by Main.gd before the fade-in.
 func prepare_board() -> void:
+	_apply_difficulty_layout()  # re-roll Zen / Mystery every new game
 	_board_active = false
-	_undo_available = false
-	_undo_snapshot.clear()
+	_undo_stack.clear()
 	_win_panel.visible = false
+	_reshuffle_lbl.visible = false
+	_reshuffle_btn.visible = false
 	_clear_vials()
 	_build_vials()
 	_move_count = 0
@@ -91,8 +129,11 @@ func prepare_board() -> void:
 # Called by Main.gd after the fade-in completes.
 func start_game() -> void:
 	_board_active = false
-	_undo_available = false
+	_undo_stack.clear()
 	_update_ui()
+
+	if _fog_mode:
+		_show_mystery_reveal()  # fire-and-forget; runs concurrently with vial drop-in
 
 	for i in range(_vials.size()):
 		var v: Vial = _vials[i]
@@ -119,6 +160,32 @@ func start_game() -> void:
 	_board_active = true
 
 
+# ---- mystery reveal animation -----------------------------------------------
+
+func _show_mystery_reveal() -> void:
+	if not is_instance_valid(_mystery_label):
+		return
+	_mystery_label.scale    = Vector2(0.8, 0.8)
+	_mystery_label.modulate = Color(1, 1, 1, 0)
+	_mystery_label.visible  = true
+
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(_mystery_label, "modulate:a", 1.0, 0.4) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_mystery_label, "scale", Vector2.ONE, 0.4) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	await tw.finished
+
+	await get_tree().create_timer(0.9).timeout
+
+	var tw2 := create_tween()
+	tw2.tween_property(_mystery_label, "modulate:a", 0.0, 0.4) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tw2.finished
+	_mystery_label.visible = false
+
+
 # ---- board construction -----------------------------------------------------
 
 func _clear_vials() -> void:
@@ -143,8 +210,11 @@ func _build_vials() -> void:
 		var col := i % _vials_per_row
 		var row := floori(i / float(_vials_per_row))
 		var vial := Vial.new()
-		var layers: Array[int] = assignments[i] if i < assignments.size() else []
+		var layers: Array[int] = []
+		layers.assign(assignments[i] if i < assignments.size() else [])
 		vial.setup(layers, _palette)
+		if _fog_mode:
+			vial.enable_fog()
 		vial.position = Vector2(
 			origin_x + col * (vial_w + VIAL_SPACING),
 			origin_y + row * (vial_h + VIAL_SPACING + 16)
@@ -159,6 +229,11 @@ func _build_vials() -> void:
 
 
 func _generate_shuffled_layers() -> Array:
+	# Randomly distribute all color layers across the vials.
+	# This naturally creates mixed vials (different colors in the same bottle),
+	# which is required for the puzzle to exist.  The two empty vials give enough
+	# room that the vast majority of random boards are solvable; the dead-board
+	# detector handles the rare edge cases by reshuffling in-place.
 	var pool: Array[int] = []
 	for color_id in range(1, _color_count + 1):
 		for _j in range(Vial.MAX_LAYERS):
@@ -168,14 +243,17 @@ func _generate_shuffled_layers() -> Array:
 	var result: Array = []
 	var idx := 0
 	for _i in range(_color_count):
-		var layers: Array[int] = []
+		var layers: Array = []
 		for _j in range(Vial.MAX_LAYERS):
 			layers.append(pool[idx])
 			idx += 1
 		result.append(layers)
 
 	for _i in range(_empty_vials):
-		result.append([0, 0, 0, 0] as Array[int])
+		var empty: Array = []
+		for _j in range(Vial.MAX_LAYERS):
+			empty.append(0)
+		result.append(empty)
 
 	return result
 
@@ -185,7 +263,15 @@ func _generate_shuffled_layers() -> Array:
 func _on_vial_tapped(vial: Vial) -> void:
 	if not _board_active:
 		return
+	if _pouring:
+		# Don't change visible state mid-animation — just remember the last tap.
+		# _do_pour() will process it when the animation finishes.
+		_queued_vial = vial
+		return
+	_process_tap(vial)
 
+
+func _process_tap(vial: Vial) -> void:
 	if _selected == null:
 		if vial.is_empty():
 			return
@@ -198,9 +284,7 @@ func _on_vial_tapped(vial: Vial) -> void:
 		_selected = null
 		return
 
-	# Don't start a new pour while one is already animating, but do move the
-	# selection so the player can pre-aim the next pour.
-	if not _pouring and _can_pour(_selected, vial):
+	if _can_pour(_selected, vial):
 		_do_pour(_selected, vial)
 		return
 
@@ -235,6 +319,7 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	_save_undo_snapshot()
 
 	await src.animate_pour_out(amount)
+	src.reveal_top()  # expose newly uncovered layer in fog mode (no-op otherwise)
 
 	var src_top := src.position + Vector2(Vial.VIAL_W * 0.5, 0.0)
 	var dst_top := dst.position + Vector2(Vial.VIAL_W * 0.5, 0.0)
@@ -247,16 +332,24 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 
 	if dst.is_pure() and dst.is_full():
 		dst.celebrate()
-		await get_tree().create_timer(0.28).timeout
+		await get_tree().create_timer(0.13).timeout
 
 	_pouring = false
 
 	if _check_win():
+		_queued_vial = null
 		await get_tree().create_timer(0.35).timeout
 		_on_win()
 		return
 
-	# Check for dead board after every pour.
+	# Process any tap queued during the animation, then check for dead board.
+	var queued := _queued_vial
+	_queued_vial = null
+	if queued != null and is_instance_valid(queued):
+		_process_tap(queued)
+		if _pouring:  # queued tap triggered a new pour; it will run _check_dead_board
+			return
+
 	_check_dead_board()
 
 
@@ -279,20 +372,19 @@ func _check_dead_board() -> void:
 		_selected.show_selected(false)
 		_selected = null
 
-	# Brief notice then reshuffle until a valid move exists.
-	_reshuffle_lbl.modulate.a = 1.0
+	# Show the reshuffle button and let the user decide when to reshuffle.
 	_reshuffle_lbl.visible = true
+	_reshuffle_btn.visible = true
 
-	await get_tree().create_timer(0.9).timeout
+
+func _on_reshuffle_pressed() -> void:
+	_reshuffle_lbl.visible = false
+	_reshuffle_btn.visible = false
 
 	var attempts := 0
 	while not _has_valid_move() and attempts < 30:
 		_apply_reshuffle()
 		attempts += 1
-
-	var tw := create_tween()
-	tw.tween_property(_reshuffle_lbl, "modulate:a", 0.0, 0.4)
-	tw.tween_callback(func(): _reshuffle_lbl.visible = false)
 
 	_board_active = true
 
@@ -311,22 +403,46 @@ func _apply_reshuffle() -> void:
 	for v: Vial in _vials:
 		if v.is_empty():
 			continue
-		var new_layers: Array[int] = [0, 0, 0, 0]
+		var new_layers: Array[int] = [0, 0, 0, 0, 0]
 		for i in range(Vial.MAX_LAYERS):
 			if idx < pool.size():
 				new_layers[i] = pool[idx]
 				idx += 1
 		v.restore(new_layers)
+		if _fog_mode:
+			v.enable_fog()  # reset fog so only the new top run is visible
 
 
 # ---- droplet arc animation --------------------------------------------------
 
 func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
+	# Build the glow shader once and reuse it for every pour.
+	if _droplet_mat == null:
+		var shader := Shader.new()
+		shader.code = """
+shader_type canvas_item;
+void fragment() {
+	vec2 c = UV - 0.5;
+	float d = length(c) * 2.0;
+	float core  = 1.0 - step(0.42, d);
+	float halo  = (1.0 - smoothstep(0.42, 1.0, d)) * 0.55;
+	float shine = 1.0 - step(0.18, length(c + vec2(0.13, 0.13)) * 2.0);
+	vec3  col   = COLOR.rgb + vec3(0.45) * shine * core;
+	COLOR = vec4(min(col, vec3(1.0)), COLOR.a * max(core, halo));
+}
+"""
+		_droplet_mat = ShaderMaterial.new()
+		_droplet_mat.shader = shader
+
+	const HALF := 12.0  # half of the 24×24 dot
 	var dot := ColorRect.new()
-	dot.size = Vector2(8.0, 8.0)
+	dot.size = Vector2(HALF * 2.0, HALF * 2.0)
 	dot.color = color
+	dot.material = _droplet_mat
 	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dot.z_index = 20
+	# Set position before add_child so it never flashes at (0, 0).
+	dot.position = from_pos - Vector2(HALF, HALF)
 	add_child(dot)
 
 	var ctrl := Vector2(
@@ -340,8 +456,8 @@ func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
 			return
 		var q := from_pos.lerp(ctrl, t)
 		var r := ctrl.lerp(to_pos, t)
-		dot.position = q.lerp(r, t) - Vector2(4.0, 4.0)
-	, 0.0, 1.0, 0.28)
+		dot.position = q.lerp(r, t) - Vector2(HALF, HALF)
+	, 0.0, 1.0, 0.18)
 	await tw.finished
 
 	if is_instance_valid(dot):
@@ -379,22 +495,25 @@ func _on_new_game_pressed() -> void:
 # ---- undo -------------------------------------------------------------------
 
 func _save_undo_snapshot() -> void:
-	_undo_snapshot.clear()
+	var snap: Array = []
 	for v: Vial in _vials:
-		_undo_snapshot.append(v.snapshot())
-	_undo_available = true
+		snap.append(v.snapshot())
+	_undo_stack.push_back(snap)
+	# Trim to max depth (oldest entry at index 0 is removed first).
+	if _max_undo_depth > 0 and _undo_stack.size() > _max_undo_depth:
+		_undo_stack.pop_front()
 	_update_ui()
 
 
 func _on_undo_pressed() -> void:
-	if not _undo_available or not _board_active:
+	if _undo_stack.is_empty() or not _board_active:
 		return
-	_undo_available = false
+	var snap: Array = _undo_stack.pop_back()
 	if _selected:
 		_selected.show_selected(false)
 		_selected = null
 	for i in range(_vials.size()):
-		(_vials[i] as Vial).restore(_undo_snapshot[i])
+		(_vials[i] as Vial).restore(snap[i])
 	_move_count = maxi(0, _move_count - 1)
 	_update_ui()
 
@@ -432,7 +551,12 @@ func _update_ui() -> void:
 	if _best_label:
 		_best_label.text = "Best: %s" % ("–" if _best_moves == 0 else str(_best_moves))
 	if _undo_button:
-		_undo_button.modulate.a = 1.0 if _undo_available else 0.35
+		var has_undo := not _undo_stack.is_empty()
+		_undo_button.modulate.a = 1.0 if has_undo else 0.35
+		if has_undo and _max_undo_depth != -1:
+			_undo_button.text = "UNDO ×%d" % _undo_stack.size()
+		else:
+			_undo_button.text = "UNDO"
 
 
 # ---- navigation -------------------------------------------------------------

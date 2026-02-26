@@ -16,6 +16,13 @@ const VIAL_H     := 160      # display height in pixels
 var _layers: Array[int] = []
 var _palette: Array[Color] = []
 
+# ---- fog-of-war state -------------------------------------------------------
+# When _fog_mode is true, only layers at index >= _fog_reveal_from are visible;
+# everything below is drawn in a neutral gray ("unknown").
+# _fog_reveal_from only ever decreases — once a layer is revealed it stays so.
+var _fog_mode: bool = false
+var _fog_reveal_from: int = 0
+
 # ---- visuals (built in setup) -----------------------------------------------
 var _layer_rects: Array[ColorRect] = []
 var _outline: Panel = null
@@ -108,6 +115,38 @@ func free_slots() -> int:
 	return count
 
 
+# ---- fog of war -------------------------------------------------------------
+
+# Call after setup() to activate fog mode.  Only the current top color-run is
+# visible; layers below it are rendered as an opaque gray until uncovered.
+func enable_fog() -> void:
+	_fog_mode = true
+	_fog_reveal_from = _top_run_start()
+	_refresh_visuals()
+
+
+# Call from Game.gd after animate_pour_out() completes so the newly exposed
+# layer becomes visible.  _fog_reveal_from only ever decreases.
+func reveal_top() -> void:
+	if not _fog_mode:
+		return
+	_fog_reveal_from = mini(_fog_reveal_from, _top_run_start())
+	_refresh_visuals()
+
+
+# Index of the first layer in the current top color-run (the lowest layer that
+# shares the same color as the topmost occupied slot, with no gap in between).
+func _top_run_start() -> int:
+	var ti := top_index()
+	if ti < 0:
+		return 0          # vial is empty — everything "revealed"
+	var tc := _layers[ti]
+	var i := ti
+	while i > 0 and _layers[i - 1] == tc:
+		i -= 1
+	return i
+
+
 # ---- snapshot / undo --------------------------------------------------------
 
 func snapshot() -> Array[int]:
@@ -139,7 +178,7 @@ func animate_pour_out(amount: int) -> void:
 	var tw := create_tween()
 	tw.set_parallel(true)
 	for idx in indices:
-		tw.tween_property(_layer_rects[idx], "modulate:a", 0.0, 0.18) \
+		tw.tween_property(_layer_rects[idx], "modulate:a", 0.0, 0.12) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
 
@@ -166,7 +205,7 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 	var tw := create_tween()
 	tw.set_parallel(true)
 	for idx in indices:
-		tw.tween_property(_layer_rects[idx], "modulate:a", 1.0, 0.22) \
+		tw.tween_property(_layer_rects[idx], "modulate:a", 1.0, 0.14) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
 
@@ -174,9 +213,9 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 # Quick scale-bounce when a vial becomes pure and full.
 func celebrate() -> void:
 	var tw := create_tween()
-	tw.tween_property(self, "scale", Vector2(1.14, 1.14), 0.10) \
+	tw.tween_property(self, "scale", Vector2(1.14, 1.14), 0.08) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(self, "scale", Vector2.ONE, 0.18) \
+	tw.tween_property(self, "scale", Vector2.ONE, 0.12) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
@@ -216,7 +255,9 @@ func _build_visuals() -> void:
 		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var cid := _layers[i]
 		if cid > 0 and cid <= _palette.size():
-			rect.color = _palette[cid - 1]
+			rect.color = Color(0.18, 0.20, 0.28) \
+				if _fog_mode and i < _fog_reveal_from \
+				else _palette[cid - 1]
 			rect.modulate.a = 1.0
 		else:
 			rect.color = Color.WHITE
@@ -251,7 +292,9 @@ func _refresh_visuals() -> void:
 		var rect: ColorRect = _layer_rects[i]
 		var cid := _layers[i]
 		if cid > 0 and cid <= _palette.size():
-			rect.color = _palette[cid - 1]
+			rect.color = Color(0.18, 0.20, 0.28) \
+				if _fog_mode and i < _fog_reveal_from \
+				else _palette[cid - 1]
 			rect.modulate.a = 1.0
 		else:
 			rect.modulate.a = 0.0
