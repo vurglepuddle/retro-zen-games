@@ -154,7 +154,7 @@ func _generate_board() -> void:
 
 
 func _pick_start_level(r: int, c: int) -> int:
-	var candidates: Array = [1, 2, 3, 4, 5]
+	var candidates: Array = [1, 2, 3, 4, 5, 6]
 	candidates.shuffle()
 	for lv in candidates:
 		if not _would_match_at(r, c, lv):
@@ -474,6 +474,8 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		var any_match            = false
 		var had_bomb_det         = false
 		var had_cross_det        = false
+		var bomb_flash_centers: Array = []
+		var cross_flash_centers: Array = []
 
 		for group_dict in groups:
 			var tiles: Array = group_dict["tiles"]
@@ -509,17 +511,20 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 						to_remove.append(t)
 				detonate_queue.append(existing_special)
 
-			elif valid.size() < 4 or shape == Tile.SPECIAL_NONE:
-				# Plain 3-match: remove all, no survivor, no special created.
-				score += valid.size() * 10 * valid[0].level * multiplier
+			elif valid[0].level == 7:
+				# Stars are at max tier -- cannot upgrade, so they explode (3x3 BOMB each).
+				score += valid.size() * 10 * 7 * multiplier
 				for t in valid:
 					if not removed_set.has(t):
 						removed_set[t] = true
 						board[t.row][t.col] = null
 						to_remove.append(t)
+						t.special_type = Tile.SPECIAL_BOMB
+						detonate_queue.append(t)
 
 			else:
-				# 4+ match: remove all but one survivor, upgrade 1 tier, stamp special.
+				# Any 3+ match: one survivor upgrades 1 tier; shape sets the special:
+				# NONE for a plain 3-match, BOMB/CROSS/COLOR_BOMB for 4+ / T-L-+ / 5+.
 				var survivor: Tile = null
 				for t in last_swapped_tiles:
 					if valid.has(t):
@@ -528,7 +533,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				if survivor == null:
 					survivor = valid[0]
 
-				var new_level: int = min(survivor.level + 1, 6)
+				var new_level: int = min(survivor.level + 1, 7)
 				score += valid.size() * 10 * survivor.level * multiplier
 				upgrades.append([survivor, new_level, shape])
 
@@ -547,8 +552,10 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 			# Record type before anything is freed.
 			if sp.special_type == Tile.SPECIAL_BOMB:
 				had_bomb_det = true
+				bomb_flash_centers.append({r = sp.row, c = sp.col})
 			elif sp.special_type == Tile.SPECIAL_CROSS:
 				had_cross_det = true
+				cross_flash_centers.append({r = sp.row, c = sp.col})
 
 			for t: Tile in _collect_special_zone(sp):
 				if not removed_set.has(t):
@@ -569,6 +576,20 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 
 		# 1. Scale matched tiles to zero then free them.
 		if to_remove.size() > 0:
+			for center in bomb_flash_centers:
+				_flash_rect_in_board(
+					Rect2((center.c - 1) * float(cell_size), (center.r - 1) * float(cell_size),
+						  3.0 * cell_size, 3.0 * cell_size),
+					Color(1.0, 0.55, 0.08, 0.55))
+			for center in cross_flash_centers:
+				_flash_rect_in_board(
+					Rect2(0, center.r * float(cell_size),
+						  board_cols * float(cell_size), float(cell_size)),
+					Color(0.25, 0.55, 1.0, 0.55))
+				_flash_rect_in_board(
+					Rect2(center.c * float(cell_size), 0,
+						  float(cell_size), board_rows * float(cell_size)),
+					Color(0.25, 0.55, 1.0, 0.55))
 			_play_sfx(sfx_match)
 			var tw := create_tween()
 			tw.set_parallel(true)
@@ -613,7 +634,11 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 
 		# 3. Collapse + fill.
 		await _animate_collapse()
+		if not _game_active:
+			return
 		await _animate_fill()
+		if not _game_active:
+			return
 
 		update_score_display()
 		groups = _find_matches()
@@ -679,6 +704,13 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 	score += to_remove.size() * 10 * target_level
 	_play_sfx(sfx_color_bomb)
 
+	for t in to_remove:
+		if is_instance_valid(t):
+			_flash_rect_in_board(
+				Rect2(t.col * float(cell_size), t.row * float(cell_size),
+					  float(cell_size), float(cell_size)),
+				Color(0.12, 0.0, 0.22, 0.55))
+
 	var tw := create_tween()
 	tw.set_parallel(true)
 	for t in to_remove:
@@ -691,7 +723,11 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 
 	await _shake_board()
 	await _animate_collapse()
+	if not _game_active:
+		return
 	await _animate_fill()
+	if not _game_active:
+		return
 	update_score_display()
 
 	var matches := _find_matches()
@@ -759,7 +795,7 @@ func _animate_fill() -> void:
 			tile.row = r; tile.col = c; tile.game = self
 			board[r][c] = tile
 			board_container.add_child(tile)
-			tile.set_level(randi_range(1, 4))
+			tile.set_level(randi_range(1, 6))
 
 			var target := _cell_pos(r, c)
 			tile.position = Vector2(target.x, -(n - i) * float(cell_size))
@@ -1064,6 +1100,26 @@ func _flash_screen() -> void:
 	tw.tween_property(_flash_overlay, "color:a", 0.28, 0.08)
 	tw.tween_property(_flash_overlay, "color:a", 0.0,  0.55) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+# ----- Explosion zone flash --------------------------------------------------
+
+func _flash_rect_in_board(rect: Rect2, color: Color) -> void:
+	if not is_instance_valid(board_container):
+		return
+	var p := Polygon2D.new()
+	var tl: Vector2 = rect.position
+	var br: Vector2 = rect.position + rect.size
+	p.polygon = PackedVector2Array([tl, Vector2(br.x, tl.y), br, Vector2(tl.x, br.y)])
+	p.color    = color
+	p.modulate = Color(1, 1, 1, 0)
+	p.z_index  = 10
+	board_container.add_child(p)
+	var tw := create_tween()
+	tw.tween_property(p, "modulate:a", 1.0, 0.07).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.10)
+	tw.tween_property(p, "modulate:a", 0.0, 0.28).set_ease(Tween.EASE_IN)
+	tw.tween_callback(p.queue_free)
 
 
 # ----- Audio helpers --------------------------------------------------------

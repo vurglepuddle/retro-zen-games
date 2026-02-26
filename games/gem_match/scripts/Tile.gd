@@ -6,13 +6,13 @@ class_name Tile
 const SPECIAL_NONE       := 0   # plain gem
 const SPECIAL_BOMB       := 1   # 3×3 explosion  — orange indicator
 const SPECIAL_CROSS      := 2   # row+col blast   — blue indicator
-const SPECIAL_COLOR_BOMB := 3   # destroy all of tier — near-black indicator
+const SPECIAL_COLOR_BOMB := 3   # destroy all of tier — sp_heart animation
 
 const INDICATOR_COLORS: Array[Color] = [
 	Color(0.0,  0.0,  0.0,  0.0 ),  # NONE       — invisible
 	Color(1.0,  0.52, 0.08, 0.70),  # BOMB       — orange
 	Color(0.18, 0.52, 1.0,  0.70),  # CROSS      — blue
-	Color(0.10, 0.10, 0.10, 0.82),  # COLOR_BOMB — near-black
+	Color(0.0,  0.0,  0.0,  0.0 ),  # COLOR_BOMB — no rect; uses sp_heart anim
 ]
 
 @export var level: int = 1: set = set_level, get = get_level
@@ -28,7 +28,8 @@ const ANIM_NAMES := {
 	3: "3_green",
 	4: "4_pink",
 	5: "5_blue",
-	6: "6_star"
+	6: "6_red",
+	7: "7_star"
 }
 
 # Idle-spin state machine.
@@ -75,6 +76,14 @@ func set_special(type: int) -> void:
 	_indicator_color = INDICATOR_COLORS[type] if type < INDICATOR_COLORS.size() \
 		else Color(0, 0, 0, 0)
 	queue_redraw()
+	# COLOR_BOMB shows its own looping animation instead of an indicator square.
+	if type == SPECIAL_COLOR_BOMB:
+		var anim: AnimatedSprite2D = _anim if _anim != null \
+			else get_node_or_null("Tile") as AnimatedSprite2D
+		if anim != null and anim.sprite_frames != null \
+				and anim.sprite_frames.has_animation("sp_heart"):
+			anim.animation = "sp_heart"
+			anim.play()
 
 
 # Draw the coloured indicator square behind the gem sprite.
@@ -115,6 +124,13 @@ func _process(delta: float) -> void:
 
 	if _anim == null:
 		return
+
+	# COLOR_BOMB: sp_heart loops continuously — skip idle-spin logic.
+	if special_type == SPECIAL_COLOR_BOMB:
+		if not _anim.is_playing():
+			_anim.play()
+		return
+
 	if _spinning:
 		_spin_timer -= delta
 		if _spin_timer <= 0.0:

@@ -20,6 +20,7 @@
 
 * ~~Screen shake on explosion — full shake for BOMB, faint shake for CROSS~~ ✓
 * ~~Tink SFX on gem land — soft crystal-clink after collapse/fill~~ ✓
+* ~~Explosion zone flash — semi-transparent overlay: orange 3×3 for BOMB/stars, blue row+col for CROSS, dark purple per-tile for COLOR_BOMB~~ ✓
 
 * ~~Particle burst on tile clear — small gem sparkles fly out from matched tiles~~ Do not need.
 

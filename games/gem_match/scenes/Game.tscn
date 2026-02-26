@@ -18,7 +18,7 @@
 [ext_resource type="Texture2D" uid="uid://bw4bekkncwaua" path="res://games/gem_match/assets/BG_top.png" id="14_nd3sr"]
 [ext_resource type="AudioStream" uid="uid://c2n644uar01u6" path="res://games/gem_match/assets/sfx/color_bomb.mp3" id="14_nupwf"]
 
-[node name="Game2" type="Node2D"]
+[node name="Game" type="Node2D"]
 script = ExtResource("1")
 sfx_fall_delay = 0.3
 
