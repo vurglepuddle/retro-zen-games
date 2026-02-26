@@ -125,25 +125,28 @@ Scenes communicate via **Godot signals** (loose coupling):
 ### Board & Game Logic (`Game.gd`)
 
 - **Board**: 10×7 grid stored as `board: Array[Array]`; valid cells defined by the `SHAPE` constant (diamond/irregular mask)
-- **Tile levels**: 1–6; matched tiles are removed; score = `group_size × 10 × tile.level × cascade_multiplier`
-- **Special gem creation**: matching 4+ gems of the same level creates a powered-up survivor (upgraded 1 tier, gains special type based on match shape):
-  - **BOMB** (orange indicator) — 4-5 in a straight line → 3×3 explosion when matched; detonates other BOMB/CROSS specials it catches
-  - **CROSS** (blue indicator) — T / L / + shaped match → destroys full row + column when matched; fainter screen shake; also chains BOMB/CROSS
-  - **COLOR_BOMB** (near-black indicator) — 5+ in a straight line → fires by swapping with any gem; destroys all gems of that level on the board
-- **Plain 3-match**: all 3 tiles removed, no survivor, no upgrade
+- **Tile levels**: 1–7; score = `group_size × 10 × tile.level × cascade_multiplier`
+- **Match resolution** (any 3+ match creates one survivor upgraded 1 tier):
+  - **Plain 3-match** (`SPECIAL_NONE`) — one survivor upgrades 1 tier, no special stamped
+  - **4-5 straight line** (`SPECIAL_BOMB`) — survivor upgrades + stamped BOMB (orange 3×3 blast)
+  - **T / L / + intersection** (`SPECIAL_CROSS`) — survivor upgrades + stamped CROSS (row+col blast)
+  - **5+ straight line** (`SPECIAL_COLOR_BOMB`) — survivor upgrades + stamped COLOR_BOMB (sp_heart gem; destroys all gems of target level when swapped with any gem)
+  - **Stars (level 7)** — max tier, cannot upgrade; each star in the match is stamped BOMB and detonates as a 3×3 explosion instead
 - **Special already in a group**: fires immediately (existing special takes priority over creating a new one)
-- **COLOR_BOMB is immune to normal matches** — skipped entirely during match resolution; only removed silently by BOMB/CROSS chain explosions
-- **COLOR_BOMB cannot be chained** by BOMB/CROSS explosions — it is silently removed instead
+- **COLOR_BOMB is immune to normal matches** — skipped during match resolution; only removed silently by BOMB/CROSS chain explosions
+- **COLOR_BOMB cannot be chained** by BOMB/CROSS explosions — silently removed instead
 - **Chain detonation**: BFS queue; BOMB/CROSS specials caught in a blast zone are added to the queue and also fire
+- **Explosion zone flash**: `_flash_rect_in_board(rect, color)` fires a semi-transparent `Polygon2D` overlay on `board_container` (z_index=10) that fades in 0.07s → holds 0.10s → fades out 0.28s; orange for BOMB (3×3), blue for CROSS (row+col), dark purple per-tile for COLOR_BOMB
 - **Dead-state prevention**: `_check_for_shuffle()` randomizes the board when no valid moves exist (also recognises COLOR_BOMB + any adjacent gem as a valid move)
 - **Tink SFX**: soft crystal-clink (`no_match.mp3` at −14 dB via `SfxTink`) plays when gems settle after collapse or fill
+- **Crash guard**: `_game_active` checked after every `await _animate_collapse()` / `await _animate_fill()` to safely abort coroutines when back-navigation fires mid-cascade
 
 ### Tile Entity (`Tile.gd`)
 
 - Extends `Area2D`; `class_name Tile`
+- **Levels 1–7**: `1_pearl`, `2_yellow`, `3_green`, `4_pink`, `5_blue`, `6_red`, `7_star`
 - `special_type: int` — `SPECIAL_NONE / BOMB / CROSS / COLOR_BOMB` (0–3)
-- `set_special(type)` — stamps type and redraws the indicator
-- `_draw()` — draws a coloured 68×68 square behind the gem sprite (orange / blue / near-black)
+- `set_special(type)` — stamps type; BOMB/CROSS draw a coloured 68×68 square via `_draw()`; COLOR_BOMB switches `AnimatedSprite2D` to `"sp_heart"` animation (no rectangle)
 - `set_level()` always resets `special_type` to NONE — caller sets it afterwards if needed
 - Drag detection threshold: 30px; direction passed to `game._attempt_swap()`
 - Animations via `AnimatedSprite2D` + `SpriteFrames` (PNG spritesheets per gem level)
