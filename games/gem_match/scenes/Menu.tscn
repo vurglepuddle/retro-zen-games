@@ -54,8 +54,8 @@ scale = Vector2(0.499284, 0.499284)
 texture = ExtResource("3_cbor3")
 
 [node name="LogoGem" type="Sprite2D" parent="."]
-position = Vector2(269, 295)
-scale = Vector2(0.601113, 0.601113)
+position = Vector2(269, 271)
+scale = Vector2(0.437848, 0.437848)
 texture = ExtResource("4_480jh")
 
 [node name="Start" type="TextureButton" parent="."]

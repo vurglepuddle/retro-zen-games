@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://c3xktbl4pdy6g"]
+[gd_scene load_steps=18 format=3 uid="uid://c3xktbl4pdy6g"]
 
 [ext_resource type="Script" path="res://games/gem_match/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -13,9 +13,12 @@
 [ext_resource type="AudioStream" uid="uid://bwtse3adi0kb1" path="res://games/gem_match/assets/sfx/combo/note_6.mp3" id="5_n6"]
 [ext_resource type="AudioStream" uid="uid://lsnh8wc8a4ui" path="res://games/gem_match/assets/sfx/combo/note_7.mp3" id="5_n7"]
 [ext_resource type="Texture2D" uid="uid://1iymo6a4x26p" path="res://games/gem_match/assets/BG.png" id="13_d4bl2"]
+[ext_resource type="AudioStream" uid="uid://d0jq0q5yjrtm1" path="res://games/gem_match/assets/sfx/explosion.mp3" id="13_ecdx1"]
+[ext_resource type="AudioStream" uid="uid://vlbkfrxys7hm" path="res://games/gem_match/assets/sfx/lightning.mp3" id="14_1dy70"]
 [ext_resource type="Texture2D" uid="uid://bw4bekkncwaua" path="res://games/gem_match/assets/BG_top.png" id="14_nd3sr"]
+[ext_resource type="AudioStream" uid="uid://c2n644uar01u6" path="res://games/gem_match/assets/sfx/color_bomb.mp3" id="14_nupwf"]
 
-[node name="Game" type="Node2D"]
+[node name="Game2" type="Node2D"]
 script = ExtResource("1")
 sfx_fall_delay = 0.3
 
@@ -64,10 +67,10 @@ horizontal_alignment = 1
 
 [node name="BackButton" type="Button" parent="."]
 z_index = 501
-offset_left = 5.0
-offset_top = -23.0
-offset_right = 60.0
-offset_bottom = 62.0
+offset_left = 11.0
+offset_top = 881.0
+offset_right = 83.0
+offset_bottom = 949.0
 theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
 theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
 theme_override_constants/outline_size = 3
@@ -116,7 +119,20 @@ stream = ExtResource("4_1fs05")
 volume_db = -10.972
 
 [node name="SfxExplosion" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("13_ecdx1")
+volume_db = -5.0
+
+[node name="SfxColorBomb" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("14_nupwf")
+volume_db = -10.0
+
+[node name="SfxLightning" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("14_1dy70")
+volume_db = -5.0
+
+[node name="SfxTink" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_mjmgh")
+volume_db = -5.0
 
 [node name="SfxVoiceGood" type="AudioStreamPlayer" parent="."]
 

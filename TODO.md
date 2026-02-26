@@ -5,7 +5,10 @@
 
 * ~~Add a combo multiplier — chained cascade matches multiply the score (×2, ×3…) with a brief on-screen label pop~~ ✓
 
-* ~~Level-6 special: matching 3+ level-6 tiles clears the entire surrounding 3×3 area~~ ✓
+* ~~Special gem system — classic 3 special types created by match shape/size:~~ ✓
+  * ~~BOMB (orange): 4-5 in a line → 3×3 explosion when matched, chains BOMB/CROSS~~
+  * ~~CROSS (blue): T/L/+ intersection → full row+col explosion when matched, chains BOMB/CROSS~~
+  * ~~COLOR_BOMB (black): 5+ in a line → swap with any gem to destroy all of that tier; immune to normal match resolution~~
 
 * ~~Hint system — after ~5 seconds of no input, pulse the tiles involved in one valid swap~~ ✓
 
@@ -15,7 +18,8 @@
 
 * ~~Menu → game fade transition (black fade between screens, both directions)~~ ✓
 
-* ~~Level-6 3×3 blast — tiny screen shake when the explosion triggers~~ ✓
+* ~~Screen shake on explosion — full shake for BOMB, faint shake for CROSS~~ ✓
+* ~~Tink SFX on gem land — soft crystal-clink after collapse/fill~~ ✓
 
 * ~~Particle burst on tile clear — small gem sparkles fly out from matched tiles~~ Do not need.
 
@@ -154,10 +158,12 @@
 * ~~Scaffold folder structure, scripts, scenes, MasterMenu tile~~ ✓
 * ~~Pour animation — liquid visually flows from source vial to target (fade out → droplet arc → fade in)~~ ✓
 * ~~Win screen / "Solved!" overlay showing move count + New Game button~~ ✓ (WinPanel)
-* ~~Undo button — reverse the last pour (single level of undo)~~ ✓
+* ~~Undo button — per-difficulty undo stack (Easy=3, Medium=2, Hard=1, Zen=∞); button shows `UNDO ×N`~~ ✓
 * ~~Android back gesture support (`_notification(NOTIFICATION_WM_GO_BACK_REQUEST)`)~~ ✓
 * ~~Save best (fewest) move count per difficulty to `user://alch_sort_save.cfg`~~ ✓
-* ~~Dead-state detection — if no valid pour exists, auto-reshuffle with "No moves left… Reshuffling" notice~~ ✓
+* ~~Dead-state detection — shows "No valid moves left." label + RESHUFFLE button; user decides when to reshuffle~~ ✓
+* ~~Mystery fog-of-war mode — 25% random event on Medium/Hard/Zen; only top color-run visible; layers revealed as poured off; "Mystery…" tween on game start~~ ✓
+* ~~Board generation — random distribution creates mixed vials; 2 empty vials + dead-board detection makes boards reliably playable~~ ✓
 
 **Difficulty / Tuning**
 * ~~Difficulty selector in Menu (Easy 6-color / Medium 8-color / Hard 10-color / Zen random)~~ ✓
@@ -187,5 +193,5 @@
 * Final color count and palette — currently 8 colors, placeholder `PALETTE` array in `Game.gd`
 * ~~Should pouring animate one layer at a time or all at once?~~ ✓ All at once (entire top run pours together)
 * ~~Move counter vs. timer — which metric to display and save?~~ ✓ Move counter
-* Bottle capacity — currently 4 layers; tune after playtesting
+* ~~Bottle capacity — currently 4 layers; tune after playtesting~~ ✓ 5 layers
 * ~~Difficulty — currently fixed at 8 colors / 2 empty vials; selector pending~~ ✓ (Easy/Medium/Hard/Zen)
