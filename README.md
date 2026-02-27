@@ -15,9 +15,9 @@ Just tap-tap, clink-clink and some music.
 </table>
 
 ## Current Games
-*   **Gem Match** – A relaxed match-3 variant where gems merge and go boom.
-*   **Tile Chain** (90%) – A twist on NY-style tile game.
-*   **Alchemical Sort** – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
+*   **Gem Match** (95%) – A relaxed match-3 variant where gems merge and go boom.
+*   **Tile Chain** (80%) – A twist on NY-style tile game.
+*   **Alchemical Sort** (70%) – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
     
 More small experiments and quiet mechanics will be added over time.
 ## Built With

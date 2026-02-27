@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://c3xktbl4pdy6g"]
+[gd_scene load_steps=20 format=3 uid="uid://c3xktbl4pdy6g"]
 
 [ext_resource type="Script" path="res://games/gem_match/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -17,6 +17,8 @@
 [ext_resource type="AudioStream" uid="uid://vlbkfrxys7hm" path="res://games/gem_match/assets/sfx/lightning.mp3" id="14_1dy70"]
 [ext_resource type="Texture2D" uid="uid://bw4bekkncwaua" path="res://games/gem_match/assets/BG_top.png" id="14_nd3sr"]
 [ext_resource type="AudioStream" uid="uid://c2n644uar01u6" path="res://games/gem_match/assets/sfx/color_bomb.mp3" id="14_nupwf"]
+[ext_resource type="Texture2D" uid="uid://7rgubd1inwfp" path="res://games/gem_match/assets/btn_back1.png" id="18_bvndk"]
+[ext_resource type="Texture2D" uid="uid://clb5v5ciq5eo6" path="res://games/gem_match/assets/btn_back2.png" id="19_pok54"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1")
@@ -65,23 +67,12 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 88
 horizontal_alignment = 1
 
-[node name="BackButton" type="Button" parent="."]
-z_index = 501
-offset_left = 11.0
-offset_top = 881.0
-offset_right = 83.0
-offset_bottom = 949.0
-theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
-theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
-theme_override_constants/outline_size = 3
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 44
-text = "‹"
-flat = true
-
 [node name="Board" type="Node2D" parent="."]
 
 [node name="SfxSwap" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_mjmgh")
+
+[node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_mjmgh")
 
 [node name="SfxMatch" type="AudioStreamPlayer" parent="."]
@@ -89,15 +80,19 @@ stream = ExtResource("3_bl23u")
 
 [node name="SfxNote1" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_n1")
+volume_db = -12.0
 
 [node name="SfxNote2" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_n2")
+volume_db = -8.0
 
 [node name="SfxNote3" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_n3")
+volume_db = -5.0
 
 [node name="SfxNote4" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_n4")
+volume_db = -5.0
 
 [node name="SfxNote5" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_n5")
@@ -159,3 +154,15 @@ z_index = 500
 position = Vector2(270, 34)
 scale = Vector2(0.499, 0.499)
 texture = ExtResource("14_nd3sr")
+
+[node name="Back_Button" type="TextureButton" parent="."]
+z_index = 800
+offset_left = 23.5
+offset_top = 894.0
+offset_right = 121.5
+offset_bottom = 992.0
+scale = Vector2(0.5, 0.5)
+texture_normal = ExtResource("18_bvndk")
+texture_pressed = ExtResource("19_pok54")
+
+[connection signal="pressed" from="Back_Button" to="." method="back_button_pressed"]

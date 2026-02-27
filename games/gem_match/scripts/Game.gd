@@ -68,7 +68,7 @@ var _next_milestone: int = 1000
 @onready var score_label: Label      = $ScoreLabel
 @onready var shuffle_label: Label    = $ShuffleLabel
 @onready var combo_label: Label      = $ComboLabel
-@onready var back_button: Button     = $BackButton
+@onready var back_button: TextureButton     = $Back_Button
 
 @onready var sfx_swap:      AudioStreamPlayer = $SfxSwap
 @onready var sfx_match:     AudioStreamPlayer = $SfxMatch
@@ -79,6 +79,7 @@ var _next_milestone: int = 1000
 @onready var sfx_lightning:  AudioStreamPlayer = $SfxLightning
 @onready var sfx_color_bomb: AudioStreamPlayer = $SfxColorBomb
 @onready var sfx_tink:       AudioStreamPlayer = $SfxTink
+@onready var sfx_click: AudioStreamPlayer = $SfxClick
 
 @onready var sfx_notes: Array = [
 	$SfxNote1, $SfxNote2, $SfxNote3, $SfxNote4,
@@ -103,7 +104,13 @@ func _ready() -> void:
 	_flash_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(_flash_overlay)
 
-	back_button.pressed.connect(_go_back_to_menu)
+	#back_button.pressed.connect(_go_back_to_menu)
+
+
+func back_button_pressed() -> void:
+	if sfx_click.stream: sfx_click.play()
+	_go_back_to_menu()
+
 
 
 func prepare_board() -> void:
@@ -244,6 +251,9 @@ func _animate_board_entrance() -> void:
 func _go_back_to_menu() -> void:
 	_game_active = false
 	_stop_hints()
+	for child in get_children():
+		if child is AudioStreamPlayer and child != sfx_click:
+			child.stop()
 	back_to_menu.emit()
 
 

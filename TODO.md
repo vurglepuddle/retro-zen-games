@@ -21,10 +21,14 @@
 * ~~Screen shake on explosion — full shake for BOMB, faint shake for CROSS~~ ✓
 * ~~Tink SFX on gem land — soft crystal-clink after collapse/fill~~ ✓
 * ~~Explosion zone flash — semi-transparent overlay: orange 3×3 for BOMB/stars, blue row+col for CROSS, dark purple per-tile for COLOR_BOMB~~ ✓
+* ~~`_game_active` crash guards — abort coroutines cleanly on back-navigation mid-cascade~~ ✓
 
 * ~~Particle burst on tile clear — small gem sparkles fly out from matched tiles~~ Do not need.
 
-* ~~Add the mute sound button~~ → User will handle
+* ~~Global mute toggle (3-state: all on → music off → all off) — `AudioManager` autoload singleton owns music player + state; `MuteButton.gd` reusable script for per-screen TextureButtons~~ ✓
+* ~~Web audio fix — removed dynamic `AudioServer.add_bus()` (corrupts WebAudio driver); music-only mute via `volume_db = -80` instead~~ ✓
+* ~~Music crossfade — 0.30 s fade-out → switch stream → 0.40 s fade-in when switching tracks between scenes~~ ✓
+* ~~Splash screen — "TAP TO START" overlay on first load; 3-layer cover system guarantees no menu flash; naturally unlocks web audio on tap~~ ✓
 
 **Quality of Life**
 
@@ -64,7 +68,7 @@
 
 * Style the in-game back button "‹" — currently plain text
 
-* Style the mute sound button (2 versions: on/off) and wire it up
+* Style the mute button — make 6 textures (normal/pressed × all-on / music-off / all-off) and assign them to the `MuteButton` TextureButton node in each scene's Inspector
 
 * Style the MasterMenu — background, polish the game-tile card
 

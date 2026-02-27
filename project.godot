@@ -13,7 +13,13 @@ config_version=5
 config/name="Zen Games"
 run/main_scene="res://scenes/MasterMenu.tscn"
 config/features=PackedStringArray("4.3")
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/show_image=false
 config/icon="res://assets/game_icon.png"
+
+[autoload]
+
+AudioManager="*res://scripts/AudioManager.gd"
 
 [display]
 
