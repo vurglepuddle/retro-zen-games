@@ -1,10 +1,13 @@
-[gd_scene load_steps=6 format=3 uid="uid://e7bfq35scdwp"]
+[gd_scene load_steps=9 format=3 uid="uid://e7bfq35scdwp"]
 
 [ext_resource type="Script" path="res://scripts/MasterMenu.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
 [ext_resource type="Texture2D" uid="uid://dl0wetvwuq73w" path="res://games/gem_match/assets/Logo_gem.png" id="3_logo"]
 [ext_resource type="Texture2D" uid="uid://dum8jx465xdsr" path="res://assets/bg_master.png" id="4_jjcy0"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="5_kmhc1"]
+[ext_resource type="Script" path="res://scripts/MuteButton.gd" id="6_2xpdc"]
+[ext_resource type="Texture2D" uid="uid://7rgubd1inwfp" path="res://games/gem_match/assets/btn_back1.png" id="7_k1suq"]
+[ext_resource type="Texture2D" uid="uid://clb5v5ciq5eo6" path="res://games/gem_match/assets/btn_back2.png" id="8_0bjaw"]
 
 [node name="MasterMenu" type="Control"]
 layout_mode = 3
@@ -59,7 +62,18 @@ text = "choose your game"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="GemMatchTile2" type="TextureButton" parent="."]
+layout_mode = 0
+offset_left = 185.0
+offset_top = 238.0
+offset_right = 892.0
+offset_bottom = 777.0
+scale = Vector2(0.25, 0.25)
+texture_normal = ExtResource("3_logo")
+texture_pressed = ExtResource("3_logo")
+
 [node name="GemMatchTile" type="Button" parent="."]
+visible = false
 layout_mode = 0
 offset_left = 136.0
 offset_top = 198.0
@@ -68,24 +82,10 @@ offset_bottom = 391.0
 flat = true
 
 [node name="Logo" type="Sprite2D" parent="GemMatchTile"]
+visible = false
 position = Vector2(145, 91)
 scale = Vector2(0.295, 0.295)
 texture = ExtResource("3_logo")
-
-[node name="TileLabel" type="Label" parent="GemMatchTile"]
-visible = false
-layout_mode = 0
-offset_top = 320.0
-offset_right = 323.0
-offset_bottom = 352.0
-theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
-theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
-theme_override_constants/outline_size = 3
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 26
-text = "GEM MATCH"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="TileChainTile" type="Button" parent="."]
 layout_mode = 0
@@ -141,6 +141,22 @@ texture = ExtResource("4_jjcy0")
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_kmhc1")
 
+[node name="TextureButton" type="TextureButton" parent="."]
+layout_mode = 0
+offset_left = 436.0
+offset_top = 864.0
+offset_right = 490.0
+offset_bottom = 911.0
+scale = Vector2(0.5, 0.5)
+script = ExtResource("6_2xpdc")
+tex_on_normal = ExtResource("7_k1suq")
+tex_on_pressed = ExtResource("8_0bjaw")
+tex_music_off_normal = ExtResource("7_k1suq")
+tex_music_off_pressed = ExtResource("8_0bjaw")
+tex_all_off_normal = ExtResource("7_k1suq")
+tex_all_off_pressed = ExtResource("8_0bjaw")
+
+[connection signal="pressed" from="GemMatchTile2" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="TileChainTile" to="." method="_on_tile_chain_pressed"]
 [connection signal="pressed" from="AlchSortTile" to="." method="_on_alch_sort_pressed"]

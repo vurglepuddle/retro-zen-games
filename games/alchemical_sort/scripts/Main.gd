@@ -5,19 +5,11 @@ extends Node
 @onready var _game: Control          = $Game
 @onready var _fade_rect: ColorRect   = $FadeLayer/FadeRect
 
-var _music: AudioStreamPlayer = null
-
-
 func _ready() -> void:
 	_game.visible = false
 
 	# Ambient music.
-	_music = AudioStreamPlayer.new()
-	_music.stream = load("res://games/alchemical_sort/assets/music/menuet.mp3")
-	_music.volume_db = linear_to_db(0.5)
-	_music.finished.connect(func(): _music.play())
-	add_child(_music)
-	_music.play()
+	AudioManager.play_music(load("res://games/alchemical_sort/assets/music/menuet.mp3"))
 
 	_menu.start_game.connect(_on_start_game)
 	_menu.back_to_master.connect(_on_back_to_master)

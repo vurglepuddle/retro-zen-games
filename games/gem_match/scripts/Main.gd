@@ -7,18 +7,12 @@ extends Node
 @onready var menu = $Menu
 @onready var game = $Game
 
-var _music: AudioStreamPlayer
 var _fade_rect: ColorRect = null
 
 
 func _ready() -> void:
 	# Start the background music and keep it looping forever.
-	_music = AudioStreamPlayer.new()
-	_music.stream = preload("res://games/gem_match/assets/music/999.mp3")
-	_music.volume_db = linear_to_db(0.5)   # 50 % perceived loudness ≈ −6 dB
-	_music.finished.connect(func(): _music.play())
-	add_child(_music)
-	_music.play()
+	AudioManager.play_music(preload("res://games/gem_match/assets/music/999.mp3"))
 
 	# Full-screen black rect for scene transitions — sits above everything.
 	var layer := CanvasLayer.new()

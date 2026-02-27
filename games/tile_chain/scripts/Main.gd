@@ -8,16 +8,10 @@ extends Node
 @onready var game = $Game
 
 var _fade_rect: ColorRect = null
-var _music: AudioStreamPlayer
 
 
 func _ready() -> void:
-	_music = AudioStreamPlayer.new()
-	_music.stream = preload("res://games/tile_chain/assets/music/999_2.mp3")
-	_music.volume_db = linear_to_db(0.5)
-	_music.finished.connect(func(): _music.play())
-	add_child(_music)
-	_music.play()
+	AudioManager.play_music(preload("res://games/tile_chain/assets/music/999_2.mp3"))
 
 	var layer := CanvasLayer.new()
 	layer.layer = 100
