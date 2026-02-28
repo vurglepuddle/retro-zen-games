@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://c3xktbl4pdy6g"]
+[gd_scene load_steps=21 format=3 uid="uid://c3xktbl4pdy6g"]
 
 [ext_resource type="Script" path="res://games/gem_match/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -12,6 +12,7 @@
 [ext_resource type="AudioStream" uid="uid://dsvles0ag2pj1" path="res://games/gem_match/assets/sfx/combo/note_5.mp3" id="5_n5"]
 [ext_resource type="AudioStream" uid="uid://bwtse3adi0kb1" path="res://games/gem_match/assets/sfx/combo/note_6.mp3" id="5_n6"]
 [ext_resource type="AudioStream" uid="uid://lsnh8wc8a4ui" path="res://games/gem_match/assets/sfx/combo/note_7.mp3" id="5_n7"]
+[ext_resource type="AudioStream" uid="uid://37ryanphj8pt" path="res://games/gem_match/assets/sfx/shuffling.mp3" id="12_8gkys"]
 [ext_resource type="Texture2D" uid="uid://1iymo6a4x26p" path="res://games/gem_match/assets/BG.png" id="13_d4bl2"]
 [ext_resource type="AudioStream" uid="uid://d0jq0q5yjrtm1" path="res://games/gem_match/assets/sfx/explosion.mp3" id="13_ecdx1"]
 [ext_resource type="AudioStream" uid="uid://vlbkfrxys7hm" path="res://games/gem_match/assets/sfx/lightning.mp3" id="14_1dy70"]
@@ -43,6 +44,7 @@ vertical_alignment = 1
 
 [node name="ShuffleLabel" type="Label" parent="."]
 visible = false
+z_index = 600
 offset_top = 440.0
 offset_right = 540.0
 offset_bottom = 520.0
@@ -107,7 +109,8 @@ stream = ExtResource("5_n7")
 stream = ExtResource("3_mjmgh")
 
 [node name="SfxShuffle" type="AudioStreamPlayer" parent="."]
-stream = ExtResource("4_1fs05")
+stream = ExtResource("12_8gkys")
+volume_db = -8.0
 
 [node name="SfxFall" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("4_1fs05")

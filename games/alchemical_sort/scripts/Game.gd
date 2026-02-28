@@ -200,8 +200,10 @@ func _build_vials() -> void:
 	var assignments := _generate_shuffled_layers()
 	var total := _color_count + _empty_vials
 
-	var vial_w := Vial.VIAL_W
-	var vial_h := Vial.VIAL_H
+	# Derive layout dimensions from the bottle artwork (the true visual size of each vial).
+	var _layout_tex := load("res://games/alchemical_sort/assets/bottle.png") as Texture2D
+	var vial_w: int = _layout_tex.get_width()
+	var vial_h: int = _layout_tex.get_height()
 	var row_w  := _vials_per_row * vial_w + (_vials_per_row - 1) * VIAL_SPACING
 	var origin_x := int((540.0 - row_w) / 2.0)
 	var origin_y := 130
@@ -321,8 +323,8 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	await src.animate_pour_out(amount)
 	src.reveal_top()  # expose newly uncovered layer in fog mode (no-op otherwise)
 
-	var src_top := src.position + Vector2(Vial.VIAL_W * 0.5, 0.0)
-	var dst_top := dst.position + Vector2(Vial.VIAL_W * 0.5, 0.0)
+	var src_top := src.position + Vector2(src.VIAL_W * 0.5, 0.0)
+	var dst_top := dst.position + Vector2(dst.VIAL_W * 0.5, 0.0)
 	await _animate_droplet(src_top, dst_top, color)
 
 	await dst.animate_pour_in(color_id, amount)
@@ -506,8 +508,14 @@ func _save_undo_snapshot() -> void:
 
 
 func _on_undo_pressed() -> void:
-	if _undo_stack.is_empty() or not _board_active:
+	var in_dead_board := _reshuffle_btn.visible
+	if _undo_stack.is_empty() or (not _board_active and not in_dead_board):
 		return
+	# Undoing out of a dead-board state: dismiss the reshuffle UI and resume play.
+	if in_dead_board:
+		_reshuffle_lbl.visible = false
+		_reshuffle_btn.visible = false
+		_board_active = true
 	var snap: Array = _undo_stack.pop_back()
 	if _selected:
 		_selected.show_selected(false)

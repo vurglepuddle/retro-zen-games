@@ -230,7 +230,10 @@ Total vials = `color_count + empty_vials`. Centred on 540-wide screen.
 - `class_name Vial`, extends `Control`; instantiated purely in code — no `.tscn`
 - `_layers: Array[int]` — index 0 = bottom, index MAX_LAYERS-1 = top; 0 = empty
 - Key queries: `top_color()`, `top_run_count()`, `free_slots()`, `is_empty()`, `is_full()`, `is_pure()`
-- Visual placeholder: `ColorRect` per layer — **replace with sprite-based pixel art bottle**
+- **Visuals**: pixel-art sprite sheet `liquid_colors_all.png` (7 cols × 2 rows = 14 colors); each cell is an `AtlasTexture` indexed by `color_id - 1`; vial size (72×176) derived from `bottle.png` at runtime
+- **Draw order** (back → front): `bottle_inside.png` at 70% opacity → liquid layer `TextureRect`s → `bottle.png` overlay → golden selection outline (`StyleBoxFlat` Panel)
+- **Bottle margins**: `BOTTLE_PAD_TOP = 14` px top, 2 px bottom, 4 px left/right (derived from bottle art); liquid layers offset to `(pad_x, BOTTLE_PAD_TOP)` within the 72×176 Control
+- **Fog (Mystery) mode**: hidden layers rendered with `modulate = Color(0,0,0,1)` — fully opaque black; revealed layers render normally
 - Selection outline: golden `StyleBoxFlat` border, toggled via `show_selected(bool)`
 
 ### Pour Rules
@@ -239,6 +242,7 @@ Total vials = `color_count + empty_vials`. Centred on 540-wide screen.
 - `_do_pour(src, dst)`: moves `min(src.top_run_count(), dst.free_slots())` layers at once (pours the entire same-color run, limited by available space); saves an undo snapshot before pouring
 - **Board generation**: randomly distributes all `color_count × MAX_LAYERS` tokens across the color vials (creating mixed vials); empty vials appended last. **Note:** a scramble-from-solved approach does NOT work here — valid game pours can only move same-color runs, so the board would stay "pure" and the win condition would fire immediately. Random distribution + 2 empty vials produces solvable boards in the vast majority of cases; the dead-board detector handles the rare stuck positions by reshuffling in-place.
 - **Undo stack**: `_undo_stack` (Array of snapshots); depth capped by `_max_undo_depth` per difficulty (−1 = unlimited for Zen); button shows `UNDO ×N` while charges remain
+- **Dead-board undo**: undo is allowed even while the reshuffle prompt is visible; pressing it dismisses the prompt and restores the previous state, re-enabling play
 - **Tap queuing**: taps during a pour animation are silently queued in `_queued_vial` and processed after the animation finishes
 
 ### Win Condition
@@ -262,8 +266,11 @@ User tap (Vial._gui_input)
 ```
 games/alchemical_sort/
   assets/
-    music/menuet.mp3      ambient track (auto-loaded by Main.gd)
-    bottles/              TODO: pixel-art bottle sprites per color
+    music/menuet.mp3           ambient track (auto-loaded by Main.gd)
+    liquid_colors_all.png      sprite sheet — 7 cols × 2 rows, 14 hand-painted liquid colors
+    bottle.png                 bottle overlay (72×176); rendered on top of liquid layers
+    bottle_inside.png          inner glass texture (72×176); rendered at 70% opacity behind liquid
+    liquid_hue.gdshader        unused — kept for reference (hue-rotation approach was abandoned)
   scenes/
     Main.tscn             orchestrator (Menu ↔ Game, fades)
     Menu.tscn             title, START GAME, ‹ BACK
