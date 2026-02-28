@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://bkuuewmvl1iiu"]
+[gd_scene load_steps=5 format=3 uid="uid://bkuuewmvl1iiu"]
 
 [ext_resource type="Script" path="res://games/alchemical_sort/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
 [ext_resource type="Texture2D" uid="uid://dq3mi4tdibma6" path="res://games/alchemical_sort/assets/alchemy_bg3.png" id="3_0hd8l"]
+[ext_resource type="Texture2D" uid="uid://cv6wgmx8qr3bg" path="res://games/alchemical_sort/assets/1772305215676-019ca59e-ee62-7b80-a838-0e85021bc714.png" id="4_26njo"]
 
 [node name="Game" type="Control"]
 layout_mode = 3
@@ -24,6 +25,7 @@ mouse_filter = 2
 color = Color(0.05, 0.07, 0.1, 1)
 
 [node name="MoveLabel" type="Label" parent="."]
+visible = false
 z_index = 10
 layout_mode = 0
 offset_left = 20.0
@@ -38,6 +40,7 @@ theme_override_font_sizes/font_size = 26
 text = "Moves: 0"
 
 [node name="BestLabel" type="Label" parent="."]
+visible = false
 z_index = 10
 layout_mode = 0
 offset_left = 20.0
@@ -56,9 +59,9 @@ modulate = Color(1, 1, 1, 0.35)
 z_index = 10
 layout_mode = 0
 offset_left = 370.0
-offset_top = 20.0
+offset_top = 19.0
 offset_right = 520.0
-offset_bottom = 65.0
+offset_bottom = 64.0
 theme_override_colors/font_color = Color(0.6, 0.6, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 22
@@ -190,9 +193,14 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="AlchemyBg3" type="Sprite2D" parent="."]
-position = Vector2(269.5, 482.223)
-scale = Vector2(0.300781, 0.300781)
+position = Vector2(270, 481.329)
+scale = Vector2(0.697917, 0.697917)
 texture = ExtResource("3_0hd8l")
+
+[node name="1772305215676-019Ca59e-ee62-7b80-a838-0e85021Bc714" type="Sprite2D" parent="."]
+position = Vector2(270.5, 479.104)
+scale = Vector2(0.699219, 0.699219)
+texture = ExtResource("4_26njo")
 
 [connection signal="pressed" from="UndoButton" to="." method="_on_undo_pressed"]
 [connection signal="pressed" from="ReshuffleButton" to="." method="_on_reshuffle_pressed"]

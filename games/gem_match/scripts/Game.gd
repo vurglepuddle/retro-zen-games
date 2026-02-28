@@ -139,7 +139,7 @@ func prepare_board() -> void:
 func start_game() -> void:
 	_play_sfx_delayed(sfx_fall, sfx_fall_delay)
 	await _animate_board_entrance()
-	_check_for_shuffle()
+	await _check_for_shuffle()
 	_game_active = true
 
 
@@ -520,6 +520,11 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 						board[t.row][t.col] = null
 						to_remove.append(t)
 				detonate_queue.append(existing_special)
+				# Any other plain stars in the group also explode as BOMB (max tier).
+				for t in valid:
+					if t != existing_special and t.level == 7 and t.special_type == Tile.SPECIAL_NONE:
+						t.special_type = Tile.SPECIAL_BOMB
+						detonate_queue.append(t)
 
 			elif valid[0].level == 7:
 				# Stars are at max tier -- cannot upgrade, so they explode (3x3 BOMB each).
@@ -653,7 +658,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		update_score_display()
 		groups = _find_matches()
 
-	_check_for_shuffle()
+	await _check_for_shuffle()
 
 
 # ----- Special gem zone collectors ------------------------------------------
@@ -744,7 +749,7 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 	if matches.size() > 0:
 		await _resolve_matches_animated(matches)
 	else:
-		_check_for_shuffle()
+		await _check_for_shuffle()
 
 
 # ----- Gravity & fill -------------------------------------------------------
@@ -1025,23 +1030,46 @@ func _shuffle_board() -> void:
 
 
 func _check_for_shuffle() -> void:
-	var did_shuffle := false
+	if _has_possible_matches():
+		return
+
+	_play_sfx(sfx_shuffle)
+
+	# Show "Shuffling..." label (fire-and-forget fade).
+	if shuffle_label != null:
+		shuffle_label.modulate.a = 1.0
+		shuffle_label.visible = true
+		var tw_lbl := create_tween()
+		tw_lbl.tween_interval(2.2)
+		tw_lbl.tween_property(shuffle_label, "modulate:a", 0.0, 0.5)
+		tw_lbl.tween_callback(func(): shuffle_label.visible = false)
+
+	# Collect all tiles, then shrink them to nothing.
+	var all_tiles: Array = []
+	for r in range(board_rows):
+		for c in range(board_cols):
+			if board[r][c] != null:
+				all_tiles.append(board[r][c])
+	var tw_shrink := create_tween().set_parallel(true)
+	for tile in all_tiles:
+		tw_shrink.tween_property(tile, "scale", Vector2.ZERO, 0.42) \
+			.set_ease(Tween.EASE_IN)
+	await tw_shrink.finished
+
+	# Shuffle while tiles are invisible (positions teleport at scale=0).
 	var attempts := 0
 	while not _has_possible_matches():
 		_shuffle_board()
-		did_shuffle = true
 		attempts += 1
 		if attempts > 20:
 			break
-	if did_shuffle:
-		_play_sfx(sfx_shuffle)
-		if shuffle_label != null:
-			shuffle_label.modulate.a = 1.0
-			shuffle_label.visible = true
-			var tw := create_tween()
-			tw.tween_interval(1.2)
-			tw.tween_property(shuffle_label, "modulate:a", 0.0, 0.5)
-			tw.tween_callback(func(): shuffle_label.visible = false)
+
+	# Pop tiles back with a springy overshoot.
+	var tw_grow := create_tween().set_parallel(true)
+	for tile in all_tiles:
+		tw_grow.tween_property(tile, "scale", Vector2.ONE, 0.52) \
+			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	await tw_grow.finished
 
 
 # ----- Combo label ----------------------------------------------------------

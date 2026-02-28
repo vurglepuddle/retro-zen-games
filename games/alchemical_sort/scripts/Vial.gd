@@ -6,9 +6,12 @@ extends Control
 signal tapped(vial: Vial)
 
 # ---- configuration ----------------------------------------------------------
-const MAX_LAYERS := 5        # color layers each vial can hold
-const VIAL_W     := 80       # display width  in pixels
-const VIAL_H     := 160      # display height in pixels
+const MAX_LAYERS      := 5   # color layers each vial can hold
+const SHEET_COLS      := 7   # columns in liquid_colors_all.png
+const SHEET_ROWS      := 2   # rows    in liquid_colors_all.png
+const BOTTLE_PAD_TOP  := 14  # pixels bottle art covers above the liquid
+var VIAL_W: int       = 72   # derived from bottle.png in _build_visuals()
+var VIAL_H: int       = 176  # derived from bottle.png in _build_visuals()
 
 # ---- state ------------------------------------------------------------------
 # _layers[0] = bottom-most color id, _layers[top_index()] = topmost.
@@ -24,7 +27,8 @@ var _fog_mode: bool = false
 var _fog_reveal_from: int = 0
 
 # ---- visuals (built in setup) -----------------------------------------------
-var _layer_rects: Array[ColorRect] = []
+var _layer_rects:    Array[TextureRect]   = []
+var _atlas_textures: Array[AtlasTexture]  = []   # one entry per color id (0-based)
 var _outline: Panel = null
 
 
@@ -194,12 +198,11 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 		if _layers[i] == 0 and indices.size() < amount:
 			indices.append(i)
 
-	var color := _palette[color_id - 1] if color_id >= 1 and color_id <= _palette.size() \
-		else Color.WHITE
-
 	for idx in indices:
 		_layers[idx] = color_id
-		_layer_rects[idx].color = color
+		if color_id >= 1 and color_id <= _atlas_textures.size():
+			_layer_rects[idx].texture = _atlas_textures[color_id - 1]
+		_layer_rects[idx].modulate = Color.WHITE
 		_layer_rects[idx].modulate.a = 0.0
 
 	var tw := create_tween()
@@ -229,51 +232,66 @@ func show_selected(v: bool) -> void:
 # ---- visuals (placeholder — swap with sprite art) ---------------------------
 
 func _build_visuals() -> void:
-	# Bottle body background.
-	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.06, 0.08, 0.12, 1.0)
-	bg_style.border_color = Color(0.20, 0.28, 0.42, 1.0)
-	bg_style.set_border_width_all(2)
-	bg_style.set_corner_radius_all(4)
-	var bg := Panel.new()
-	bg.add_theme_stylebox_override("panel", bg_style)
-	bg.size = Vector2(VIAL_W, VIAL_H)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	var sheet       := load("res://games/alchemical_sort/assets/liquid_colors_all.png") as Texture2D
+	var bottle_tex  := load("res://games/alchemical_sort/assets/bottle.png") as Texture2D
+	var inside_tex  := load("res://games/alchemical_sort/assets/bottle_inside.png") as Texture2D
 
-	# Liquid layer rects — built bottom (index 0) to top (index MAX_LAYERS-1).
+	# Vial size comes from the bottle artwork.
+	VIAL_W = bottle_tex.get_width()    # 72
+	VIAL_H = bottle_tex.get_height()   # 176
+	custom_minimum_size = Vector2(VIAL_W, VIAL_H)
+	size               = Vector2(VIAL_W, VIAL_H)
+	pivot_offset       = Vector2(VIAL_W * 0.5, VIAL_H * 0.5)
+
+	# Liquid cell size from the sprite sheet.
+	var cell_w: int = sheet.get_width()  / SHEET_COLS   # 64
+	var cell_h: int = sheet.get_height() / SHEET_ROWS   # 32
+	# Horizontal offset to center the 64-wide liquid inside the 72-wide bottle.
+	var pad_x: int  = (VIAL_W - cell_w) / 2             # 4
+
+	# Pre-build one AtlasTexture per color slot (row-major: left→right, top→bottom).
+	_atlas_textures.clear()
+	for r in range(SHEET_ROWS):
+		for c in range(SHEET_COLS):
+			var at := AtlasTexture.new()
+			at.atlas  = sheet
+			at.region = Rect2(c * cell_w, r * cell_h, cell_w, cell_h)
+			_atlas_textures.append(at)
+
+	# --- draw order: background → inside glass → liquid layers → bottle overlay → outline ---
+
+	# 1. Inner glass texture at 70% opacity (behind the liquid).
+	var inside := TextureRect.new()
+	inside.texture      = inside_tex
+	inside.stretch_mode = TextureRect.STRETCH_KEEP
+	inside.size         = Vector2(VIAL_W, VIAL_H)
+	inside.modulate.a   = 0.7
+	inside.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(inside)
+
+	# 3. Liquid layer rects — bottom (index 0) to top (index MAX_LAYERS-1).
+	#    Offset by (pad_x, BOTTLE_PAD_TOP) so they sit inside the bottle's glass window.
+	#    Integer positions → perfectly flush layers, no gaps.
 	_layer_rects.clear()
-	const PAD    := 3
-	const NECK_H := 16
-	var inner_w : float = VIAL_W - PAD * 2
-	var inner_h : float = float(VIAL_H - PAD * 2 - NECK_H) / float(MAX_LAYERS)
-
 	for i in range(MAX_LAYERS):
-		var rect := ColorRect.new()
-		rect.size = Vector2(inner_w, inner_h - 1.0)
-		rect.position = Vector2(PAD, VIAL_H - PAD - (i + 1) * inner_h)
+		var rect := TextureRect.new()
+		rect.stretch_mode = TextureRect.STRETCH_KEEP
+		rect.size         = Vector2(cell_w, cell_h)
+		rect.position     = Vector2(pad_x, BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - i) * cell_h)
 		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var cid := _layers[i]
-		if cid > 0 and cid <= _palette.size():
-			rect.color = Color(0.18, 0.20, 0.28) \
-				if _fog_mode and i < _fog_reveal_from \
-				else _palette[cid - 1]
-			rect.modulate.a = 1.0
-		else:
-			rect.color = Color.WHITE
-			rect.modulate.a = 0.0
+		_set_layer_color(rect, _layers[i], _fog_mode and i < _fog_reveal_from)
 		add_child(rect)
 		_layer_rects.append(rect)
 
-	# Neck strip — suggests the bottle opening at the top.
-	var neck := ColorRect.new()
-	neck.size = Vector2(VIAL_W - 10, NECK_H - 2)
-	neck.position = Vector2(5, 2)
-	neck.color = Color(0.14, 0.20, 0.32, 0.85)
-	neck.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(neck)
+	# 4. Bottle overlay — goes on top of the liquid so the glass frame is always visible.
+	var overlay := TextureRect.new()
+	overlay.texture      = bottle_tex
+	overlay.stretch_mode = TextureRect.STRETCH_KEEP
+	overlay.size         = Vector2(VIAL_W, VIAL_H)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(overlay)
 
-	# Selection outline — rendered last so it appears on top of everything.
+	# 5. Selection outline — topmost so it's never obscured.
 	var out_style := StyleBoxFlat.new()
 	out_style.bg_color = Color(0, 0, 0, 0)
 	out_style.border_color = Color(1.0, 0.85, 0.20, 1.0)
@@ -287,17 +305,23 @@ func _build_visuals() -> void:
 	add_child(_outline)
 
 
+# Assigns the correct atlas region and modulate for a layer.
+# fog=true → dark-teal tint so the actual color isn't revealed.
+func _set_layer_color(rect: TextureRect, cid: int, fog: bool) -> void:
+	if cid > 0 and cid <= _atlas_textures.size():
+		rect.texture  = _atlas_textures[cid - 1]
+		rect.modulate = Color(0, 0, 0, 1) if fog else Color.WHITE
+	else:
+		rect.texture   = null
+		rect.modulate.a = 0.0
+
+
 func _refresh_visuals() -> void:
 	for i in range(MAX_LAYERS):
-		var rect: ColorRect = _layer_rects[i]
-		var cid := _layers[i]
-		if cid > 0 and cid <= _palette.size():
-			rect.color = Color(0.18, 0.20, 0.28) \
-				if _fog_mode and i < _fog_reveal_from \
-				else _palette[cid - 1]
+		var rect: TextureRect = _layer_rects[i]
+		_set_layer_color(rect, _layers[i], _fog_mode and i < _fog_reveal_from)
+		if _layers[i] != 0:
 			rect.modulate.a = 1.0
-		else:
-			rect.modulate.a = 0.0
 
 
 # ---- input ------------------------------------------------------------------
