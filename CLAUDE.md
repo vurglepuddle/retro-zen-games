@@ -21,6 +21,10 @@ No npm, Makefile, or external build tools — everything runs through the Godot 
 
 There is no test framework; use manual testing or create dedicated test scenes.
 
+## Global UI Theme
+
+`assets/theme.tres` — project-wide Godot `Theme` resource assigned in **Project Settings → GUI → Theme → Custom**. Currently overrides `Button/styles/focus` with `StyleBoxEmpty` to remove the default focus outline on all buttons.
+
 ## Architecture
 
 ### Navigation Flow
@@ -218,9 +222,9 @@ Difficulty-controlled layout (set by `Game.set_difficulty()` before `prepare_boa
 
 | Difficulty | Colors | Empty vials | Vials/row | Undos |
 |------------|--------|-------------|-----------|-------|
-| Easy       | 6      | 2           | 4         | 3     |
-| Medium     | 8      | 2           | 5         | 2     |
-| Hard       | 10     | 2           | 4         | 1     |
+| Easy       | 6      | 2           | 4         | ∞     |
+| Medium     | 8      | 2           | 4         | ∞     |
+| Hard       | 12     | 2           | 5         | ∞     |
 | Zen        | random (Easy–Hard) | same | same | ∞ |
 
 Total vials = `color_count + empty_vials`. Centred on 540-wide screen.
@@ -233,6 +237,8 @@ Total vials = `color_count + empty_vials`. Centred on 540-wide screen.
 - **Visuals**: pixel-art sprite sheet `liquid_colors_all.png` (7 cols × 2 rows = 14 colors); each cell is an `AtlasTexture` indexed by `color_id - 1`; vial size (72×176) derived from `bottle.png` at runtime
 - **Draw order** (back → front): `bottle_inside.png` at 70% opacity → liquid layer `TextureRect`s → `bottle.png` overlay → golden selection outline (`StyleBoxFlat` Panel)
 - **Bottle margins**: `BOTTLE_PAD_TOP = 14` px top, 2 px bottom, 4 px left/right (derived from bottle art); liquid layers offset to `(pad_x, BOTTLE_PAD_TOP)` within the 72×176 Control
+- **Pixel-perfect rendering**: layer rects use `TEXTURE_FILTER_NEAREST` to prevent linear-filter edge bleeding (dark fringe at atlas region boundaries that appears as a gap between layers)
+- **Shimmer overlay**: `colors_anim.png` — 5-frame horizontal strip (64×32/frame); an `AnimatedSprite2D` child of each layer rect plays it at ADD blend, 5% opacity; all layers within one vial share the same random start frame (synced shimmer), vials desync naturally since each builds independently
 - **Fog (Mystery) mode**: hidden layers rendered with `modulate = Color(0,0,0,1)` — fully opaque black; revealed layers render normally
 - Selection outline: golden `StyleBoxFlat` border, toggled via `show_selected(bool)`
 
@@ -270,6 +276,7 @@ games/alchemical_sort/
     liquid_colors_all.png      sprite sheet — 7 cols × 2 rows, 14 hand-painted liquid colors
     bottle.png                 bottle overlay (72×176); rendered on top of liquid layers
     bottle_inside.png          inner glass texture (72×176); rendered at 70% opacity behind liquid
+    colors_anim.png            shimmer overlay — 5-frame horizontal strip (64×32/frame); ADD blend on each layer
     liquid_hue.gdshader        unused — kept for reference (hue-rotation approach was abandoned)
   scenes/
     Main.tscn             orchestrator (Menu ↔ Game, fades)
