@@ -28,8 +28,14 @@ window/size/viewport_height=960
 window/stretch/mode="canvas_items"
 window/handheld/orientation=1
 
+[gui]
+
+theme/custom="res://assets/theme.tres"
+
 [rendering]
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+textures/lossless_compression/force_png=true
+2d/snap/snap_2d_transforms_to_pixel=true
 environment/default_clear_color=Color(0.04, 0.1, 0.14, 1)

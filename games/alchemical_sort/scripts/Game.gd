@@ -66,11 +66,11 @@ func _notification(what: int) -> void:
 func set_difficulty(d: int) -> void:
 	_difficulty = d
 	match d:
-		0: _max_undo_depth = 3   # Easy
-		1: _max_undo_depth = 2   # Medium
-		2: _max_undo_depth = 1   # Hard
+		0: _max_undo_depth = -1   # Easy
+		1: _max_undo_depth = -1   # Medium
+		2: _max_undo_depth = -1   # Hard
 		3: _max_undo_depth = -1  # Zen = unlimited
-		4: _max_undo_depth = 2   # Mystery (dev button)
+		4: _max_undo_depth = -1   # Mystery (dev button)
 	_load_save()
 
 
@@ -104,11 +104,11 @@ func _apply_difficulty_layout() -> void:
 			1:  # Medium
 				_color_count   = 8
 				_empty_vials   = 2
-				_vials_per_row = 5
-			2:  # Hard
-				_color_count   = 10
-				_empty_vials   = 2
 				_vials_per_row = 4
+			2:  # Hard
+				_color_count   = 12
+				_empty_vials   = 2
+				_vials_per_row = 5
 
 
 # Called by Main.gd before the fade-in.
@@ -511,19 +511,51 @@ func _on_undo_pressed() -> void:
 	var in_dead_board := _reshuffle_btn.visible
 	if _undo_stack.is_empty() or (not _board_active and not in_dead_board):
 		return
-	# Undoing out of a dead-board state: dismiss the reshuffle UI and resume play.
 	if in_dead_board:
 		_reshuffle_lbl.visible = false
 		_reshuffle_btn.visible = false
-		_board_active = true
-	var snap: Array = _undo_stack.pop_back()
 	if _selected:
 		_selected.show_selected(false)
 		_selected = null
+
+	var snap: Array = _undo_stack.pop_back()
+
+	# Find which vial received the pour (has more layers now) and which sent it.
+	var src_vial: Vial = null
+	var dst_vial: Vial = null
+	var pour_color_id: int = 0
+	var pour_amount: int = 0
+	for i in range(_vials.size()):
+		var v     := _vials[i] as Vial
+		var curr  := v.get_layers()
+		var prev  := snap[i] as Array
+		var curr_n := 0
+		var prev_n := 0
+		for l in curr: if l != 0: curr_n += 1
+		for l in prev: if l != 0: prev_n += 1
+		if curr_n > prev_n and dst_vial == null:
+			dst_vial      = v
+			pour_amount   = curr_n - prev_n
+			pour_color_id = curr[curr_n - 1]   # top layer = what was poured in
+		elif curr_n < prev_n and src_vial == null:
+			src_vial = v
+
+	_board_active = false
+	_pouring      = true
+
+	if src_vial != null and dst_vial != null and pour_amount > 0:
+		await dst_vial.animate_pour_out(pour_amount)
+		var color   := _palette[pour_color_id - 1] if pour_color_id >= 1 and pour_color_id <= _palette.size() else Color.WHITE
+		var dst_top := dst_vial.position + Vector2(dst_vial.VIAL_W * 0.5, 0.0)
+		var src_top := src_vial.position + Vector2(src_vial.VIAL_W * 0.5, 0.0)
+		await _animate_droplet(dst_top, src_top, color)   # arc runs dst → src (reversed)
+
 	for i in range(_vials.size()):
 		(_vials[i] as Vial).restore(snap[i])
-	_move_count = maxi(0, _move_count - 1)
+	_move_count   = maxi(0, _move_count - 1)
 	_update_ui()
+	_pouring      = false
+	_board_active = true
 
 
 # ---- save / load ------------------------------------------------------------

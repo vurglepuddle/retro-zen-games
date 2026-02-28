@@ -204,6 +204,8 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 			_layer_rects[idx].texture = _atlas_textures[color_id - 1]
 		_layer_rects[idx].modulate = Color.WHITE
 		_layer_rects[idx].modulate.a = 0.0
+		if _layer_rects[idx].get_child_count() > 0:
+			_layer_rects[idx].get_child(0).visible = true
 
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -271,17 +273,50 @@ func _build_visuals() -> void:
 
 	# 3. Liquid layer rects — bottom (index 0) to top (index MAX_LAYERS-1).
 	#    Offset by (pad_x, BOTTLE_PAD_TOP) so they sit inside the bottle's glass window.
-	#    Integer positions → perfectly flush layers, no gaps.
+	#    TEXTURE_FILTER_NEAREST prevents linear-filter edge bleeding (dark fringe at atlas
+	#    region boundaries) that shows as a gap between layers in both editor and APK.
 	_layer_rects.clear()
+
+	# Build shared SpriteFrames for the shimmer overlay (colors_anim.png, 5-frame horizontal strip).
+	var anim_tex    := load("res://games/alchemical_sort/assets/colors_anim.png") as Texture2D
+	var anim_frames := SpriteFrames.new()
+	anim_frames.add_animation("default")
+	anim_frames.set_animation_speed("default", 5.0)
+	anim_frames.set_animation_loop("default", true)
+	for f in range(5):
+		var fat := AtlasTexture.new()
+		fat.atlas  = anim_tex
+		fat.region = Rect2(f * cell_w, 0, cell_w, cell_h)
+		anim_frames.add_frame("default", fat)
+	var anim_mat := CanvasItemMaterial.new()
+	anim_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+
+	# One random start frame shared by all layers in this vial → layers animate in sync.
+	# Different vials each call _build_visuals() separately, so they still desync.
+	var start_frame := randi() % 5
+
 	for i in range(MAX_LAYERS):
 		var rect := TextureRect.new()
-		rect.stretch_mode = TextureRect.STRETCH_KEEP
-		rect.size         = Vector2(cell_w, cell_h)
-		rect.position     = Vector2(pad_x, BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - i) * cell_h)
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rect.stretch_mode  = TextureRect.STRETCH_KEEP
+		rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		rect.size          = Vector2(cell_w, cell_h)
+		rect.position      = Vector2(pad_x, BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - i) * cell_h)
+		rect.mouse_filter  = Control.MOUSE_FILTER_IGNORE
 		_set_layer_color(rect, _layers[i], _fog_mode and i < _fog_reveal_from)
 		add_child(rect)
 		_layer_rects.append(rect)
+
+		# Shimmer overlay — ADD blend, 50% opacity, synced start frame within vial.
+		# Child of rect so it inherits modulate; pour fade-in/out cascades for free.
+		var shimmer := AnimatedSprite2D.new()
+		shimmer.sprite_frames = anim_frames
+		shimmer.centered      = false
+		shimmer.frame         = start_frame
+		shimmer.material      = anim_mat
+		shimmer.modulate.a    = 0.05
+		shimmer.visible       = _layers[i] != 0 and not (_fog_mode and i < _fog_reveal_from)
+		shimmer.play("default")
+		rect.add_child(shimmer)
 
 	# 4. Bottle overlay — goes on top of the liquid so the glass frame is always visible.
 	var overlay := TextureRect.new()
@@ -312,8 +347,11 @@ func _set_layer_color(rect: TextureRect, cid: int, fog: bool) -> void:
 		rect.texture  = _atlas_textures[cid - 1]
 		rect.modulate = Color(0, 0, 0, 1) if fog else Color.WHITE
 	else:
-		rect.texture   = null
+		rect.texture    = null
 		rect.modulate.a = 0.0
+	# Show shimmer only on visible, occupied layers.
+	if rect.get_child_count() > 0:
+		rect.get_child(0).visible = cid > 0 and not fog
 
 
 func _refresh_visuals() -> void:
