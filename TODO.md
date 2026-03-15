@@ -229,15 +229,27 @@
 * ~~Android touch pickup — `_find_pickup_slot_near(pos, 44px)` selects nearest non-empty slot on press; drag threshold doubled on mobile; `get_global_rect()` used consistently for all hit-testing~~ ✓
 
 **New Mechanics**
-* Scrolling cells — one or more rows/columns that slide horizontally (or vertically); you grab items as they scroll past; appears on Medium+ and is randomly triggered on generation
-* Dispenser cell — special cell with a deep z-stack; dispensing pops the top item out (can't be placed back in); strategic because you must plan what you pull
-* Locked cells — whole cell grayed out; unlocked by making N matches (2 on Medium, 3 on Hard); acts as a normal empty cell once unlocked
+* ~~Scrolling cells — one scrolling row max (`SCROLL_ROW_MAX = 1`, bump to 2 for testing); continuous linear scroll (`SCROLL_INTERVAL = 2.5 s` tween, no pause); 1 off-screen buffer cell per scrolling row for seamless wrap; fade-out on exit, fade-in on entry; `tween_method` + `roundf()` prevents sub-pixel wobble~~ ✓
+* ~~Dispenser cell — 1-tall cell below the main board; items pulled from the main pool (mixed types, 2 siblings remain in the grid); can take items out but not place back in; auto-advances z-stack; ⬇ indicator label~~ ✓
+* ~~Locked cells — dark overlay covers full cell; unlocked by N matches anywhere (2 on Medium, 3 on Hard); counter shown in overlay; fade-out animation on unlock~~ ✓
+* ~~Cascading special probability — in `_apply_difficulty_layout()`, types shuffled then rolled with decaying probability (base 0.55/0.38, ×0.42 per win); ensures "nothing" and "one tweak" are common, "all three" is rare~~ ✓
+* ~~Auto-clear initial matches — `start_game()` scans all cells after drop-in and processes any pre-generated 3-matches~~ ✓
+* ~~Item perspective overlap — `SLOT_OVERLAP = 12`, `SLOT_Y_OFFSET = 16`; bottom item renders on top (tree order); dispenser slot 0 reset to y=0~~ ✓
+* ~~Drag snap fix — fallback nearest-empty radius search now always runs as a second pass (was blocked when exact hit landed on locked/dispenser cell)~~ ✓
 
 **Quality of Life**
 * Ambient music track (placeholder commented out in Main.gd — assign when ready)
 * ~~Item put-down SFX — `item_put_down.mp3` plays on every successful item placement~~ ✓
-* SFX — match chime, item pick-up, win fanfare
+* ~~Consecutive-match combo SFX — escalating `note_1`…`note_7` (borrowed from gem_match); volume ramps from `COMBO_VOL_MIN_DB = -10` to `COMBO_VOL_MAX_DB = -3`; streak resets after 5 s of no match (`STREAK_RESET_DELAY`) so repositioning moves don't break the combo~~ ✓
+* ~~Per-set SFX infrastructure — `_item_set_map` tracks item_id → set_num; `_load_textures()` auto-loads `set{N}/match.mp3` if present; plays alongside combo note for material texture; placeholder = none (user drops files in to activate)~~ ✓
+* SFX — item pick-up, win fanfare
 * Style pass — menu TextureButtons, logo, background art
+
+**Crash & Bug Fixes (done)**
+* ~~Back-navigation crash — `start_game()` lambdas and scroll timer lambda now guard `is_instance_valid(self)`; validity check added after every `await`~~ ✓
+* ~~Scroll buffer-cell gap — buffer cells excluded from `prepare_board()` y-offset and `start_game()` drop-in tween via `_buffer_cells` tracking array; were erroneously tweened to `modulate:a = 1.0`, appearing visible at off-screen position~~ ✓
+* ~~Scroll coroutine crash — `_advance_scroll` converted from `await`-based coroutine to plain `tween.finished.connect` lambda; avoids "lambda capture freed" crash pattern when scene is freed mid-scroll~~ ✓
+* ~~Scroll stale-lambda gap (difficulty reload) — `_game_generation` counter incremented in `prepare_board()`; scroll lambda bails out on mismatch, preventing a deferred-queue_free race from overwriting the fresh `_cells` array~~ ✓
 
 ---
 
@@ -248,19 +260,20 @@
 * "POTION_3" logo (or final game name) for Menu + MasterMenu tile
 * Menu TextureButtons (Start, Back, difficulty selector)
 * Win screen art / decoration
-* Dispenser cell visual (distinct from normal cell)
-* Locked cell overlay graphic (lock icon or grayed texture)
+* Dispenser cell visual — currently uses the standard cell bg with a ⬇ label; can be replaced with custom art
+* Locked cell overlay — currently a dark panel with a counter; can be replaced with a lock-icon graphic
 
 **Sound**
-* Match SFX (3-item clear)
+* ~~Match combo SFX~~ ✓ (escalating notes from gem_match — replace with final sounds when ready)
 * ~~Item place SFX~~ ✓ (`item_put_down.mp3`)
+* Per-set match SFX — drop `set{N}/match.mp3` files in item set folders for material-specific sounds (metal clink, wood thud, food squish…); infrastructure already wired
 * Item pick-up SFX
 * Win fanfare
 * Ambient track
 
 **Design Decisions**
-* Final game name (POTION_3 is placeholder)
-* Should scrolling row speed increase with difficulty, or be fixed?
-* Dispenser cell count per board — 1 always, or difficulty-scaled?
-* Locked cell unlock count — 2 for Medium, 3 for Hard, or tunable?
-* Should Zen difficulty mix all special cell types?
+* ~~Final game name (POTION_3 is placeholder)~~ → decide when doing art pass
+* ~~Should scrolling row speed increase with difficulty, or be fixed?~~ → Fixed (`SCROLL_INTERVAL = 2.5 s`); bump to tune
+* ~~Dispenser cell count per board?~~ → Cascade-rolled: Medium 0–1, Hard 0–2; items pulled from main pool
+* ~~Locked cell unlock count?~~ → 2 matches on Medium, 3 on Hard
+* ~~Should Zen difficulty mix all special cell types?~~ → Yes (Zen picks random Easy/Medium/Hard layout including its specials)

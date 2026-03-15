@@ -7,24 +7,32 @@ extends Control
 signal back_to_menu
 
 # ---- constants ---------------------------------------------------------------
-const COLS := 3
 const SAVE_PATH := "user://potion_3_save.cfg"
 const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen"]
 const ITEMS_BASE_PATH := "res://games/potion_3/assets/items/"
 
-const COL_SPACING := 12
-const ROW_SPACING := 8
-const DRAG_THRESHOLD := 10.0
+const COL_SPACING     := 0    # padding is built into CELL_W (9px each side)
+const ROW_SPACING     := 9    # gap between rows: 3×270 + 2×9 = 828px board
+const DRAG_THRESHOLD  := 10.0
+const SCROLL_INTERVAL := 2.5  # seconds between conveyor ticks on scrolling rows
+const SCROLL_ROW_MAX   := 1   # max scrolling rows per game; bump to 2 to re-enable dizzy mode
+const SCROLL_EXTRA_CELLS := 1 # buffer cells off-screen right per scrolling row (seamless wrap)
+
+const STREAK_RESET_DELAY := 5.0   # seconds without a match before combo resets to note_1
+const COMBO_VOL_MIN_DB   := -10.0 # volume for note_1 (quiet start)
+const COMBO_VOL_MAX_DB   := -3.0  # volume for note_7 (not too loud)
 
 # ---- difficulty state --------------------------------------------------------
 var _difficulty:        int = 0
 var _actual_difficulty: int = 0
 var _rows:              int = 3
+var _cols_per_row:      int = 3
 var _max_depth:         int = 3
 var _item_type_count:   int = 12
 var _empty_cell_count:  int = 2
 
 # ---- game state --------------------------------------------------------------
+var _game_generation: int  = 0     # incremented on every prepare_board(); stale scroll lambdas bail out
 var _cells: Array          = []    # 2D: [row][col] → PotionCell
 var _selected_cell: PotionCell = null
 var _selected_slot: int    = -1
@@ -34,6 +42,22 @@ var _move_count: int       = 0
 var _best_moves: int       = 0
 var _item_textures: Dictionary = {}   # item_id → Texture2D
 var _undo_stack: Array     = []
+
+# ---- match sfx --------------------------------------------------------------
+var _match_streak:    int   = 0           # consecutive matches; drives combo note index
+var _streak_timer_id: int   = 0           # incremented on each new match to cancel old timer
+var _item_set_map:  Dictionary = {}       # item_id → set_num (for per-set sfx)
+var _set_sfx:       Dictionary = {}       # set_num → AudioStreamPlayer (null = no sfx yet)
+var _combo_players: Array      = []       # [0..6] → AudioStreamPlayer for note_1..note_7
+
+# ---- special cells -----------------------------------------------------------
+var _scrolling_rows:   Array[int]        = []    # row indices that scroll like conveyors
+var _buffer_cells:     Array[PotionCell] = []   # off-screen buffer cells for scroll rows
+var _dispenser_cells:  Array[PotionCell] = []   # 1-tall cells below the main board
+var _dispenser_count:  int  = 0                 # how many dispensers to create this game
+var _special_scroll:   bool = false             # cascading special roll: scrolling row?
+var _special_lock:     bool = false             # cascading special roll: locked cells?
+var _board_origin_x:   int  = 0                 # left x of the board grid (for scroll math)
 
 # ---- drag state --------------------------------------------------------------
 var _drag_active: bool     = false
@@ -53,6 +77,21 @@ var _pressing: bool        = false
 @onready var _sfx_put_down: AudioStreamPlayer = $SfxPutDown
 
 
+func _ready() -> void:
+	_setup_combo_players()
+
+
+func _setup_combo_players() -> void:
+	var base := "res://games/gem_match/assets/sfx/combo/"
+	for i in range(1, 8):
+		var p := AudioStreamPlayer.new()
+		var path := base + "note_%d.mp3" % i
+		if ResourceLoader.exists(path):
+			p.stream = load(path) as AudioStream
+		add_child(p)
+		_combo_players.append(p)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_on_back_pressed()
@@ -70,18 +109,53 @@ func set_difficulty(d: int) -> void:
 func _apply_difficulty_layout() -> void:
 	_actual_difficulty = _difficulty if _difficulty != 3 else randi() % 3
 	match _actual_difficulty:
-		0:  # Easy — 3×3, 7 filled, 12 layers (avg depth ~1.7)
-			_rows = 3;  _max_depth = 3;  _item_type_count = 12;  _empty_cell_count = 2
-		1:  # Medium — 3×4, 10 filled, 22 layers (avg depth ~2.2)
-			_rows = 4;  _max_depth = 4;  _item_type_count = 22;  _empty_cell_count = 2
-		2:  # Hard — 3×5, 13 filled, 32 layers (avg depth ~2.5)
-			_rows = 5;  _max_depth = 5;  _item_type_count = 32;  _empty_cell_count = 2
+		0:  # Easy   — 3 cols × 3 rows =  9 cells; no special cells
+			_cols_per_row = 3; _rows = 3; _max_depth = 3; _item_type_count = 12; _empty_cell_count = 2
+		1:  # Medium — 4 cols × 3 rows = 12 cells
+			_cols_per_row = 4; _rows = 3; _max_depth = 4; _item_type_count = 22; _empty_cell_count = 2
+		2:  # Hard   — 5 cols × 3 rows = 15 cells; board 540×828 px
+			_cols_per_row = 5; _rows = 3; _max_depth = 5; _item_type_count = 32; _empty_cell_count = 2
+
+	# Cascading special-cell roll.
+	# Each type that wins reduces the probability of the next one appearing,
+	# so "nothing" and "one tweak" are common; "all three at once" is rare.
+	_dispenser_count = 0
+	_special_scroll  = false
+	_special_lock    = false
+
+	if _actual_difficulty == 0:
+		return   # Easy never has specials.
+
+	var is_hard := _actual_difficulty == 2
+	# Shuffle the order so no type always gets first pick.
+	var types: Array = ["dispenser", "scroll", "lock"]
+	types.shuffle()
+	var prob := 0.55 if is_hard else 0.38   # base probability for the first special
+	for sp in types:
+		if randf() < prob:
+			match sp:
+				"dispenser": _dispenser_count = 2 if is_hard else 1
+				"scroll":
+					# Pre-decide rows now so _generate_board_data() can allocate
+					# buffer cell items before the grid exists.
+					var row_order: Array = []
+					for r in range(_rows): row_order.append(r)
+					row_order.shuffle()
+					for r in row_order:
+						if _scrolling_rows.size() >= SCROLL_ROW_MAX:
+							break
+						_scrolling_rows.append(r)
+					_special_scroll = not _scrolling_rows.is_empty()
+				"lock": _special_lock = true
+			prob *= 0.42   # each extra special is ~58% less likely than the last
 
 
 func prepare_board() -> void:
-	_apply_difficulty_layout()
 	_board_active = false
 	_animating = false
+	_match_streak = 0
+	_streak_timer_id += 1   # invalidate any pending streak-reset timer from last game
+	_game_generation += 1   # invalidate any pending scroll lambdas from last game
 	_undo_stack.clear()
 	_win_panel.visible = false
 	_reshuffle_lbl.visible = false
@@ -90,7 +164,8 @@ func prepare_board() -> void:
 	_selected_slot = -1
 	_move_count = 0
 	_cancel_drag()
-	_clear_cells()
+	_clear_cells()          # clears _scrolling_rows first
+	_apply_difficulty_layout()  # then populates _scrolling_rows so _build_cells can use them
 	_load_textures()
 	_build_cells()
 	# Pre-position cells for the drop-in animation so the fade-in doesn't
@@ -98,8 +173,14 @@ func prepare_board() -> void:
 	for row in _cells:
 		for cell in row:
 			var c: PotionCell = cell
+			if c in _buffer_cells:
+				continue   # buffer cells stay invisible at their off-screen position
 			c.position.y -= 160.0
 			c.modulate.a = 0.0
+	for dc in _dispenser_cells:
+		var c := dc as PotionCell
+		c.position.y -= 160.0
+		c.modulate.a = 0.0
 	_update_ui()
 
 
@@ -110,16 +191,20 @@ func start_game() -> void:
 
 	# Staggered drop-in animation.
 	# Cells are already offset -160 and invisible from prepare_board().
+	# Buffer cells are excluded — they stay invisible at their off-screen position
+	# until _advance_scroll fades them in on the first scroll tick.
 	var idx := 0
 	for row in _cells:
 		for cell in row:
 			var c: PotionCell = cell
+			if c in _buffer_cells:
+				continue
 			var final_y := c.position.y + 160.0  # restore to actual target
 			var delay := idx * 0.05
 			var tw := create_tween()
 			tw.tween_interval(delay)
 			tw.tween_callback(func():
-				if not is_instance_valid(c):
+				if not is_instance_valid(c) or not is_instance_valid(self):
 					return
 				var tw2 := create_tween()
 				tw2.set_parallel(true)
@@ -130,9 +215,49 @@ func start_game() -> void:
 			)
 			idx += 1
 
+	# Dispenser cells animate in after the main grid.
+	for dc in _dispenser_cells:
+		var c := dc as PotionCell
+		var final_y := c.position.y + 160.0
+		var delay := idx * 0.05
+		var tw := create_tween()
+		tw.tween_interval(delay)
+		tw.tween_callback(func():
+			if not is_instance_valid(c) or not is_instance_valid(self):
+				return
+			var tw2 := create_tween()
+			tw2.set_parallel(true)
+			tw2.tween_property(c, "position:y", final_y, 0.38) \
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw2.tween_property(c, "modulate:a", 1.0, 0.25) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		)
+		idx += 1
+
 	var total_wait := (idx - 1) * 0.05 + 0.45
 	await get_tree().create_timer(total_wait).timeout
+	if not is_instance_valid(self):
+		return
+
+	# Auto-clear any 3-matches that the generator placed in a single cell.
+	_animating = true
+	for row in _cells:
+		for cell in row:
+			var c := cell as PotionCell
+			if c.check_match():
+				await _process_match(c)
+				if not is_instance_valid(self):
+					return
+	_animating = false
 	_board_active = true
+
+	# Kick off the first scroll tick for each scrolling row.
+	# The lambda guards against self being freed if the user backs out
+	# during the initial SCROLL_INTERVAL delay.
+	for r in _scrolling_rows:
+		get_tree().create_timer(SCROLL_INTERVAL).timeout.connect(
+			func(): if is_instance_valid(self): _advance_scroll(r),
+			CONNECT_ONE_SHOT)
 
 
 # ===========================================================================
@@ -154,6 +279,7 @@ func _load_textures() -> void:
 			var path := set_path + "item%d.png" % i
 			if ResourceLoader.exists(path):
 				_item_textures[uid] = load(path) as Texture2D
+				_item_set_map[uid] = set_num
 				uid += 1
 				found_in_set = true
 				misses = 0
@@ -163,6 +289,14 @@ func _load_textures() -> void:
 					break
 		if not found_in_set:
 			break  # set folder doesn't exist → no more sets
+		# Per-set match sfx: load set{N}/match.mp3 if present.
+		# Assign all_same placeholder for now; user replaces with material-specific sounds.
+		var sfx_path := set_path + "match.mp3"
+		if ResourceLoader.exists(sfx_path):
+			var p := AudioStreamPlayer.new()
+			p.stream = load(sfx_path) as AudioStream
+			add_child(p)
+			_set_sfx[set_num] = p
 
 
 func _clear_cells() -> void:
@@ -170,23 +304,28 @@ func _clear_cells() -> void:
 		for cell in row:
 			(cell as PotionCell).queue_free()
 	_cells.clear()
+	_scrolling_rows.clear()
+	_buffer_cells.clear()   # queue_free already handled above (they're in _cells)
+	for dc in _dispenser_cells:
+		(dc as PotionCell).queue_free()
+	_dispenser_cells.clear()
 
 
 func _build_cells() -> void:
 	var board_data := _generate_board_data()
-	var depths: Array = board_data.depths
-	var items: Array  = board_data.items
+	var items: Array = board_data.items
 
-	var board_w: int = COLS * PotionCell.CELL_W + (COLS - 1) * COL_SPACING
+	var board_w: int = _cols_per_row * PotionCell.CELL_W   # COL_SPACING=0; padding inside CELL_W
 	var board_h: int = _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
 	var origin_x := int((540.0 - board_w) / 2.0)
 	var vp_h := get_viewport_rect().size.y
 	var origin_y := int(90.0 + (vp_h - 180.0 - board_h) / 2.0)
+	_board_origin_x = origin_x
 
 	var cell_idx := 0
 	for row in range(_rows):
 		var row_arr: Array = []
-		for col in range(COLS):
+		for col in range(_cols_per_row):
 			var cell_layers: Array = items[cell_idx]
 			var top_layer: Array[int] = [0, 0, 0]
 			var z_stack: Array = []
@@ -198,7 +337,7 @@ func _build_cells() -> void:
 			var cell := PotionCell.new()
 			cell.setup(top_layer, z_stack, _item_textures)
 			cell.position = Vector2(
-				origin_x + col * (PotionCell.CELL_W + COL_SPACING),
+				origin_x + col * PotionCell.CELL_W,
 				origin_y + row * (PotionCell.CELL_H + ROW_SPACING)
 			)
 			add_child(cell)
@@ -206,23 +345,58 @@ func _build_cells() -> void:
 			cell_idx += 1
 		_cells.append(row_arr)
 
+	# Add off-screen buffer cells for scrolling rows (enable seamless wrap).
+	var extra_idx := _cols_per_row * _rows
+	for row_idx in _scrolling_rows:
+		for _bi in range(SCROLL_EXTRA_CELLS):
+			var cell_layers: Array = items[extra_idx]
+			var top_layer: Array[int] = [0, 0, 0]
+			var z_stack: Array = []
+			if cell_layers.size() > 0:
+				top_layer = [cell_layers[0][0] as int, cell_layers[0][1] as int, cell_layers[0][2] as int]
+				for li in range(1, cell_layers.size()):
+					z_stack.append(cell_layers[li])
+			var buf_cell := PotionCell.new()
+			buf_cell.setup(top_layer, z_stack, _item_textures)
+			buf_cell.position = Vector2(
+				float(_board_origin_x + _cols_per_row * PotionCell.CELL_W),
+				origin_y + row_idx * (PotionCell.CELL_H + ROW_SPACING)
+			)
+			buf_cell.modulate.a = 0.0   # invisible until its first scroll-in
+			add_child(buf_cell)
+			_cells[row_idx].append(buf_cell)
+			_buffer_cells.append(buf_cell)   # tracked separately to skip drop-in
+			extra_idx += 1
+
+	_generate_special_cells()
+	_create_dispenser_cells(board_data.dispenser_groups)
+
 
 func _generate_board_data() -> Dictionary:
-	var total_cells := COLS * _rows
+	var grid_cells  := _cols_per_row * _rows
+	var total_cells := grid_cells + _scrolling_rows.size() * SCROLL_EXTRA_CELLS
 
-	# 1. Choose item types from all loaded textures.
+	# 1. Choose item types.
 	var available: Array = _item_textures.keys()
 	available.shuffle()
 	var chosen := available.slice(0, _item_type_count)
 
-	# 2. Create item pool (each type ×3).
-	# Layers can hold 1–3 items; leftovers within a layer become empty slots.
+	# 2. Build the full pool (each type ×3) and shuffle it.
 	var pool: Array[int] = []
 	for t in chosen:
-		pool.append(t)
-		pool.append(t)
-		pool.append(t)
+		var tid := t as int
+		pool.append(tid); pool.append(tid); pool.append(tid)
 	pool.shuffle()
+
+	# 2b. Pull items for dispensers from the front of the shuffled pool (mixed types).
+	# Each dispenser gets 3 random items whose siblings remain in the grid,
+	# so the player must pull and hunt for the matching pair on the board.
+	var dispenser_groups: Array = []
+	for _di in range(_dispenser_count):
+		var grp: Array[int] = []
+		for _si in range(3):
+			grp.append(pool.pop_front() as int)
+		dispenser_groups.append(grp)
 
 	# 3. Assign cell depths.
 	# Target 40% more layers than item_type_count so the flat slot list has more
@@ -287,7 +461,7 @@ func _generate_board_data() -> Dictionary:
 		var s: Array = all_slots[i]
 		cell_items[s[0]][s[1]][s[2]] = pool[i]
 
-	return { depths = depths, items = cell_items }
+	return { depths = depths, items = cell_items, dispenser_groups = dispenser_groups }
 
 
 # ===========================================================================
@@ -296,6 +470,10 @@ func _generate_board_data() -> Dictionary:
 
 func _on_slot_tapped(cell: PotionCell, slot_idx: int) -> void:
 	if not _board_active or _animating:
+		return
+
+	# Locked cells are completely inert — no interaction.
+	if cell.is_locked():
 		return
 
 	var item_id := cell.get_item(slot_idx)
@@ -318,6 +496,12 @@ func _on_slot_tapped(cell: PotionCell, slot_idx: int) -> void:
 
 	# Case 3: tapped empty slot — move item there.
 	if item_id == 0:
+		# Dispenser cells: you can take items OUT but not put them IN.
+		if cell.is_dispenser():
+			_selected_cell.show_slot_highlight(_selected_slot, false)
+			_selected_cell = null
+			_selected_slot = -1
+			return
 		await _try_move(_selected_cell, _selected_slot, cell, slot_idx)
 		return
 
@@ -440,7 +624,7 @@ func _end_drag(pos: Vector2) -> void:
 	# it as "peek and return" and put the item back.
 	var origin_center := _selected_cell.get_global_rect().position + _selected_cell.get_slot_center(_selected_slot)
 	var drag_dist := pos.distance_to(origin_center)
-	var snap_threshold := PotionCell.CELL_W * 0.25  # ~60% of a cell width
+	var snap_threshold := PotionCell.ITEM_SIZE * 0.5
 
 	var to_cell: PotionCell = null
 	var to_slot: int = -1
@@ -453,21 +637,30 @@ func _end_drag(pos: Vector2) -> void:
 		var hit_cell := exact[0] as PotionCell
 		var hit_slot := exact[1] as int
 		if hit_cell == _selected_cell and hit_slot != _selected_slot \
-				and hit_cell.get_item(hit_slot) == 0:
+				and hit_cell.get_item(hit_slot) == 0 \
+				and not hit_cell.is_locked():
 			to_cell = hit_cell
 			to_slot = hit_slot
 
 	# Cross-cell move: only snap if dragged far enough from origin.
 	if to_cell == null and drag_dist >= snap_threshold:
-		if exact != null and (exact[0] as PotionCell).get_item(exact[1] as int) == 0:
-			to_cell = exact[0]
-			to_slot = exact[1]
-		else:
-			# Nearest empty slot within a reasonable radius.
+		# 1. Try the exact hit first (fast path).
+		if exact != null:
+			var ec := exact[0] as PotionCell
+			if not ec.is_locked() and not ec.is_dispenser() \
+					and ec.get_item(exact[1] as int) == 0:
+				to_cell = ec
+				to_slot = exact[1] as int
+		# 2. Always fall back to nearest-empty radius search when the exact hit
+		#    was invalid (locked/dispenser/occupied) or missed entirely.
+		#    This is the key fix for Android where the finger may land slightly off.
+		if to_cell == null:
 			var best_dist := PotionCell.CELL_W * 1.5
 			for row in _cells:
 				for cell in row:
 					var c := cell as PotionCell
+					if c.is_locked() or c.is_dispenser():
+						continue
 					for s in range(PotionCell.SLOTS):
 						if c.get_item(s) == 0:
 							var slot_center := c.get_global_rect().position + c.get_slot_center(s)
@@ -499,20 +692,19 @@ func _cancel_drag() -> void:
 
 
 func _find_cell_slot_at(pos: Vector2) -> Variant:
-	# On mobile, fingers are imprecise — expand the hit rect upward by half an
-	# item so touching just above an item still registers on the right cell.
-	const TOUCH_EXPAND_Y := PotionCell.ITEM_SIZE * 0.5
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
 			var rect := c.get_global_rect()
-			var expanded := Rect2(rect.position - Vector2(0, TOUCH_EXPAND_Y),
-					rect.size + Vector2(0, TOUCH_EXPAND_Y))
-			if expanded.has_point(pos):
-				var local_x := pos.x - rect.position.x
-				var slot_w := rect.size.x / float(PotionCell.SLOTS)
-				var slot_idx := clampi(int(local_x / slot_w), 0, PotionCell.SLOTS - 1)
+			if rect.has_point(pos):
+				var local_y := pos.y - rect.position.y
+				var slot_idx := clampi(int(local_y / float(PotionCell.ITEM_SIZE)), 0, PotionCell.SLOTS - 1)
 				return [c, slot_idx]
+	# Also check dispenser cells (they always map to slot 0).
+	for dc in _dispenser_cells:
+		var c := dc as PotionCell
+		if c.get_global_rect().has_point(pos):
+			return [c, 0]
 	return null
 
 
@@ -524,6 +716,8 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
+			if c.is_locked():
+				continue   # locked cells can't be interacted with
 			for s in range(PotionCell.SLOTS):
 				if c.get_item(s) == 0:
 					continue
@@ -533,6 +727,17 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 					best_dist = d
 					best_cell = c
 					best_slot = s
+	# Also check dispenser cells (slot 0 only).
+	for dc in _dispenser_cells:
+		var c := dc as PotionCell
+		if c.get_item(0) == 0:
+			continue
+		var center := c.get_global_rect().position + c.get_slot_center(0)
+		var d := pos.distance_to(center)
+		if d < best_dist:
+			best_dist = d
+			best_cell = c
+			best_slot = 0
 	if best_cell != null:
 		return [best_cell, best_slot]
 	return null
@@ -585,12 +790,49 @@ func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_sl
 		_show_reshuffle_prompt()
 
 
+func _play_match_sfx(cell: PotionCell) -> void:
+	# 1. Escalating combo note (note_1 on first match, up to note_7).
+	#    Volume ramps from COMBO_VOL_MIN_DB to COMBO_VOL_MAX_DB across the 7 notes.
+	var idx := clampi(_match_streak, 1, 7) - 1
+	if idx < _combo_players.size():
+		var p := _combo_players[idx] as AudioStreamPlayer
+		if p.stream != null:
+			p.volume_db = lerp(COMBO_VOL_MIN_DB, COMBO_VOL_MAX_DB, float(idx) / 6.0)
+			p.play()
+
+	# 2. Restart the 5-second streak reset timer.
+	#    Incrementing the ID cancels any previously pending reset without disconnecting.
+	_streak_timer_id += 1
+	var current_id := _streak_timer_id
+	get_tree().create_timer(STREAK_RESET_DELAY).timeout.connect(
+		func():
+			if is_instance_valid(self) and _streak_timer_id == current_id:
+				_match_streak = 0
+	, CONNECT_ONE_SHOT)
+
+	# 3. Per-set sfx — plays alongside the combo note for material texture.
+	#    Determined by the first non-zero item in the matched cell.
+	for s in range(PotionCell.SLOTS):
+		var item_id := cell.get_item(s)
+		if item_id != 0 and _item_set_map.has(item_id):
+			var set_num: int = _item_set_map[item_id] as int
+			if _set_sfx.has(set_num):
+				(_set_sfx[set_num] as AudioStreamPlayer).play()
+			break
+
+
 func _process_match(cell: PotionCell) -> void:
+	_match_streak = clampi(_match_streak + 1, 1, 7)
+	_play_match_sfx(cell)
 	await cell.clear_match()
+	_notify_locked_cells()
 	await get_tree().create_timer(0.1).timeout
 	# Chain: if revealed layer also matches.
 	while cell.check_match():
+		_match_streak = clampi(_match_streak + 1, 1, 7)
+		_play_match_sfx(cell)
 		await cell.clear_match()
+		_notify_locked_cells()
 		await get_tree().create_timer(0.1).timeout
 
 
@@ -631,6 +873,9 @@ func _check_win() -> bool:
 		for cell in row:
 			if not (cell as PotionCell).is_fully_empty():
 				return false
+	for dc in _dispenser_cells:
+		if not (dc as PotionCell).is_fully_empty():
+			return false
 	return true
 
 
@@ -641,24 +886,36 @@ func _on_win() -> void:
 	for row in _cells:
 		for cell in row:
 			(cell as PotionCell).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for dc in _dispenser_cells:
+		(dc as PotionCell).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_win_moves_lbl.text = "in %d moves" % _move_count
 	_win_panel.visible = true
 
 
 func _has_valid_move() -> bool:
-	## A move is possible if there's at least one non-empty slot AND one empty slot.
+	## A move is possible if there's at least one accessible non-empty slot
+	## AND at least one accessible empty slot.
+	## Locked cells and dispenser cells don't contribute empty slots.
 	var has_item := false
 	var has_empty := false
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
+			if c.is_locked():
+				continue   # items inaccessible; empty slots don't count
 			for s in range(PotionCell.SLOTS):
 				if c.get_item(s) != 0:
 					has_item = true
-				else:
-					has_empty = true
+				elif not c.is_dispenser():
+					has_empty = true   # dispensers have no placeable slots
 			if has_item and has_empty:
 				return true
+	# Dispenser items count as accessible items (can be picked up and placed elsewhere).
+	for dc in _dispenser_cells:
+		if (dc as PotionCell).get_item(0) != 0:
+			has_item = true
+		if has_item and has_empty:
+			return true
 	return has_item and has_empty
 
 
@@ -676,11 +933,13 @@ func _on_reshuffle_pressed() -> void:
 
 
 func _reshuffle_board() -> void:
-	# Collect all items from all visible slots (not z-stacks — those stay in place).
+	# Collect items from visible slots of normal (non-locked, non-dispenser) cells.
 	var pool: Array[int] = []
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
+			if c.is_locked() or c.is_dispenser():
+				continue
 			for s in range(PotionCell.SLOTS):
 				var item := c.get_item(s)
 				if item != 0:
@@ -688,11 +947,13 @@ func _reshuffle_board() -> void:
 					c.remove_item(s)
 	pool.shuffle()
 
-	# Redistribute into slots, leaving at least some empty slots.
+	# Redistribute into normal slots, leaving at least some empty slots.
 	var slot_list: Array = []  # Array of [cell, slot_idx]
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
+			if c.is_locked() or c.is_dispenser():
+				continue
 			for s in range(PotionCell.SLOTS):
 				if c.get_item(s) == 0:
 					slot_list.append([c, s])
@@ -709,17 +970,26 @@ func _reshuffle_board() -> void:
 # ===========================================================================
 
 func _save_undo_snapshot() -> void:
-	var snap: Array = []
+	var grid_snap: Array = []
 	for row in _cells:
 		var row_snap: Array = []
 		for cell in row:
 			var c := cell as PotionCell
 			row_snap.append({
-				slots = c.get_slots_array(),
-				z_stack = c.get_z_stack_copy()
+				slots          = c.get_slots_array(),
+				z_stack        = c.get_z_stack_copy(),
+				is_locked      = c.is_locked(),
+				unlock_counter = c.get_unlock_counter(),
 			})
-		snap.append(row_snap)
-	_undo_stack.push_back(snap)
+		grid_snap.append(row_snap)
+	var disp_snap: Array = []
+	for dc in _dispenser_cells:
+		var c := dc as PotionCell
+		disp_snap.append({
+			slots   = c.get_slots_array(),
+			z_stack = c.get_z_stack_copy(),
+		})
+	_undo_stack.push_back({ grid = grid_snap, dispensers = disp_snap })
 
 
 func _on_undo_pressed() -> void:
@@ -733,10 +1003,13 @@ func _on_undo_pressed() -> void:
 		_selected_cell.hide_all_highlights()
 		_selected_cell = null
 		_selected_slot = -1
-	var snap: Array = _undo_stack.pop_back()
+	var snap: Dictionary = _undo_stack.pop_back()
 	for r in range(_rows):
-		for c in range(COLS):
-			(_cells[r][c] as PotionCell).restore(snap[r][c])
+		for c in range(_cells[r].size()):   # includes scroll buffer cells
+			(_cells[r][c] as PotionCell).restore(snap.grid[r][c])
+	for i in range(_dispenser_cells.size()):
+		if i < snap.dispensers.size():
+			(_dispenser_cells[i] as PotionCell).restore(snap.dispensers[i])
 	_move_count = maxi(0, _move_count - 1)
 	_update_ui()
 	_board_active = true
@@ -795,3 +1068,147 @@ func _on_new_game_pressed() -> void:
 	_pressing = false
 	prepare_board()
 	start_game()  # fire-and-forget; _board_active = true after animation timer
+
+
+# ===========================================================================
+#  Special Cell Generation
+# ===========================================================================
+
+func _generate_special_cells() -> void:
+	if _actual_difficulty == 0:
+		return   # Easy: no special cells
+
+	var is_hard := _actual_difficulty == 2
+
+	# --- Apply scrolling row tint (rows were decided in _apply_difficulty_layout) ---
+	for r in _scrolling_rows:
+		for cell in _cells[r]:   # includes buffer cells
+			(cell as PotionCell).set_scroll_row_visual()
+
+	# --- Candidate cells (non-empty, not in a scrolling row) ---
+	var candidates: Array = []
+	for r in range(_rows):
+		if r in _scrolling_rows:
+			continue
+		for c in range(_cols_per_row):
+			var cell := _cells[r][c] as PotionCell
+			if not cell.is_fully_empty():
+				candidates.append(cell)
+	candidates.shuffle()
+
+	var ci := 0
+
+	# --- Locked cells (only if this game rolled the lock special) ---
+	if _special_lock:
+		var lock_max   := 2 if is_hard else 1
+		var lock_req   := 3 if is_hard else 2
+		var lock_count := 0
+		while ci < candidates.size() and lock_count < lock_max:
+			(candidates[ci] as PotionCell).set_as_locked(lock_req)
+			lock_count += 1
+			ci += 1
+
+
+func _create_dispenser_cells(groups: Array) -> void:
+	## Creates 1-tall dispenser cells below the main board, centred horizontally.
+	## Each group is an Array[int] of 3 item IDs (all the same type) for one dispenser.
+	if groups.is_empty():
+		return
+
+	var board_h: int = _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
+	var vp_h    := get_viewport_rect().size.y
+	var origin_y := int(90.0 + (vp_h - 180.0 - board_h) / 2.0)
+	var disp_y   := origin_y + board_h + 18   # 18 px gap below the board
+
+	var n := groups.size()
+	var disp_origin_x := int((540.0 - n * PotionCell.CELL_W) / 2.0)
+
+	for i in range(n):
+		var grp: Array = groups[i]
+		# Build slots + z_stack: first item visible, rest queued one-per-layer.
+		var top_slot: Array[int] = [grp[0] as int, 0, 0]
+		var z_stack: Array = []
+		for j in range(1, grp.size()):
+			z_stack.append([grp[j] as int, 0, 0])
+
+		var dcell := PotionCell.new()
+		dcell.setup(top_slot, z_stack, _item_textures)
+		dcell.position = Vector2(disp_origin_x + i * PotionCell.CELL_W, disp_y)
+		dcell.set_as_dispenser()
+		add_child(dcell)
+		_dispenser_cells.append(dcell)
+
+
+# ===========================================================================
+#  Scrolling Row Conveyor
+# ===========================================================================
+
+func _advance_scroll(row_idx: int) -> void:
+	## Slides all cells in a scrolling row one position to the left at constant speed.
+	## Fades the departing cell out and the entering buffer cell in.
+	## Uses tween.finished.connect (no await) so freeing the scene mid-scroll
+	## never causes a "lambda capture freed" coroutine crash.
+	if not is_instance_valid(self) or not visible or _cells.is_empty():
+		return
+	if row_idx >= _cells.size() or _cells[row_idx].is_empty():
+		return
+
+	var row_cells: Array = _cells[row_idx]
+	var n := row_cells.size()
+	# Off-screen holding position: exactly one CELL_W past the board's right edge.
+	var off_x := float(_board_origin_x + _cols_per_row * PotionCell.CELL_W)
+
+	var tween := create_tween()
+	tween.set_parallel(true)
+	for i in range(n):
+		var c := row_cells[i] as PotionCell
+		var start_x := c.position.x
+		var end_x   := float(_board_origin_x + (i - 1) * PotionCell.CELL_W)
+		# tween_method with roundf() keeps position.x on whole pixels every frame,
+		# preventing the sub-pixel wobble that makes the cell bg gap appear to shift.
+		tween.tween_method(
+			func(x: float): if is_instance_valid(c): c.position.x = roundf(x),
+			start_x, end_x, SCROLL_INTERVAL
+		).set_trans(Tween.TRANS_LINEAR)
+	# Fade the departing cell out during the last 20% of the slide.
+	tween.tween_property(row_cells[0] as PotionCell, "modulate:a", 0.0,
+		SCROLL_INTERVAL * 0.20).set_delay(SCROLL_INTERVAL * 0.80)
+	# Fade the entering buffer cell in during the first 20% of the slide.
+	tween.tween_property(row_cells[n - 1] as PotionCell, "modulate:a", 1.0,
+		SCROLL_INTERVAL * 0.20)
+
+	# Connect finished as a one-shot lambda instead of await.
+	# A plain lambda handles the "self freed mid-scroll" case cleanly:
+	# Godot logs the capture-freed error, passes null, and the validity
+	# check returns before touching any cell data.
+	# The generation check prevents a stale lambda (from a game that called
+	# queue_free on cells but hasn't processed it yet) from overwriting the
+	# fresh _cells array that prepare_board() just built.
+	var gen := _game_generation
+	tween.finished.connect(func():
+		if not is_instance_valid(self) or not visible:
+			return
+		if _game_generation != gen:
+			return
+		var departing := row_cells[0] as PotionCell
+		if not is_instance_valid(departing):
+			return
+		departing.position.x = off_x
+		departing.modulate.a  = 0.0
+		row_cells.remove_at(0)
+		row_cells.append(departing)
+		_cells[row_idx] = row_cells
+		_advance_scroll(row_idx)
+	, CONNECT_ONE_SHOT)
+
+
+# ===========================================================================
+#  Locked-Cell Match Notification
+# ===========================================================================
+
+func _notify_locked_cells() -> void:
+	## Decrement every locked cell's counter after a match.
+	## Each cell animates its own unlock when the counter reaches zero.
+	for row_arr in _cells:
+		for cell in row_arr:
+			(cell as PotionCell).notify_match()
