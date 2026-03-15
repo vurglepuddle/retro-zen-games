@@ -200,3 +200,67 @@
 * ~~Move counter vs. timer — which metric to display and save?~~ ✓ Move counter
 * ~~Bottle capacity — currently 4 layers; tune after playtesting~~ ✓ 5 layers
 * ~~Difficulty — currently fixed at 8 colors / 2 empty vials; selector pending~~ ✓ (Easy/Medium/Hard/Zen)
+
+* * *
+* * *
+# POTION_3
+
+## Machine (Claude) Tasks
+
+**Core (Done)**
+* ~~Scaffold folder structure, scripts, scenes, MasterMenu tile~~ ✓
+* ~~Triple match mechanic — 3 identical items in one cell auto-eliminate, reveal next z-layer~~ ✓
+* ~~Undo system — unlimited for all difficulties; button shows `UNDO ×N`~~ ✓
+* ~~Dead-board detection + RESHUFFLE prompt~~ ✓
+* ~~Win screen with move count + New Game button~~ ✓
+* ~~Save/load best moves per difficulty~~ ✓
+* ~~Board entrance drop-in animation~~ ✓
+* ~~Drag-to-move with snap + same-cell rearrangement~~ ✓
+* ~~Android touch input via `InputEventScreenTouch` / `InputEventScreenDrag`~~ ✓
+* ~~Multi-set item loading — probes up to set12 numerically (DirAccess fails on APK); 12 sets / ~700 items currently loaded~~ ✓
+* ~~Hit-test via `get_global_rect()` — fixes coordinate mismatch on Android with stretch mode~~ ✓
+
+**Feel & Polish**
+* ~~Taller cells — CELL_H increased to 130; items stay at TOP_PAD (not re-centered); full cell height is interactive~~ ✓
+* ~~Preview (z-layer below) — darkened from 0.35 to 0.30 brightness~~ ✓
+* ~~Generation improvement — flat-slot assignment guarantees every item type placed exactly ×3; 40% extra layers give natural 1–3-item sparsity without losing items~~ ✓
+* ~~Layer reveal bug — `Cell.setup()` strips all-zero z-layers and advances past empty top layer; `_try_move` loops reveal until items surface~~ ✓
+* ~~New Game button fix — background ColorRect set to `MOUSE_FILTER_IGNORE`; was blocking all clicks on Win panel (tree order beats z_index in Godot GUI routing)~~ ✓
+* ~~Android touch pickup — `_find_pickup_slot_near(pos, 44px)` selects nearest non-empty slot on press; drag threshold doubled on mobile; `get_global_rect()` used consistently for all hit-testing~~ ✓
+
+**New Mechanics**
+* Scrolling cells — one or more rows/columns that slide horizontally (or vertically); you grab items as they scroll past; appears on Medium+ and is randomly triggered on generation
+* Dispenser cell — special cell with a deep z-stack; dispensing pops the top item out (can't be placed back in); strategic because you must plan what you pull
+* Locked cells — whole cell grayed out; unlocked by making N matches (2 on Medium, 3 on Hard); acts as a normal empty cell once unlocked
+
+**Quality of Life**
+* Ambient music track (placeholder commented out in Main.gd — assign when ready)
+* ~~Item put-down SFX — `item_put_down.mp3` plays on every successful item placement~~ ✓
+* SFX — match chime, item pick-up, win fanfare
+* Style pass — menu TextureButtons, logo, background art
+
+---
+
+## Human Tasks
+
+**Art**
+* Background art for the game screen
+* "POTION_3" logo (or final game name) for Menu + MasterMenu tile
+* Menu TextureButtons (Start, Back, difficulty selector)
+* Win screen art / decoration
+* Dispenser cell visual (distinct from normal cell)
+* Locked cell overlay graphic (lock icon or grayed texture)
+
+**Sound**
+* Match SFX (3-item clear)
+* ~~Item place SFX~~ ✓ (`item_put_down.mp3`)
+* Item pick-up SFX
+* Win fanfare
+* Ambient track
+
+**Design Decisions**
+* Final game name (POTION_3 is placeholder)
+* Should scrolling row speed increase with difficulty, or be fixed?
+* Dispenser cell count per board — 1 always, or difficulty-scaled?
+* Locked cell unlock count — 2 for Medium, 3 for Hard, or tunable?
+* Should Zen difficulty mix all special cell types?
