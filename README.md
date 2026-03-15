@@ -7,10 +7,10 @@ Just tap-tap, clink-clink and some music.
 
 <table>
   <tr>
-    <td><img width="200" src="https://github.com/user-attachments/assets/f65a8d5b-5be2-4686-910d-7ff362334bbf" /></td>
-    <td><img width="200" src="https://github.com/user-attachments/assets/14f833a6-0c76-4628-81e6-ee99657c7d95" /></td>
-    <td><img width="200" src="https://github.com/user-attachments/assets/47f7a221-133c-49bd-a330-fbaaf4a63edf" /></td>
-    <td><img width="200" src="https://github.com/user-attachments/assets/ca7a2794-f5af-47d2-89e9-dd22b269f47a" /></td>
+    <td><img height="400" src="https://github.com/user-attachments/assets/f65a8d5b-5be2-4686-910d-7ff362334bbf" /></td>
+    <td><img height="400" src="https://github.com/user-attachments/assets/14f833a6-0c76-4628-81e6-ee99657c7d95" /></td>
+    <td><img height="400" src="assets/screenshots/goods_match_3.png"></td>
+    <td><img height="400" src="https://github.com/user-attachments/assets/ca7a2794-f5af-47d2-89e9-dd22b269f47a" /></td>
   </tr>
 </table>
 
@@ -18,7 +18,7 @@ Just tap-tap, clink-clink and some music.
 *   **Gem Match** (90% of features implemented, visual polish remaining, new modes) – A relaxed match-3 variant where gems merge and go boom.
 *   **Tile Chain** (90%, more sets to be added) – A twist on NY-style tile game.
 *   **Alchemical Sort** (80%, most features implemented) – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
-*   **Goods sort** (30%, core features implemented, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three.
+*   **Goods sort** (40%, core features implemented, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three.
     
 More small experiments and quiet mechanics will be added over time.
 ## Built With

@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **zen toybox** app built with **Godot Engine 4.3** using **GDScript**. The app launches a master menu from which the player picks a mini-game. Three games exist:
+A **zen toybox** app built with **Godot Engine 4.3** using **GDScript**. The app launches a master menu from which the player picks a mini-game. Four games exist:
 - **gem_match** — a relaxing match-3 puzzle game
 - **tile_chain** — a tile-pairing combo chain game
 - **alchemical_sort** — a color-sort puzzle game (alchemical bottles theme)
+- **potion_3** — a goods-sort / triple-match shelf game (pixel-art potion items)
 
 No npm, Makefile, or external build tools — everything runs through the Godot editor.
 
@@ -45,9 +46,16 @@ MasterMenu  (res://scenes/MasterMenu.tscn)
   │         │    └─ Quit   → MasterMenu
   │         └─ Game.tscn
   │              └─ ‹ Back → Menu.tscn
-  └─ tap "ALCHEMICAL SORT" tile
-       └─ games/alchemical_sort/scenes/Main.tscn  (orchestrator)
-            ├─ Menu.tscn  (title, start, back)
+  ├─ tap "ALCHEMICAL SORT" tile
+  │    └─ games/alchemical_sort/scenes/Main.tscn  (orchestrator)
+  │         ├─ Menu.tscn  (title, start, back)
+  │         │    ├─ Start  → Game.tscn
+  │         │    └─ ‹ Back → MasterMenu
+  │         └─ Game.tscn
+  │              └─ ‹ Back → Menu.tscn
+  └─ tap "POTION_3" tile
+       └─ games/potion_3/scenes/Main.tscn  (orchestrator)
+            ├─ Menu.tscn  (title, difficulty selector, start, back)
             │    ├─ Start  → Game.tscn
             │    └─ ‹ Back → MasterMenu
             └─ Game.tscn
@@ -94,6 +102,22 @@ match3_game/
         Menu.gd               emits start_game / back_to_master
         Game.gd               board construction, tap logic, combo tracking
         BoardCell.gd          class_name BoardCell; one cell with z/a/b/c layers
+    potion_3/
+      assets/
+        items/
+          set1/ … set12/      pixel-art potion PNGs; named item1.png … itemN.png
+                               ~700 items across 12 thematic sets; mixed at runtime
+        sfx/
+          item_put_down.mp3   plays on every successful item placement
+      scenes/
+        Main.tscn             potion_3 orchestrator (Menu ↔ Game, fades)
+        Menu.tscn             title, difficulty selector, START, ‹ BACK
+        Game.tscn             board + move/best labels + undo + back + win panel
+      scripts/
+        Main.gd               fades, signal wiring (same pattern as alchemical_sort)
+        Menu.gd               emits start_game(difficulty) / back_to_master
+        Game.gd               board generation, move/match/win logic, undo, save
+        Cell.gd               class_name PotionCell; single shelf cell node
   scenes/
     MasterMenu.tscn           master app menu (one tile per game)
   scripts/
@@ -113,6 +137,10 @@ match3_game/
 | `games/tile_chain/scenes/Menu.tscn` | `…/scripts/Menu.gd` | Placeholder sub-menu |
 | `games/tile_chain/scenes/Game.tscn` | `…/scripts/Game.gd` | Board + combo logic |
 | *(no .tscn — class only)* | `…/scripts/BoardCell.gd` | Single board cell; 4 texture layers |
+| `games/potion_3/scenes/Main.tscn` | `…/scripts/Main.gd` | potion_3 orchestrator; fades |
+| `games/potion_3/scenes/Menu.tscn` | `…/scripts/Menu.gd` | Difficulty select; start + back signals |
+| `games/potion_3/scenes/Game.tscn` | `…/scripts/Game.gd` | Board + match + undo + win logic |
+| *(no .tscn — class only)* | `…/scripts/Cell.gd` | Single shelf cell; 3 slots + z-stack |
 
 ### Communication Pattern
 
@@ -287,6 +315,183 @@ games/alchemical_sort/
     Menu.gd               emits start_game / back_to_master
     Game.gd               board logic, pour mechanic, win check
     Vial.gd               class_name Vial; single bottle node
+```
+
+---
+
+## potion_3
+
+### Concept
+
+Goods-sort / triple-match game. The board is a grid of **vertical shelf cells** (3 slots stacked top-to-bottom). Each cell has a hidden z-stack of layers beneath. Move items between cells; when 3 identical items occupy the same cell they auto-eliminate and the next hidden layer is revealed. Win when all cells (including dispensers) are empty.
+
+### Key Constants (`Cell.gd` / `Game.gd`)
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `PotionCell.SLOTS` | **3** | Item slots per layer (stacked vertically) |
+| `PotionCell.CELL_W` | **108** | 5 cols × 108 = 540 px |
+| `PotionCell.CELL_H` | **270** | 3 × ITEM_SIZE |
+| `PotionCell.ITEM_SIZE` | **90** | Item TextureRect size |
+| `PotionCell.SIDE_PAD` | **9** | (CELL_W − ITEM_SIZE) / 2 |
+| `PotionCell.VISUAL_INSET` | **4** | bg panel shrunk on all sides; items stay put |
+| `PotionCell.SLOT_OVERLAP` | **12** | Each slot overlaps the one above by this many px (perspective) |
+| `PotionCell.SLOT_Y_OFFSET` | **16** | Shifts the whole item stack down inside the cell |
+| `PotionCell.DISP_BG_PAD_H/V` | **4** | Dispenser cell bg padding (tunable independently) |
+| `Game.SCROLL_ROW_MAX` | **1** | Max scrolling rows; bump to 2 to re-enable |
+| `Game.SCROLL_EXTRA_CELLS` | **1** | Off-screen buffer cells per scrolling row |
+| `Game.SCROLL_INTERVAL` | **2.5 s** | Duration of one scroll tick (continuous, no pause) |
+| `Game.COL_SPACING` | **0** | Padding built into CELL_W |
+| `Game.ROW_SPACING` | **9** | Gap between rows: 3×270 + 2×9 = 828 px board |
+
+Difficulty layout (set by `Game.set_difficulty()` before `prepare_board()`):
+
+| Difficulty | Cols | Rows | Max depth | Item types | Empty cells |
+|------------|------|------|-----------|------------|-------------|
+| Easy       | 3    | 3    | 3         | 12         | 2           |
+| Medium     | 4    | 3    | 4         | 22         | 2           |
+| Hard       | 5    | 3    | 5         | 32         | 2           |
+| Zen        | random (Easy–Hard) | same | same | same | same |
+
+### PotionCell Entity (`Cell.gd`)
+
+- `class_name PotionCell`, extends `Control`; instantiated purely in code — no `.tscn`
+- `_slots: Array[int]` — 3 item IDs (0 = empty) for the current (top) layer
+- `_z_stack: Array` — array of `[id0, id1, id2]` layers hidden below; index 0 = next to reveal
+- **Vertical layout**: slot `i` rect at `y = SLOT_Y_OFFSET + i * (ITEM_SIZE − SLOT_OVERLAP)`; bottom slot (index 2) added last → rendered on top (perspective depth)
+- **Preview rects**: slightly offset behind/above main rects at 20-25% brightness
+- **Selection**: golden `StyleBoxFlat` highlight per slot, toggled via `show_slot_highlight(slot_idx, lit)`
+- **Hit-testing**: always via `get_global_rect()` in Game — slot index = `clampi(int(local_y / ITEM_SIZE), 0, SLOTS−1)`
+
+### Special Cell Types
+
+**Dispenser** (`set_as_dispenser()`):
+- 1-tall cell (height = `ITEM_SIZE`), positioned below the main board; centered horizontally
+- Holds one item visible; remaining items in `_z_stack` one-per-layer
+- Items pulled from the main pool (mixed types); each item's 2 siblings are somewhere in the grid
+- Cannot receive items (`has_empty_slot()` always returns −1)
+- Slot 0 y-position reset to 0 (no `SLOT_Y_OFFSET`) after `set_as_dispenser()`
+- Background size controlled by `DISP_BG_PAD_H` / `DISP_BG_PAD_V` (independent of `VISUAL_INSET`)
+- ⬇ label indicator in the cell
+
+**Locked** (`set_as_locked(unlock_count)`):
+- Full-size dark overlay (`CELL_W × CELL_H`, no inset) — completely covers items and preview rects
+- Counter shown in centre of overlay; decrements on every match anywhere on the board (`notify_match()`)
+- Overlay fades out on unlock; `_refresh_preview()` called after to restore preview rects
+- `has_empty_slot()` returns −1 while locked; `is_fully_empty()` always false while locked
+
+**Scrolling row** (`set_scroll_row_visual()`):
+- Amber-tinted background; rows decided in `_apply_difficulty_layout()` before board generation
+- Each scrolling row gets `SCROLL_EXTRA_CELLS = 1` real buffer cells positioned at `off_x = _board_origin_x + _cols_per_row * CELL_W` (just off the board's right edge)
+- Buffer cells start at `modulate.a = 0`; fade in during first 20% of each scroll tick
+- Departing cell fades out during last 20% of each tick, then teleports back to `off_x`
+- `tween_method` + `roundf()` snaps x to integer each frame — prevents sub-pixel wobble
+- Scroll is continuous: `_advance_scroll()` loops itself immediately after each wrap (no timer between ticks); first tick delayed by `SCROLL_INTERVAL` from `start_game()`
+
+### Cascading Special-Cell Probability
+
+Decided in `_apply_difficulty_layout()` before any cells exist (so board gen can allocate items for dispensers). Types shuffled then rolled with decaying probability:
+- Base: `0.55` (Hard) / `0.38` (Medium); each win multiplies by `0.42`
+- Result: "nothing" and "one special" are common; "all three" is rare (~10%)
+- Dispenser count and scrolling row indices are stored in member vars (`_dispenser_count`, `_scrolling_rows`) for `_generate_board_data()` and `_build_cells()` to use
+
+### Board Generation
+
+1. Pick `_item_type_count` random IDs from the loaded texture pool
+2. Build full pool (each type × 3), shuffle it
+3. Pull dispenser items from the front of the shuffled pool (3 per dispenser, mixed types)
+4. Include `_scrolling_rows.size() × SCROLL_EXTRA_CELLS` extra cells in total cell count
+5. Assign depths (`layers_to_place = item_type_count × 1.4` → 40% slot surplus)
+6. Build flat slot list, shuffle, assign pool items — no item ever lost
+7. After `_build_cells()` main loop, create buffer cells for scrolling rows (off-screen right)
+8. `start_game()` scans all cells after drop-in and auto-clears any pre-generated 3-matches
+
+**Critical**: never reduce `layers_to_place` below `_item_type_count` or items will be stranded.
+
+### Item Texture Loading
+
+Items are named `item1.png … itemN.png` inside `assets/items/set1/ … set12/`. Uses numeric probing (not `DirAccess`) because `DirAccess.open("res://...")` returns `null` inside Android APKs:
+
+```gdscript
+for set_num in range(1, 20):   # generous upper bound
+    for i in range(1, 1000):
+        var path := "…/set%d/item%d.png" % [set_num, i]
+        if ResourceLoader.exists(path):  # works on APK
+            _item_textures[uid] = load(path)
+            uid += 1
+            misses = 0
+        else:
+            misses += 1
+            if misses >= 50: break   # stop after 50 consecutive misses
+```
+
+### Android Input Notes
+
+- All board input handled in `Game._input` (no `_gui_input` on cells)
+- `OS.has_feature("mobile")` gates mouse branches — prevents double-firing from Godot's touch→mouse emulation
+- Hit-testing always uses `cell.get_global_rect()` — `global_position` alone is unreliable under `canvas_items` stretch mode on Android
+- Pickup uses `_find_pickup_slot_near(pos, 44px)` radius first, then exact hit — finger precision forgiveness
+- Drag snap: exact hit tried first; if invalid (locked/dispenser/occupied), always falls back to nearest-empty radius search (`CELL_W × 1.5`) — key fix for Android imprecision
+- **Decorative controls** (background ColorRect, overlays) must have `mouse_filter = MOUSE_FILTER_IGNORE`; in Godot GUI routing, tree order among siblings beats z_index for input priority
+
+### Data Flow (potion_3)
+
+```
+prepare_board()
+  → _clear_cells()                  # clears _scrolling_rows
+  → _apply_difficulty_layout()      # sets _cols_per_row, _dispenser_count, _scrolling_rows
+  → _build_cells()
+       → _generate_board_data()     # allocates items for grid + dispensers + scroll buffers
+       → main grid cells created
+       → buffer cells created off-screen for scrolling rows
+       → _generate_special_cells()  # applies scroll tint; sets locked cells
+       → _create_dispenser_cells()  # creates 1-tall cells below board
+
+start_game()
+  → staggered drop-in animation
+  → auto-clear any pre-generated 3-matches
+  → _advance_scroll(r) for each scrolling row  ← continuous loop, no timer
+
+User press (Game._input — InputEventScreenTouch / MouseButton)
+  → _find_pickup_slot_near(pos) or _find_cell_slot_at(pos)
+  → _on_slot_tapped(cell, slot)
+       → nothing selected: select slot (highlight)
+       → same slot: deselect
+       → selected + empty non-locked/non-dispenser target: _try_move(from, to)
+            → _animate_item_move() fly sprite
+            → to_cell.set_item() → check_match() → _process_match()
+            → _notify_locked_cells()  ← decrements all locked cell counters
+            → from_cell reveal next z-layer if now empty
+            → _check_win() or _show_reshuffle_prompt()
+
+User drag (Game._input — motion while pressing)
+  → threshold exceeded: _start_drag() — floating sprite under finger
+  → _update_drag() — sprite follows finger
+  → release: _end_drag()
+       → same-cell rearrangement: always allowed
+       → cross-cell: 1. exact hit (if valid empty slot); 2. nearest-empty radius fallback
+```
+
+### Folder Structure
+
+```
+games/potion_3/
+  assets/
+    items/
+      set1/ … set12/      item1.png … itemN.png (pixel-art, ~700 total)
+    sfx/
+      item_put_down.mp3   plays on item placement
+  scenes/
+    Main.tscn             orchestrator (Menu ↔ Game, fades)
+    Menu.tscn             difficulty selector + START + ‹ BACK
+    Game.tscn             board UI (MoveLabel, BestLabel, UndoButton, BackButton,
+                          ReshuffleLabel/Button hidden, WinPanel)
+  scripts/
+    Main.gd               fades (0.22 s out / 0.38 s in), signal wiring
+    Menu.gd               emits start_game(difficulty: int) / back_to_master
+    Game.gd               all board logic
+    Cell.gd               class_name PotionCell; shelf cell node
+    Cell_triangular.gd    backup of triangular tessellation attempt (no class_name; not used)
 ```
 
 ---
