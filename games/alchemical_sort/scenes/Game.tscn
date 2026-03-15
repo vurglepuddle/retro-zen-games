@@ -236,8 +236,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="AlchemyBg3" type="Sprite2D" parent="."]
-position = Vector2(270, 481.329)
-scale = Vector2(0.697917, 0.697917)
+position = Vector2(322, 757)
+scale = Vector2(1.20182, 0.697917)
 texture = ExtResource("3_0hd8l")
 
 [node name="1772305215676-019Ca59e-ee62-7b80-a838-0e85021Bc714" type="Sprite2D" parent="."]

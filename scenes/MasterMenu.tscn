@@ -132,10 +132,33 @@ SORT"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="Potion3Tile" type="Button" parent="."]
+layout_mode = 0
+offset_left = 136.0
+offset_top = 825.0
+offset_right = 405.0
+offset_bottom = 981.0
+flat = true
+
+[node name="TileLabel" type="Label" parent="Potion3Tile"]
+layout_mode = 0
+offset_top = 38.0
+offset_right = 269.0
+offset_bottom = 130.0
+theme_override_colors/font_color = Color(0.85, 0.65, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0.12, 0.06, 0.02, 1)
+theme_override_constants/outline_size = 4
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 32
+text = "POTION
+SORT"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="BgMaster" type="Sprite2D" parent="."]
 z_index = -99
-position = Vector2(269.25, 480.814)
-scale = Vector2(0.299944, 0.299944)
+position = Vector2(269.25, 599.502)
+scale = Vector2(0.299944, 0.373985)
 texture = ExtResource("4_jjcy0")
 
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
@@ -160,3 +183,4 @@ tex_all_off_pressed = ExtResource("8_0bjaw")
 [connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="TileChainTile" to="." method="_on_tile_chain_pressed"]
 [connection signal="pressed" from="AlchSortTile" to="." method="_on_alch_sort_pressed"]
+[connection signal="pressed" from="Potion3Tile" to="." method="_on_potion_3_pressed"]

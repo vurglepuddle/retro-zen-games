@@ -14,6 +14,8 @@ extends Node
 
 signal mute_state_changed(state: int)
 
+const SAVE_PATH := "user://audio_settings.cfg"
+
 # 0 = all on, 1 = music muted, 2 = all muted
 var mute_state: int = 0
 
@@ -33,6 +35,7 @@ func _ready() -> void:
 			_music.play()
 	)
 	add_child(_music)
+	_load_state()
 
 
 # ---- Music ------------------------------------------------------------------
@@ -100,7 +103,21 @@ func _input(event: InputEvent) -> void:
 func cycle() -> void:
 	mute_state = (mute_state + 1) % 3
 	_apply_state()
+	_save_state()
 	mute_state_changed.emit(mute_state)
+
+
+func _load_state() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		mute_state = cfg.get_value("audio", "mute_state", 0)
+		_apply_state()
+
+
+func _save_state() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("audio", "mute_state", mute_state)
+	cfg.save(SAVE_PATH)
 
 
 func _apply_state() -> void:

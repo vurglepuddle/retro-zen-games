@@ -9,7 +9,7 @@ var _fade_rect: ColorRect = null
 @onready var _sfx_click: AudioStreamPlayer = $SfxClick
 func _ready() -> void:
 	# Ambient music.
-	AudioManager.play_music(load("res://assets/music/999_turbo.ogg"))
+	AudioManager.play_music(load("res://assets/music/999_turbo.mp3"))
 
 	# Full-screen black rect for transitions — starts opaque then fades in.
 	var layer := CanvasLayer.new()
@@ -124,3 +124,9 @@ func _on_alch_sort_pressed() -> void:
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/alchemical_sort/scenes/Main.tscn")
+
+
+func _on_potion_3_pressed() -> void:
+	if _sfx_click.stream: _sfx_click.play()
+	await _fade_to_black()
+	get_tree().change_scene_to_file("res://games/potion_3/scenes/Main.tscn")
