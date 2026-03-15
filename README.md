@@ -15,12 +15,13 @@ Just tap-tap, clink-clink and some music.
 </table>
 
 ## Current Games
-*   **Gem Match** (100% of features implemented, visual polish remaining) – A relaxed match-3 variant where gems merge and go boom.
+*   **Gem Match** (90% of features implemented, visual polish remaining, new modes) – A relaxed match-3 variant where gems merge and go boom.
 *   **Tile Chain** (90%, more sets to be added) – A twist on NY-style tile game.
 *   **Alchemical Sort** (80%, most features implemented) – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
+*   **Goods sort** (30%, core features implemented, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three.
     
 More small experiments and quiet mechanics will be added over time.
 ## Built With
 *   Godot Engine 4.3
-*   Designed for Android (16:9 on purpose, but might reconsider later) and Web export
+*   Designed for Android (migrating from 16:9 resolution to normal Android) and Web export
 *   Open source under GNU GPL-3.0
