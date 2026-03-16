@@ -84,9 +84,41 @@ theme_override_font_sizes/font_size = 44
 text = "‹"
 flat = true
 
+[node name="TimedButton" type="Button" parent="."]
+z_index = 999
+layout_mode = 0
+offset_left = 135.0
+offset_top = 820.0
+offset_right = 413.0
+offset_bottom = 931.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 36
+text = "TIMED MODE"
+flat = true
+
+[node name="LevelButton" type="Button" parent="."]
+z_index = 999
+layout_mode = 0
+offset_left = 135.0
+offset_top = 940.0
+offset_right = 413.0
+offset_bottom = 1051.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 36
+text = "LEVEL MODE"
+flat = true
+
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("8_click")
 
 [connection signal="pressed" from="Panel/VBox/StartButton" to="." method="_on_StartButton_pressed"]
 [connection signal="pressed" from="Start" to="." method="_on_Start_pressed"]
 [connection signal="pressed" from="BackButton" to="." method="_on_BackButton_pressed"]
+[connection signal="pressed" from="TimedButton" to="." method="_on_Timed_pressed"]
+[connection signal="pressed" from="LevelButton" to="." method="_on_Level_pressed"]

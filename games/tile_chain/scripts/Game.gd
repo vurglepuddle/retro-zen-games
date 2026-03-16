@@ -45,7 +45,9 @@ var _c_textures: Array = []
 @onready var _best_label: Label = $BestLabel
 @onready var _shuffle_label: Label = $ShuffleLabel
 @onready var _milestone_label: Label = $MilestoneLabel
-@onready var _clear_panel: Control = $ClearPanel
+@onready var _clear_panel:       Control = $ClearPanel
+@onready var _clear_combo_label: Label   = $ClearPanel/ClearComboLabel
+@onready var _clear_best_label:  Label   = $ClearPanel/ClearBestLabel
 @onready var _sfx_remove: AudioStreamPlayer = $SfxRemove
 @onready var _sfx_break: AudioStreamPlayer = $SfxBreak
 @onready var _sfx_milestone: AudioStreamPlayer = $SfxMilestone
@@ -192,8 +194,9 @@ func _generate_paired_layer(count: int, variant_count: int) -> Array[int]:
 func _build_board() -> void:
 	var board_w := COLS * CELL_SIZE
 	var board_h := ROWS * CELL_SIZE
-	var origin_x := int((540.0 - board_w) / 2.0)
-	var origin_y := int(80.0 + (810.0 - board_h) / 2.0)
+	var vp      := get_viewport_rect().size
+	var origin_x := int((vp.x - board_w) / 2.0)
+	var origin_y := int(80.0 + (vp.y - 80.0 - board_h) / 2.0)
 
 	var a_count := _a_textures.size() - 1
 	var b_count := _b_textures.size() - 1
@@ -401,14 +404,29 @@ func _on_board_cleared() -> void:
 	if _selected:
 		_selected.show_outline(false)
 		_selected = null
-	_clear_panel.move_to_front()  # must be last sibling to win input over board cells
+	_clear_combo_label.text = "Combo reached: %d" % _current_combo
+	var is_new_best := _current_combo >= _longest_combo and _current_combo > 0
+	_clear_best_label.text = "NEW BEST!" if is_new_best else "Best: %d" % _longest_combo
+	_clear_best_label.add_theme_color_override(
+		"font_color",
+		Color(1, 0.945, 0.627) if is_new_best else Color(0.7, 0.75, 0.8)
+	)
+	_clear_panel.modulate.a = 0.0
+	_clear_panel.move_to_front()
 	_clear_panel.visible = true
+	var tw := create_tween()
+	tw.tween_property(_clear_panel, "modulate:a", 1.0, 0.4).set_ease(Tween.EASE_OUT)
 
 
 func _on_new_game_pressed() -> void:
 	_clear_panel.visible = false
 	prepare_board()
 	start_game()
+
+
+func _on_back_from_clear_pressed() -> void:
+	_clear_panel.visible = false
+	_on_back_pressed()
 
 
 # ----- Save / load -----------------------------------------------------------

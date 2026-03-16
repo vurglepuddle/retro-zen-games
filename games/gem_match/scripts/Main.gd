@@ -7,7 +7,8 @@ extends Node
 @onready var menu = $Menu
 @onready var game = $Game
 
-var _fade_rect: ColorRect = null
+var _fade_rect:  ColorRect = null
+var _last_mode:  int       = 0   # 0=normal, 1=countdown, 2=levels
 
 
 func _ready() -> void:
@@ -33,6 +34,8 @@ func _ready() -> void:
 	# Connect signal from the game when the player taps the in-game back button.
 	if game.has_signal("back_to_menu"):
 		game.connect("back_to_menu", Callable(self, "_on_back_to_menu"))
+	if game.has_signal("play_again"):
+		game.connect("play_again", Callable(self, "_on_play_again"))
 
 
 func _fade_to_black() -> void:
@@ -48,16 +51,28 @@ func _fade_from_black() -> void:
 	await tw.finished
 
 
-func _on_start_game() -> void:
+func _apply_game_mode(mode: int) -> void:
+	match mode:
+		1:
+			if game.has_method("set_timed_mode"):
+				game.set_timed_mode(true)
+		2:
+			if game.has_method("set_level_mode"):
+				game.set_level_mode(true)
+		_:
+			if game.has_method("set_timed_mode"):
+				game.set_timed_mode(false)
+
+
+func _on_start_game(mode: int) -> void:
+	_last_mode = mode
 	await _fade_to_black()
 	menu.visible = false
 	game.visible = true
-	# prepare_board() sets up the grid with gems hidden; the fade-in then
-	# reveals the empty background before the entrance animation fires.
+	_apply_game_mode(mode)
 	if game.has_method("prepare_board"):
 		game.prepare_board()
 	await _fade_from_black()
-	# start_game() animates gems falling in, then activates input.
 	if game.has_method("start_game"):
 		await game.start_game()
 
@@ -72,3 +87,13 @@ func _on_back_to_menu() -> void:
 func _on_back_to_master() -> void:
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
+
+
+func _on_play_again() -> void:
+	await _fade_to_black()
+	_apply_game_mode(_last_mode)
+	if game.has_method("prepare_board"):
+		game.prepare_board()
+	await _fade_from_black()
+	if game.has_method("start_game"):
+		await game.start_game()

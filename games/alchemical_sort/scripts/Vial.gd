@@ -280,7 +280,6 @@ func _build_visuals() -> void:
 	# Build shared SpriteFrames for the shimmer overlay (colors_anim.png, 5-frame horizontal strip).
 	var anim_tex    := load("res://games/alchemical_sort/assets/colors_anim.png") as Texture2D
 	var anim_frames := SpriteFrames.new()
-	anim_frames.add_animation("default")
 	anim_frames.set_animation_speed("default", 5.0)
 	anim_frames.set_animation_loop("default", true)
 	for f in range(5):

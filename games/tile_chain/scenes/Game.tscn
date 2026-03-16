@@ -50,7 +50,7 @@ animations = [{
 "speed": 5.0
 }]
 
-[node name="Game" type="Control"]
+[node name="Game3" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -92,9 +92,9 @@ horizontal_alignment = 2
 z_index = 10
 layout_mode = 0
 offset_left = 20.0
-offset_top = 894.0
+offset_top = 1131.0
 offset_right = 170.0
-offset_bottom = 944.0
+offset_bottom = 1179.0
 theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 20
@@ -113,7 +113,7 @@ mouse_filter = 2
 color = Color(0.04, 0.1, 0.14, 1)
 
 [node name="Bg2" type="Sprite2D" parent="."]
-position = Vector2(270.136, 485.164)
+position = Vector2(270.136, 611.698)
 scale = Vector2(0.302369, 0.302369)
 texture = ExtResource("3_c8qen")
 
@@ -169,19 +169,62 @@ text = "Board Cleared!"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="ClearComboLabel" type="Label" parent="ClearPanel"]
+layout_mode = 0
+offset_top = 482.0
+offset_right = 540.0
+offset_bottom = 530.0
+theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "Combo: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ClearBestLabel" type="Label" parent="ClearPanel"]
+layout_mode = 0
+offset_top = 534.0
+offset_right = 540.0
+offset_bottom = 578.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 22
+text = "Best: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="NewGameButton" type="Button" parent="ClearPanel"]
 z_index = 999
 layout_mode = 0
 offset_left = 155.0
-offset_top = 490.0
+offset_top = 606.0
 offset_right = 385.0
-offset_bottom = 552.0
+offset_bottom = 660.0
 theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
 theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 28
 text = "NEW GAME"
+flat = true
+
+[node name="BackMenuButton" type="Button" parent="ClearPanel"]
+z_index = 999
+layout_mode = 0
+offset_left = 155.0
+offset_top = 670.0
+offset_right = 385.0
+offset_bottom = 720.0
+theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.14, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "< MENU"
 flat = true
 
 [node name="SfxBreak" type="AudioStreamPlayer" parent="."]
@@ -214,9 +257,10 @@ vertical_alignment = 1
 
 [node name="BgSmall" type="Sprite2D" parent="."]
 z_index = 100
-position = Vector2(270, 485.5)
+position = Vector2(270, 612.034)
 scale = Vector2(0.302521, 0.302355)
 texture = ExtResource("6_i74q3")
 
 [connection signal="pressed" from="BackButton" to="." method="_on_back_pressed"]
 [connection signal="pressed" from="ClearPanel/NewGameButton" to="." method="_on_new_game_pressed"]
+[connection signal="pressed" from="ClearPanel/BackMenuButton" to="." method="_on_back_from_clear_pressed"]

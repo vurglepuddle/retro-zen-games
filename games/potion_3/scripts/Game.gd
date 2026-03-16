@@ -185,6 +185,11 @@ func prepare_board() -> void:
 
 
 func start_game() -> void:
+	# Snapshot the generation so this coroutine can detect if prepare_board()
+	# was called again while it was suspended (e.g. rapid New Game presses).
+	# Any await that resumes after a new prepare_board() exits immediately,
+	# preventing two concurrent start_game() runs from both arming scroll timers.
+	var gen := _game_generation
 	_board_active = false
 	_undo_stack.clear()
 	_update_ui()
@@ -236,7 +241,7 @@ func start_game() -> void:
 
 	var total_wait := (idx - 1) * 0.05 + 0.45
 	await get_tree().create_timer(total_wait).timeout
-	if not is_instance_valid(self):
+	if not is_instance_valid(self) or _game_generation != gen:
 		return
 
 	# Auto-clear any 3-matches that the generator placed in a single cell.
@@ -246,17 +251,18 @@ func start_game() -> void:
 			var c := cell as PotionCell
 			if c.check_match():
 				await _process_match(c)
-				if not is_instance_valid(self):
+				if not is_instance_valid(self) or _game_generation != gen:
 					return
 	_animating = false
 	_board_active = true
 
 	# Kick off the first scroll tick for each scrolling row.
-	# The lambda guards against self being freed if the user backs out
-	# during the initial SCROLL_INTERVAL delay.
+	# Guard both self-freed (back navigation) and stale generation (rapid New Game).
 	for r in _scrolling_rows:
 		get_tree().create_timer(SCROLL_INTERVAL).timeout.connect(
-			func(): if is_instance_valid(self): _advance_scroll(r),
+			func():
+				if is_instance_valid(self) and _game_generation == gen:
+					_advance_scroll(r),
 			CONNECT_ONE_SHOT)
 
 
