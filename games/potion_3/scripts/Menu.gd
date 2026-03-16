@@ -9,3 +9,8 @@ func _on_medium_pressed() -> void: start_game.emit(1)
 func _on_hard_pressed()   -> void: start_game.emit(2)
 func _on_zen_pressed()    -> void: start_game.emit(3)
 func _on_quit_pressed()   -> void: back_to_master.emit()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		back_to_master.emit()

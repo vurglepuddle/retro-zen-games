@@ -21,9 +21,17 @@
 * ~~Screen shake on explosion — full shake for BOMB, faint shake for CROSS~~ ✓
 * ~~Tink SFX on gem land — soft crystal-clink after collapse/fill~~ ✓
 * ~~Explosion zone flash — semi-transparent overlay: orange 3×3 for BOMB/stars, blue row+col for CROSS, dark purple per-tile for COLOR_BOMB~~ ✓
+* ~~Explosion flash clipping — flash now drawn per valid board cell (SHAPE mask); no longer bleeds outside the gem area into decorative background~~ ✓
 * ~~`_game_active` crash guards — abort coroutines cleanly on back-navigation mid-cascade~~ ✓
 
 * ~~Particle burst on tile clear — small gem sparkles fly out from matched tiles~~ Do not need.
+
+**Pending**
+* ~~Timed mode — score-race variant (countdown timer + game-over screen when time runs out)~~ ✓ (90 s countdown, escalating red at 10 s, TIME'S UP panel with PLAY AGAIN / MENU)
+* ~~Persist timed mode high score (reuse tile_chain ConfigFile save pattern)~~ ✓ (`gem_match_save.cfg`)
+* ~~Level mode — fill a score bar to "level up"; each level raises the target 30%; leveling up adds 5 s; "LEVEL N!" banner pops on level-up; TIME'S UP panel shows level reached + best level saved~~ ✓ (LEVEL MODE button in menu; `set_level_mode()` in Game.gd)
+* ~~Polish win / game-over screen code — NEW BEST! highlight, fade-in, PLAY AGAIN / < MENU buttons~~ ✓
+* Polish win / game-over screen art (art TBD — human task)
 
 * ~~Global mute toggle (3-state: all on → music off → all off) — `AudioManager` autoload singleton owns music player + state; `MuteButton.gd` reusable script for per-screen TextureButtons~~ ✓
 * ~~Web audio fix — removed dynamic `AudioServer.add_bus()` (corrupts WebAudio driver); music-only mute via `volume_db = -80` instead~~ ✓
@@ -72,6 +80,9 @@
 
 * Style the MasterMenu — background, polish the game-tile card
 
+* BOMB special gem graphic — replace the plain orange `_draw()` square with real art
+* CROSS special gem graphic — replace the plain blue `_draw()` square with real art
+
 **Sound**
 
 * ~~Source all SFX~~ ✓ — assigned in Game.tscn
@@ -118,6 +129,8 @@
 * Rune glow animation — runes on bg.png randomly brighten/dim using overlay sprites (waiting on art asset — user is making animated glow, will slot under cut-transparency bg.png)
 * Board blue glow — same as above, part of the handmade animation pass
 * Match burst — tiny particle or flash on the cell where elements disappear
+* ~~Polish win screen code — combo info, best combo, NEW BEST! highlight, fade-in, < MENU button~~ ✓
+* Polish win screen art (art TBD — human task)
 * ~~Android back gesture support (return to Menu from Game)~~ ✓
 * ~~A small sfx played every time you clear a tile~~ ✓ (no_match.mp3 placeholder — swap when ready)
 * ~~Slower spinning animation (too quick currently)~~ ✓
@@ -136,6 +149,7 @@
 **Art**
 * Export all additional tilesets; place each as `games/tile_chain/assets/Set_N/` with the same z/a/b/c naming convention
 * Logo / title graphic for the Tile Chain menu screen (replaces plain text "TILE CHAIN")
+* Replace menu text buttons with TextureButtons
 * Background art for the menu and/or game board
 * Styled selection outline or highlight (replaces the plain white border)
 * TILE CHAIN tile card art for the MasterMenu (like the gem_match logo)
@@ -178,6 +192,8 @@
 * Bubbling/shimmer idle animation on liquid layers
 * Satisfying "glug" sound when pouring (SFX node + audio file)
 * Completion glow on a fully solved vial (celebrate() scale-bounce placeholder — needs visual glow effect)
+* ~~Polish win screen code — best moves, NEW BEST! highlight, fade-in, < MENU button~~ ✓
+* Polish win screen art (art TBD — human task)
 
 ---
 
@@ -186,8 +202,9 @@
 **Art**
 * Pixel-art bottle sprite — empty bottle silhouette (transparent, all colors show through liquid)
 * Liquid fill sprites or shader per color layer (8–10 colors in the palette)
-* Background art for the game screen (lab/workshop aesthetic)
+* Background art for the game screen (lab/workshop aesthetic) — placeholder, user will redraw
 * "ALCHEMICAL SORT" logo for the Menu scene and MasterMenu tile card
+* Replace menu text buttons with TextureButtons
 
 **Sound**
 * Pouring / glugging SFX
@@ -277,3 +294,13 @@
 * ~~Dispenser cell count per board?~~ → Cascade-rolled: Medium 0–1, Hard 0–2; items pulled from main pool
 * ~~Locked cell unlock count?~~ → 2 matches on Medium, 3 on Hard
 * ~~Should Zen difficulty mix all special cell types?~~ → Yes (Zen picks random Easy/Medium/Hard layout including its specials)
+
+* * *
+* * *
+# ALL GAMES / GLOBAL
+
+## Machine (Claude) Tasks
+* ~~Fix game board layout to use dynamic viewport height — tile_chain hardcodes `810.0`; gem_match centering may also be affected; audit all games~~ ✓ (tile_chain + alchemical_sort fixed; others already dynamic)
+
+## Cross-cutting Tasks (Human + Machine)
+* ~~Audit Android hardware back button handling in all four games — ensure `NOTIFICATION_WM_GO_BACK_REQUEST` is handled consistently everywhere~~ ✓ (added to gem_match Game.gd + all four Menu.gd files)

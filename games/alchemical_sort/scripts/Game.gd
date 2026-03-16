@@ -11,6 +11,11 @@ const SAVE_PATH := "user://alch_sort_save.cfg"
 
 const VIAL_SPACING := 14  # pixels between vials
 
+## Locks the vertical position of the vial grid to match the shelf art.
+## Set in the Inspector once the Hard layout looks right; leave at -1 to auto-centre.
+## X is always re-centred per difficulty so fewer vials stay centred on each shelf row.
+@export var shelf_origin_y: float = -1.0
+
 # Alchemical color palette — placeholder, replace with art-matched colours.
 const PALETTE: Array[Color] = [
 	Color(0.90, 0.25, 0.25),   # 1 — crimson
@@ -51,6 +56,7 @@ var _droplet_mat: ShaderMaterial = null  # lazily built, shared across all pours
 @onready var _undo_button:   Button  = $UndoButton
 @onready var _win_panel:     Control = $WinPanel
 @onready var _win_moves_lbl: Label   = $WinPanel/WinMovesLabel
+@onready var _win_best_lbl:  Label   = $WinPanel/WinBestLabel
 @onready var _reshuffle_lbl: Label   = $ReshuffleLabel
 @onready var _reshuffle_btn: Button  = $ReshuffleButton
 @onready var _mystery_label: Label   = $MysteryLabel
@@ -204,9 +210,21 @@ func _build_vials() -> void:
 	var _layout_tex := load("res://games/alchemical_sort/assets/bottle.png") as Texture2D
 	var vial_w: int = _layout_tex.get_width()
 	var vial_h: int = _layout_tex.get_height()
-	var row_w  := _vials_per_row * vial_w + (_vials_per_row - 1) * VIAL_SPACING
-	var origin_x := int((540.0 - row_w) / 2.0)
-	var origin_y := 130
+	var row_w    := _vials_per_row * vial_w + (_vials_per_row - 1) * VIAL_SPACING
+	var vp       := get_viewport_rect().size
+	var num_rows := ceili(float(total) / float(_vials_per_row))
+	var board_h  := num_rows * vial_h + (num_rows - 1) * (VIAL_SPACING + 16)
+	var ui_top   := 90.0
+
+	# X always centres the current difficulty's vials on screen.
+	# Y is locked to the shelf art position once shelf_origin_y is set in the Inspector.
+	var origin_x := int((vp.x - row_w) / 2.0)
+	var origin_y: int
+	if shelf_origin_y >= 0.0:
+		origin_y = int(shelf_origin_y)
+	else:
+		origin_y = int(ui_top + (vp.y - ui_top - 80.0 - board_h) / 2.0)
+		print("[alch_sort] shelf_origin_y = %d  — set in Inspector to lock" % origin_y)
 
 	for i in range(total):
 		var col := i % _vials_per_row
@@ -482,16 +500,32 @@ func _on_win() -> void:
 	if _selected:
 		_selected.show_selected(false)
 		_selected = null
+	var prev_best := _best_moves
 	_save_progress()
-	_load_save()   # refresh best_moves display
+	_load_save()
+	var is_new_best := prev_best == 0 or _move_count < prev_best
 	_win_moves_lbl.text = "in %d moves" % _move_count
+	if is_new_best:
+		_win_best_lbl.text = "NEW BEST!"
+		_win_best_lbl.add_theme_color_override("font_color", Color(1, 0.82, 0.1))
+	else:
+		_win_best_lbl.text = "Best: %d moves" % _best_moves
+		_win_best_lbl.add_theme_color_override("font_color", Color(0.7, 0.75, 0.82))
+	_win_panel.modulate.a = 0.0
 	_win_panel.visible = true
+	var tw := create_tween()
+	tw.tween_property(_win_panel, "modulate:a", 1.0, 0.4).set_ease(Tween.EASE_OUT)
 
 
 func _on_new_game_pressed() -> void:
 	_win_panel.visible = false
 	prepare_board()
 	start_game()
+
+
+func _on_back_from_win_pressed() -> void:
+	_win_panel.visible = false
+	_on_back_pressed()
 
 
 # ---- undo -------------------------------------------------------------------

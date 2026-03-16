@@ -149,7 +149,7 @@ volume_db = -5.0
 
 [node name="Bg" type="Sprite2D" parent="."]
 z_index = -999
-position = Vector2(270, 480)
+position = Vector2(270, 619)
 scale = Vector2(0.499284, 0.499284)
 texture = ExtResource("13_d4bl2")
 
@@ -161,10 +161,10 @@ texture = ExtResource("14_nd3sr")
 
 [node name="Back_Button" type="TextureButton" parent="."]
 z_index = 800
-offset_left = 23.5
-offset_top = 894.0
-offset_right = 121.5
-offset_bottom = 992.0
+offset_left = 24.0
+offset_top = 1034.0
+offset_right = 122.0
+offset_bottom = 1132.0
 scale = Vector2(0.5, 0.5)
 texture_normal = ExtResource("18_bvndk")
 texture_pressed = ExtResource("19_pok54")

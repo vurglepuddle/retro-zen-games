@@ -2,11 +2,13 @@
 extends Node2D
 
 signal back_to_menu
+signal play_again
 
 const TILE_SCENE = preload("res://games/gem_match/scenes/Tile.tscn")
 
-# Octagonal board (10 rows x 7 cols). 0 = empty cell, 1 = valid cell.
+# Octagonal board (11 rows x 7 cols). 0 = empty cell, 1 = valid cell.
 const SHAPE := [
+	[1,1,1,1,1,1,1],
 	[1,1,1,1,1,1,1],
 	[1,1,1,1,1,1,1],
 	[1,1,1,1,1,1,1],
@@ -53,12 +55,36 @@ const COMBO_WORDS := [
 	"COSMICALLY TRANSCENDENT!", "GOD-TIER!", "MULTIVERSAL!",
 ]
 
+const TIMED_DURATION      := 90.0
+const TIMED_SAVE_PATH     := "user://gem_match_save.cfg"
+const LEVEL_BASE_TARGET   := 1000   # score to beat level 1
+const LEVEL_TARGET_SCALE  := 1.3    # each level needs 30% more than the last
+const LEVEL_TIME_BONUS    := 5.0    # seconds granted on each level-up
+
 # Hint system — after HINT_DELAY seconds of no input, pulse a valid swap pair.
 const HINT_DELAY := 5.0
 var _hint_timer: float = 0.0
 var _hint_tiles: Array = []
 
 var _game_active: bool = false
+
+var _timed_mode:       bool  = false
+var _time_remaining:   float = 0.0
+var _timer_label:      Label = null
+var _game_over_panel:  Control = null
+var _go_title_label:   Label = null
+var _go_level_label:   Label = null
+var _go_score_label:   Label = null
+var _go_best_label:    Label = null
+
+var _level_mode:        bool  = false
+var _timed_level:       int   = 1
+var _level_score_start: int   = 0
+var _level_target:      int   = 0
+var _leveling_up:       bool  = false
+var _score_bar_bg:      ColorRect = null
+var _score_bar_fill:    ColorRect = null
+var _level_label:       Label = null
 
 # Score milestone flash overlay.
 var _flash_overlay: ColorRect = null
@@ -68,7 +94,9 @@ var _next_milestone: int = 1000
 @onready var score_label: Label      = $ScoreLabel
 @onready var shuffle_label: Label    = $ShuffleLabel
 @onready var combo_label: Label      = $ComboLabel
-@onready var back_button: TextureButton     = $Back_Button
+@onready var back_button: TextureButton = $Back_Button
+@onready var _bg:     Sprite2D = $Bg
+@onready var _bg_top: Sprite2D = $BgTop
 
 @onready var sfx_swap:      AudioStreamPlayer = $SfxSwap
 @onready var sfx_match:     AudioStreamPlayer = $SfxMatch
@@ -105,12 +133,187 @@ func _ready() -> void:
 	layer.add_child(_flash_overlay)
 
 	#back_button.pressed.connect(_go_back_to_menu)
+	_build_timer_label()
+	_build_score_bar()
+	_build_game_over_panel()
+
+
+func set_timed_mode(timed: bool) -> void:
+	_timed_mode = timed
+	_level_mode = false
+
+
+func set_level_mode(level: bool) -> void:
+	_level_mode = level
+	_timed_mode = level  # level mode implies timed
+
+
+func _build_timer_label() -> void:
+	_timer_label = Label.new()
+	_timer_label.visible = false
+	_timer_label.z_index = 999
+	var vp_w := get_viewport_rect().size.x
+	_timer_label.position = Vector2(vp_w - 200.0, 4.0)
+	_timer_label.size = Vector2(190.0, 48.0)
+	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_timer_label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	var font := load("res://assets/font/vetka.ttf") as FontFile
+	_timer_label.add_theme_font_override("font", font)
+	_timer_label.add_theme_font_size_override("font_size", 40)
+	_timer_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	_timer_label.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
+	_timer_label.add_theme_constant_override("outline_size", 5)
+	add_child(_timer_label)
+
+
+func _build_score_bar() -> void:
+	var vp  := get_viewport_rect().size
+	var bar_x := 20.0
+	var bar_y := 56.0
+	var bar_w := vp.x - 40.0
+	var bar_h := 12.0
+	var font  := load("res://assets/font/vetka.ttf") as FontFile
+
+	# "Lv.N" label — top-left, shown only in level mode.
+	_level_label = Label.new()
+	_level_label.visible = false
+	_level_label.z_index = 999
+	_level_label.position = Vector2(10.0, 2.0)
+	_level_label.size     = Vector2(180.0, 52.0)
+	_level_label.add_theme_font_override("font", font)
+	_level_label.add_theme_font_size_override("font_size", 36)
+	_level_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	_level_label.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
+	_level_label.add_theme_constant_override("outline_size", 4)
+	add_child(_level_label)
+
+	# Progress bar background.
+	_score_bar_bg = ColorRect.new()
+	_score_bar_bg.color        = Color(0.08, 0.08, 0.14, 0.75)
+	_score_bar_bg.position     = Vector2(bar_x, bar_y)
+	_score_bar_bg.size         = Vector2(bar_w, bar_h)
+	_score_bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_score_bar_bg.visible      = false
+	_score_bar_bg.z_index      = 998
+	add_child(_score_bar_bg)
+
+	# Progress bar fill.
+	_score_bar_fill = ColorRect.new()
+	_score_bar_fill.color        = Color(1.0, 0.82, 0.1, 0.92)
+	_score_bar_fill.position     = Vector2(bar_x, bar_y)
+	_score_bar_fill.size         = Vector2(0.0, bar_h)
+	_score_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_score_bar_fill.visible      = false
+	_score_bar_fill.z_index      = 999
+	add_child(_score_bar_fill)
+
+
+func _build_game_over_panel() -> void:
+	var vp_size := get_viewport_rect().size
+	_game_over_panel = Control.new()
+	_game_over_panel.position = Vector2.ZERO
+	_game_over_panel.size = vp_size
+	_game_over_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_game_over_panel.visible = false
+	_game_over_panel.z_index = 900
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.0, 0.0, 0.0, 0.72)
+	bg.position = Vector2.ZERO
+	bg.size = vp_size
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_over_panel.add_child(bg)
+
+	var vbox := VBoxContainer.new()
+	var vp := get_viewport_rect().size
+	vbox.position = Vector2(vp.x / 2.0 - 200.0, vp.y / 2.0 - 220.0)
+	vbox.size = Vector2(400.0, 440.0)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 18)
+	_game_over_panel.add_child(vbox)
+
+	var font := load("res://assets/font/vetka.ttf") as FontFile
+
+	_go_title_label = Label.new()
+	_go_title_label.text = "TIME'S UP!"
+	_go_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_go_title_label.add_theme_font_override("font", font)
+	_go_title_label.add_theme_font_size_override("font_size", 64)
+	_go_title_label.add_theme_color_override("font_color", Color(1, 0.82, 0.1))
+	_go_title_label.add_theme_color_override("font_outline_color", Color(0.15, 0.1, 0.1))
+	_go_title_label.add_theme_constant_override("outline_size", 6)
+	vbox.add_child(_go_title_label)
+
+	# Level reached — only visible in level mode.
+	_go_level_label = Label.new()
+	_go_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_go_level_label.add_theme_font_override("font", font)
+	_go_level_label.add_theme_font_size_override("font_size", 44)
+	_go_level_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	_go_level_label.add_theme_color_override("font_outline_color", Color(0.15, 0.1, 0.1))
+	_go_level_label.add_theme_constant_override("outline_size", 4)
+	_go_level_label.visible = false
+	vbox.add_child(_go_level_label)
+
+	_go_score_label = Label.new()
+	_go_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_go_score_label.add_theme_font_override("font", font)
+	_go_score_label.add_theme_font_size_override("font_size", 44)
+	_go_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	_go_score_label.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.1))
+	_go_score_label.add_theme_constant_override("outline_size", 4)
+	vbox.add_child(_go_score_label)
+
+	_go_best_label = Label.new()
+	_go_best_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_go_best_label.add_theme_font_override("font", font)
+	_go_best_label.add_theme_font_size_override("font_size", 32)
+	_go_best_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	_go_best_label.add_theme_color_override("font_outline_color", Color(0.2, 0.15, 0.1))
+	_go_best_label.add_theme_constant_override("outline_size", 3)
+	vbox.add_child(_go_best_label)
+
+	var btn_again := Button.new()
+	btn_again.text = "PLAY AGAIN"
+	btn_again.flat = true
+	btn_again.add_theme_font_override("font", font)
+	btn_again.add_theme_font_size_override("font_size", 40)
+	btn_again.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	btn_again.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
+	btn_again.add_theme_constant_override("outline_size", 3)
+	btn_again.pressed.connect(func():
+		if sfx_click and sfx_click.stream: sfx_click.play()
+		_game_over_panel.visible = false
+		play_again.emit()
+	)
+	vbox.add_child(btn_again)
+
+	var btn_menu := Button.new()
+	btn_menu.text = "< MENU"
+	btn_menu.flat = true
+	btn_menu.add_theme_font_override("font", font)
+	btn_menu.add_theme_font_size_override("font_size", 40)
+	btn_menu.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+	btn_menu.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
+	btn_menu.add_theme_constant_override("outline_size", 3)
+	btn_menu.pressed.connect(func():
+		if sfx_click and sfx_click.stream: sfx_click.play()
+		_game_over_panel.visible = false
+		_go_back_to_menu()
+	)
+	vbox.add_child(btn_menu)
+
+	add_child(_game_over_panel)
 
 
 func back_button_pressed() -> void:
 	if sfx_click.stream: sfx_click.play()
 	_go_back_to_menu()
 
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_go_back_to_menu()
 
 
 func prepare_board() -> void:
@@ -134,6 +337,24 @@ func prepare_board() -> void:
 		for c in range(board_cols):
 			if board[r][c] != null:
 				board[r][c].modulate.a = 0.0
+	_time_remaining    = TIMED_DURATION
+	_timed_level       = 1
+	_leveling_up       = false
+	_level_score_start = 0
+	_level_target      = _level_target_for(1)
+	if _timer_label:
+		_timer_label.visible = _timed_mode
+		_update_timer_display()
+	if _level_label:
+		_level_label.visible = _level_mode
+		_update_level_label()
+	if _score_bar_bg:
+		_score_bar_bg.visible = _level_mode
+	if _score_bar_fill:
+		_score_bar_fill.visible = _level_mode
+		_score_bar_fill.size.x  = 0.0
+	if _game_over_panel:
+		_game_over_panel.visible = false
 
 
 func start_game() -> void:
@@ -197,6 +418,8 @@ func _position_board() -> void:
 		(vp.x - board_w * s) / 2.0,
 		ui_top + (vp.y - ui_top - margin - board_h * s) / 2.0
 	)
+	_bg.position     = Vector2(vp.x / 2.0, vp.y / 2.0)
+	_bg_top.position = Vector2(vp.x / 2.0, _bg_top.position.y)
 
 
 func _update_all_tile_positions() -> void:
@@ -265,6 +488,15 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if not _game_active:
 		return
+	if _timed_mode:
+		_time_remaining -= delta
+		if _time_remaining <= 0.0:
+			_time_remaining = 0.0
+			_update_timer_display()
+			_game_active = false
+			_time_up()
+			return
+		_update_timer_display()
 	if _busy:
 		_hint_timer = 0.0
 		if not _hint_tiles.is_empty():
@@ -428,6 +660,8 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 		_swap_logic(tile, other)
 		await _tween_two(tile, p1, other, p2, 0.10)
 		await _fire_color_bomb(color_bomb, bomb_target.level)
+		if _level_mode:
+			await _check_level_up()
 		_busy = false
 		return
 
@@ -446,6 +680,8 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 	else:
 		_play_sfx(sfx_swap)
 		await _resolve_matches_animated(matches)
+		if _level_mode:
+			await _check_level_up()
 
 	_busy = false
 
@@ -592,19 +828,20 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		# 1. Scale matched tiles to zero then free them.
 		if to_remove.size() > 0:
 			for center in bomb_flash_centers:
-				_flash_rect_in_board(
-					Rect2((center.c - 1) * float(cell_size), (center.r - 1) * float(cell_size),
-						  3.0 * cell_size, 3.0 * cell_size),
-					Color(1.0, 0.55, 0.08, 0.55))
+				for dr in range(-1, 2):
+					for dc in range(-1, 2):
+						var nr: int = center.r + dr
+						var nc: int = center.c + dc
+						if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols \
+								and SHAPE[nr][nc] == 1:
+							_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.55))
 			for center in cross_flash_centers:
-				_flash_rect_in_board(
-					Rect2(0, center.r * float(cell_size),
-						  board_cols * float(cell_size), float(cell_size)),
-					Color(0.25, 0.55, 1.0, 0.55))
-				_flash_rect_in_board(
-					Rect2(center.c * float(cell_size), 0,
-						  float(cell_size), board_rows * float(cell_size)),
-					Color(0.25, 0.55, 1.0, 0.55))
+				for nc in range(board_cols):
+					if SHAPE[center.r][nc] == 1:
+						_flash_cell_in_board(center.r, nc, Color(0.25, 0.55, 1.0, 0.55))
+				for nr in range(board_rows):
+					if SHAPE[nr][center.c] == 1:
+						_flash_cell_in_board(nr, center.c, Color(0.25, 0.55, 1.0, 0.55))
 			_play_sfx(sfx_match)
 			var tw := create_tween()
 			tw.set_parallel(true)
@@ -721,10 +958,7 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 
 	for t in to_remove:
 		if is_instance_valid(t):
-			_flash_rect_in_board(
-				Rect2(t.col * float(cell_size), t.row * float(cell_size),
-					  float(cell_size), float(cell_size)),
-				Color(0.12, 0.0, 0.22, 0.55))
+			_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55))
 
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -1105,6 +1339,7 @@ func update_score_display() -> void:
 	if score_label == null:
 		return
 	_check_milestone()
+	_update_score_bar()
 	if _score_tween != null and _score_tween.is_valid():
 		_score_tween.kill()
 	_score_tween = create_tween()
@@ -1160,6 +1395,12 @@ func _flash_rect_in_board(rect: Rect2, color: Color) -> void:
 	tw.tween_callback(p.queue_free)
 
 
+func _flash_cell_in_board(r: int, c: int, color: Color) -> void:
+	_flash_rect_in_board(
+		Rect2(c * float(cell_size), r * float(cell_size), float(cell_size), float(cell_size)),
+		color)
+
+
 # ----- Audio helpers --------------------------------------------------------
 
 func _play_sfx(player: AudioStreamPlayer) -> void:
@@ -1171,3 +1412,145 @@ func _play_sfx_delayed(player: AudioStreamPlayer, delay: float) -> void:
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	_play_sfx(player)
+
+
+# ----- Timed mode -----------------------------------------------------------
+
+func _update_timer_display() -> void:
+	if _timer_label == null:
+		return
+	var secs := int(ceil(_time_remaining))
+	var m    := int(secs / 60.0)
+	var s    := secs % 60
+	_timer_label.text = "%d:%02d" % [m, s]
+	if _time_remaining <= 10.0:
+		_timer_label.add_theme_color_override("font_color", Color(1, 0.25, 0.2))
+	else:
+		_timer_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
+
+
+func _time_up() -> void:
+	_stop_hints()
+	for child in get_children():
+		if child is AudioStreamPlayer and child != sfx_click:
+			child.stop()
+	_show_game_over_panel()
+
+
+func _load_timed_best() -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(TIMED_SAVE_PATH) == OK:
+		return cfg.get_value("timed", "best_score", 0)
+	return 0
+
+
+func _save_timed_best() -> void:
+	if score <= _load_timed_best():
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(TIMED_SAVE_PATH)
+	cfg.set_value("timed", "best_score", score)
+	cfg.save(TIMED_SAVE_PATH)
+
+
+func _show_game_over_panel() -> void:
+	if _game_over_panel == null:
+		return
+	if _level_mode:
+		var prev_best := _load_level_best()
+		_save_level_best(_timed_level)
+		var is_new := _timed_level > prev_best
+		_go_title_label.text    = "TIME'S UP!"
+		_go_level_label.visible = true
+		_go_level_label.text    = "Level %d reached" % _timed_level
+		_go_score_label.text    = "Score: %d" % score
+		_go_best_label.text     = "NEW BEST!" if is_new else ("Best: Level %d" % _load_level_best())
+		_go_best_label.add_theme_color_override(
+			"font_color", Color(1, 0.82, 0.1) if is_new else Color(1, 0.945, 0.627))
+	else:
+		var prev_best := _load_timed_best()
+		_save_timed_best()
+		var new_best  := _load_timed_best()
+		_go_title_label.text    = "TIME'S UP!"
+		_go_level_label.visible = false
+		_go_score_label.text    = "Score: %d" % score
+		_go_best_label.text     = "NEW BEST!" if score > prev_best else "Best: %d" % new_best
+		_go_best_label.add_theme_color_override(
+			"font_color", Color(1, 0.82, 0.1) if score > prev_best else Color(1, 0.945, 0.627))
+	_game_over_panel.modulate.a = 0.0
+	_game_over_panel.visible    = true
+	var tw := create_tween()
+	tw.tween_property(_game_over_panel, "modulate:a", 1.0, 0.4).set_ease(Tween.EASE_OUT)
+
+
+func _load_level_best() -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(TIMED_SAVE_PATH) == OK:
+		return cfg.get_value("level", "best_level", 0)
+	return 0
+
+
+func _save_level_best(reached: int) -> void:
+	if reached <= _load_level_best():
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(TIMED_SAVE_PATH)
+	cfg.set_value("level", "best_level", reached)
+	cfg.save(TIMED_SAVE_PATH)
+
+
+# ----- Level mode -----------------------------------------------------------
+
+func _level_target_for(level: int) -> int:
+	return int(float(LEVEL_BASE_TARGET) * pow(LEVEL_TARGET_SCALE, level - 1))
+
+
+func _update_score_bar() -> void:
+	if _score_bar_fill == null or not _level_mode:
+		return
+	var bar_w    := get_viewport_rect().size.x - 40.0
+	var progress := clampf(float(score - _level_score_start) / float(_level_target), 0.0, 1.0)
+	_score_bar_fill.size.x = bar_w * progress
+
+
+func _update_level_label() -> void:
+	if _level_label != null:
+		_level_label.text = "Lv.%d" % _timed_level
+
+
+func _show_level_up_banner() -> void:
+	if combo_label == null:
+		return
+	if _combo_tween != null and _combo_tween.is_valid():
+		_combo_tween.kill()
+	combo_label.text       = "LEVEL %d!" % _timed_level
+	combo_label.modulate.a = 1.0
+	combo_label.z_index    = 999
+	combo_label.scale      = Vector2(0.4, 0.4)
+	combo_label.visible    = true
+	_combo_tween = create_tween()
+	_combo_tween.tween_property(combo_label, "scale", Vector2(1.2, 1.2), 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_combo_tween.tween_property(combo_label, "scale", Vector2.ONE, 0.10)
+	_combo_tween.tween_interval(0.80)
+	_combo_tween.tween_property(combo_label, "modulate:a", 0.0, 0.30)
+	_combo_tween.tween_callback(func(): combo_label.visible = false)
+	_play_sfx(sfx_match)
+
+
+func _check_level_up() -> void:
+	if not _level_mode or _leveling_up:
+		return
+	if score - _level_score_start < _level_target:
+		return
+	_leveling_up = true
+	_timed_level       += 1
+	_level_score_start  = score
+	_level_target       = _level_target_for(_timed_level)
+	_time_remaining     = minf(_time_remaining + LEVEL_TIME_BONUS, TIMED_DURATION)
+	_update_level_label()
+	_show_level_up_banner()
+	_update_score_bar()
+	# Brief yield so the banner tween kicks off before we unblock.
+	await get_tree().create_timer(0.05).timeout
+	_leveling_up = false
