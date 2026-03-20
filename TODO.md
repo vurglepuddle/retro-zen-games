@@ -253,6 +253,11 @@
 * ~~Auto-clear initial matches — `start_game()` scans all cells after drop-in and processes any pre-generated 3-matches~~ ✓
 * ~~Item perspective overlap — `SLOT_OVERLAP = 12`, `SLOT_Y_OFFSET = 16`; bottom item renders on top (tree order); dispenser slot 0 reset to y=0~~ ✓
 * ~~Drag snap fix — fallback nearest-empty radius search now always runs as a second pass (was blocked when exact hit landed on locked/dispenser cell)~~ ✓
+* ~~More dispensers — up to 4 per board; sub-probability decays ×0.45 after count ≥ 2~~ ✓
+* ~~Hazard dispenser belt — Hard only; `DISP_SCROLL_CELLS = 6` rightward-scrolling dispenser cells above the board (opposite main conveyor); 6th cell off-screen → invisible wrap; items allocated from main pool~~ ✓
+* ~~Mystery items — Medium+, 60% chance, 3–5 items; near-black dusty-blue silhouette with vetka "?" overlay; scattered across visible AND z-stack layers; mystery state travels with item on move; never revealed on tap (blind matching); drag sprite also darkened~~ ✓
+* ~~Dispenser depth indicator — row of small blue dots at bottom of dispenser cell; count = items remaining; auto-updates via `_refresh_dispenser_indicator()` on every `_refresh_all()`~~ ✓
+* ~~Locked cell counter font — uses vetka.ttf~~ ✓
 
 **Quality of Life**
 * Ambient music track (placeholder commented out in Main.gd — assign when ready)
