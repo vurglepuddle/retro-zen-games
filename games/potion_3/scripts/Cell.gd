@@ -23,6 +23,8 @@ const DISP_BG_PAD_V  := -4     # dispenser bg: px trimmed on top and bottom
 var _slots: Array[int] = [0, 0, 0]   # current visible items (0 = empty)
 var _z_stack: Array     = []          # remaining layers below; each Array[int] of size 3
 var _item_textures: Dictionary = {}   # shared ref from Game: item_id → Texture2D
+var _slot_mystery: Array[bool] = [false, false, false]  # mystery per current-layer slot
+var _z_stack_mystery: Array     = []                    # parallel to _z_stack; Array[bool,bool,bool] per layer
 
 # --- Special cell state ---
 var _is_locked:     bool = false   # locked: items inaccessible until N matches made
@@ -33,9 +35,12 @@ var _unlock_counter: int = 0       # matches remaining to unlock this cell
 var _slot_rects:      Array[TextureRect] = []
 var _preview_rects:   Array[TextureRect] = []
 var _slot_highlights: Array[Panel]       = []
+var _mystery_panels:  Array[Panel]       = []
 var _bg:           Panel = null
 var _lock_overlay: Panel = null    # dark overlay drawn over a locked cell
 var _lock_label:   Label = null    # shows remaining-match count on the overlay
+var _disp_dots:    Array[ColorRect] = []   # indicator dots for dispenser depth
+var _disp_total:   int = 0                 # total items at dispenser creation time
 
 
 # ============================================================================
@@ -59,6 +64,11 @@ func setup(slots: Array, z_stack: Array, textures: Dictionary) -> void:
 	while not has_items() and not _z_stack.is_empty():
 		var next: Array = _z_stack.pop_front()
 		_slots = [next[0] as int, next[1] as int, next[2] as int]
+
+	# Parallel mystery array — one [false,false,false] entry per z-stack layer.
+	_z_stack_mystery = []
+	for _li in range(_z_stack.size()):
+		_z_stack_mystery.append([false, false, false])
 
 	_build_visuals()
 
@@ -106,10 +116,17 @@ func clear_match() -> void:
 
 func reveal_next_layer() -> void:
 	if _z_stack.is_empty():
+		_slot_mystery = [false, false, false]
 		_refresh_all()
 		return
 	var next_layer: Array = _z_stack.pop_front()
 	_slots = [next_layer[0] as int, next_layer[1] as int, next_layer[2] as int]
+	# Apply the mystery flags stored for this layer.
+	if not _z_stack_mystery.is_empty():
+		var mys: Array = _z_stack_mystery.pop_front()
+		_slot_mystery = [mys[0] as bool, mys[1] as bool, mys[2] as bool]
+	else:
+		_slot_mystery = [false, false, false]
 	_refresh_all()
 	for i in range(SLOTS):
 		if _slots[i] != 0:
@@ -182,6 +199,27 @@ func layers_remaining() -> int:
 
 func set_slot_visible(slot_idx: int, vis: bool) -> void:
 	_slot_rects[slot_idx].visible = vis
+	if slot_idx < _mystery_panels.size():
+		_mystery_panels[slot_idx].visible = vis and _slot_mystery[slot_idx]
+
+
+func set_slot_mystery(idx: int, val: bool) -> void:
+	if idx < 0 or idx >= SLOTS:
+		return
+	_slot_mystery[idx] = val
+	_refresh_slot(idx)
+
+
+func is_slot_mystery(idx: int) -> bool:
+	return idx < _slot_mystery.size() and _slot_mystery[idx]
+
+
+func set_z_slot_mystery(layer_idx: int, slot_idx: int, val: bool) -> void:
+	if layer_idx < 0 or layer_idx >= _z_stack_mystery.size():
+		return
+	if slot_idx < 0 or slot_idx >= 3:
+		return
+	_z_stack_mystery[layer_idx][slot_idx] = val
 
 
 # ============================================================================
@@ -268,6 +306,23 @@ func set_as_dispenser() -> void:
 
 	_refresh_all()
 
+	# Depth indicator — a row of small dots at the bottom of the cell.
+	_disp_total = _z_stack.size() + (1 if _slots[0] != 0 else 0)
+	const DOT_W := 7
+	const DOT_H := 5
+	const DOT_GAP := 3
+	var bar_w := _disp_total * DOT_W + (_disp_total - 1) * DOT_GAP
+	var start_x := int((CELL_W - bar_w) / 2.0)
+	for di in range(_disp_total):
+		var dot := ColorRect.new()
+		dot.size         = Vector2(DOT_W, DOT_H)
+		dot.position     = Vector2(start_x + di * (DOT_W + DOT_GAP), ITEM_SIZE - DOT_H - 3)
+		dot.color        = Color(0.55, 0.72, 1.0, 0.85)
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(dot)
+		_disp_dots.append(dot)
+	_refresh_dispenser_indicator()
+
 
 func set_as_locked(unlock_count: int) -> void:
 	_is_locked      = true
@@ -293,6 +348,7 @@ func set_as_locked(unlock_count: int) -> void:
 	# Remaining-match counter in the centre of the overlay.
 	_lock_label = Label.new()
 	_lock_label.text = str(_unlock_counter)
+	_lock_label.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
 	_lock_label.add_theme_font_size_override("font_size", 32)
 	_lock_label.add_theme_color_override("font_color", Color(0.65, 0.65, 0.85, 0.9))
 	_lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -315,6 +371,14 @@ func notify_match() -> bool:
 	if _lock_label != null:
 		_lock_label.text = str(_unlock_counter)
 	return false
+
+
+func _refresh_dispenser_indicator() -> void:
+	if not _is_dispenser or _disp_dots.is_empty():
+		return
+	var remaining := _z_stack.size() + (1 if _slots[0] != 0 else 0)
+	for i in range(_disp_dots.size()):
+		_disp_dots[i].visible = i < remaining
 
 
 func set_scroll_row_visual() -> void:
@@ -422,24 +486,62 @@ func _build_visuals() -> void:
 
 	_refresh_all()
 
+	# 4. Mystery overlays — transparent panel + "?" label over darkened sprite, hidden by default.
+	_mystery_panels.clear()
+	var mystery_font: Font = load("res://assets/font/vetka.ttf")
+	for i in range(SLOTS):
+		var mp := Panel.new()
+		var mp_style := StyleBoxFlat.new()
+		mp_style.bg_color = Color(0, 0, 0, 0)   # fully transparent — darkened sprite shows through
+		mp_style.set_corner_radius_all(6)
+		mp.add_theme_stylebox_override("panel", mp_style)
+		mp.size         = Vector2(ITEM_SIZE, ITEM_SIZE)
+		mp.position     = _slot_rects[i].position
+		mp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mp.visible      = false
+		add_child(mp)
+		var ql := Label.new()
+		ql.text                  = "?"
+		ql.size                  = mp.size
+		ql.horizontal_alignment  = HORIZONTAL_ALIGNMENT_CENTER
+		ql.vertical_alignment    = VERTICAL_ALIGNMENT_CENTER
+		ql.mouse_filter          = Control.MOUSE_FILTER_IGNORE
+		ql.add_theme_font_override("font", mystery_font)
+		ql.add_theme_font_size_override("font_size", 44)
+		ql.add_theme_color_override("font_color", Color(0.90, 0.88, 1.0, 0.95))
+		mp.add_child(ql)
+		_mystery_panels.append(mp)
+
 
 func _refresh_all() -> void:
 	for i in range(SLOTS):
 		_refresh_slot(i)
 	_refresh_preview()
+	_refresh_dispenser_indicator()
 
 
 func _refresh_slot(idx: int) -> void:
 	var rect := _slot_rects[idx]
 	var item_id := _slots[idx]
+	var is_mystery := idx < _slot_mystery.size() and _slot_mystery[idx]
 	if item_id != 0 and _item_textures.has(item_id):
-		rect.texture  = _item_textures[item_id]
-		rect.modulate = Color.WHITE
-		rect.scale    = Vector2.ONE
-		rect.visible  = true
+		rect.scale   = Vector2.ONE
+		rect.visible = true
+		if is_mystery:
+			rect.texture  = _item_textures[item_id]
+			rect.modulate = Color(0.02, 0.03, 0.08, 1.0)   # near-black dusty blue — silhouette only
+			if idx < _mystery_panels.size():
+				_mystery_panels[idx].visible = true
+		else:
+			rect.texture  = _item_textures[item_id]
+			rect.modulate = Color.WHITE
+			if idx < _mystery_panels.size():
+				_mystery_panels[idx].visible = false
 	else:
 		rect.texture = null
 		rect.visible = false
+		if idx < _mystery_panels.size():
+			_mystery_panels[idx].visible = false
 
 
 func _refresh_preview() -> void:

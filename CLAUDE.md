@@ -343,6 +343,8 @@ Goods-sort / triple-match game. The board is a grid of **vertical shelf cells** 
 | `Game.SCROLL_INTERVAL` | **2.5 s** | Duration of one scroll tick (continuous, no pause) |
 | `Game.COL_SPACING` | **0** | Padding built into CELL_W |
 | `Game.ROW_SPACING` | **9** | Gap between rows: 3×270 + 2×9 = 828 px board |
+| `Game.DISP_SCROLL_CELLS` | **6** | Visible cells in hazard belt; 6×108=648 > 540 → rightmost off-screen → invisible wrap |
+| `Game.DISP_SCROLL_INTERVAL` | **2.0 s** | Hazard belt scroll speed |
 
 Difficulty layout (set by `Game.set_difficulty()` before `prepare_board()`):
 
@@ -358,10 +360,13 @@ Difficulty layout (set by `Game.set_difficulty()` before `prepare_board()`):
 - `class_name PotionCell`, extends `Control`; instantiated purely in code — no `.tscn`
 - `_slots: Array[int]` — 3 item IDs (0 = empty) for the current (top) layer
 - `_z_stack: Array` — array of `[id0, id1, id2]` layers hidden below; index 0 = next to reveal
+- `_slot_mystery: Array[bool]` — per-slot mystery flag for the current visible layer
+- `_z_stack_mystery: Array` — parallel to `_z_stack`; each entry is `[bool, bool, bool]` per layer; auto-applied to `_slot_mystery` when `reveal_next_layer()` pops a layer
 - **Vertical layout**: slot `i` rect at `y = SLOT_Y_OFFSET + i * (ITEM_SIZE − SLOT_OVERLAP)`; bottom slot (index 2) added last → rendered on top (perspective depth)
 - **Preview rects**: slightly offset behind/above main rects at 20-25% brightness
 - **Selection**: golden `StyleBoxFlat` highlight per slot, toggled via `show_slot_highlight(slot_idx, lit)`
 - **Hit-testing**: always via `get_global_rect()` in Game — slot index = `clampi(int(local_y / ITEM_SIZE), 0, SLOTS−1)`
+- **Mystery items**: slot rendered as near-black dusty-blue silhouette (`modulate = Color(0.02,0.03,0.08,1)`); "?" label (vetka.ttf) overlaid on transparent panel; mystery state travels with item on move (`_try_move` carries and re-applies flag); never revealed on tap — blind matching only; `set_slot_visible()` hides the "?" panel too during drag
 
 ### Special Cell Types
 
@@ -373,12 +378,22 @@ Difficulty layout (set by `Game.set_difficulty()` before `prepare_board()`):
 - Slot 0 y-position reset to 0 (no `SLOT_Y_OFFSET`) after `set_as_dispenser()`
 - Background size controlled by `DISP_BG_PAD_H` / `DISP_BG_PAD_V` (independent of `VISUAL_INSET`)
 - ⬇ label indicator in the cell
+- **Depth indicator**: row of small blue dots (7×5 px, 3 px gap) at the bottom of the cell; `_disp_total` dots created at setup; `_refresh_dispenser_indicator()` hides dots beyond the current remaining count; called from `_refresh_all()` automatically
 
 **Locked** (`set_as_locked(unlock_count)`):
 - Full-size dark overlay (`CELL_W × CELL_H`, no inset) — completely covers items and preview rects
-- Counter shown in centre of overlay; decrements on every match anywhere on the board (`notify_match()`)
+- Counter shown in centre of overlay using vetka.ttf; decrements on every match anywhere on the board (`notify_match()`)
 - Overlay fades out on unlock; `_refresh_preview()` called after to restore preview rects
 - `has_empty_slot()` returns −1 while locked; `is_fully_empty()` always false while locked
+
+**Hazard Dispenser Belt** (`_create_disp_scroll_belt()` / `_advance_disp_scroll()`):
+- Hard mode only; scrolls **rightward** (opposite the main conveyor belt)
+- `DISP_SCROLL_CELLS = 6` visible dispenser cells positioned above the board (`belt_y = origin_y − ITEM_SIZE − 18`) in the 200 px empty space at the top
+- 6 cells × 108 px = 648 px > 540 px viewport → rightmost cell is always off-screen → wrap is invisible
+- Array layout: `[buffer(off-left), vis0..vis5]`; each cell `i` targets `_board_origin_x + i × CELL_W`; rightmost wraps to off-left buffer position
+- Items allocated from pool in `_generate_board_data()` (`DISP_SCROLL_CELLS + 1` groups)
+- `_hazard_disp_scroll: bool` flag; `_disp_scroll_cells` and `_disp_scroll_buffer` track belt state
+- `_advance_disp_scroll()` uses `tween.finished.connect` (no `await`) to avoid freed-lambda crash; guarded by `_game_generation`
 
 **Scrolling row** (`set_scroll_row_visual()`):
 - Amber-tinted background; rows decided in `_apply_difficulty_layout()` before board generation
@@ -393,7 +408,10 @@ Difficulty layout (set by `Game.set_difficulty()` before `prepare_board()`):
 Decided in `_apply_difficulty_layout()` before any cells exist (so board gen can allocate items for dispensers). Types shuffled then rolled with decaying probability:
 - Base: `0.55` (Hard) / `0.38` (Medium); each win multiplies by `0.42`
 - Result: "nothing" and "one special" are common; "all three" is rare (~10%)
-- Dispenser count and scrolling row indices are stored in member vars (`_dispenser_count`, `_scrolling_rows`) for `_generate_board_data()` and `_build_cells()` to use
+- Dispenser count: 1–4; sub-probability to add another decays by ×0.45 after count ≥ 2
+- Hard mode adds `"hazard_disp_scroll"` to the types list before shuffle
+- Dispenser count, scrolling row indices, and hazard belt flag stored in member vars for `_generate_board_data()` and `_build_cells()`
+- Mystery items: rolled separately in `_generate_special_cells()` — Medium+, 60% chance, 3–5 items scattered across visible layer AND z-stack layers of non-locked non-dispenser cells
 
 ### Board Generation
 
@@ -444,13 +462,15 @@ prepare_board()
        → _generate_board_data()     # allocates items for grid + dispensers + scroll buffers
        → main grid cells created
        → buffer cells created off-screen for scrolling rows
-       → _generate_special_cells()  # applies scroll tint; sets locked cells
+       → _generate_special_cells()  # applies scroll tint; sets locked cells; applies mystery items
        → _create_dispenser_cells()  # creates 1-tall cells below board
+       → _create_disp_scroll_belt() # Hard only: rightward-scrolling hazard belt above board
 
 start_game()
   → staggered drop-in animation
   → auto-clear any pre-generated 3-matches
   → _advance_scroll(r) for each scrolling row  ← continuous loop, no timer
+  → _advance_disp_scroll() for hazard belt (Hard only) ← continuous loop, no timer
 
 User press (Game._input — InputEventScreenTouch / MouseButton)
   → _find_pickup_slot_near(pos) or _find_cell_slot_at(pos)
