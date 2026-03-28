@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A **zen toybox** app built with **Godot Engine 4.3** using **GDScript**. The app launches a master menu from which the player picks a mini-game. Four games exist:
+A **zen toybox** app built with **Godot Engine 4.3** using **GDScript**. The app launches a master menu from which the player picks a mini-game. Five games exist:
 - **gem_match** — a relaxing match-3 puzzle game
 - **tile_chain** — a tile-pairing combo chain game
 - **alchemical_sort** — a color-sort puzzle game (alchemical bottles theme)
 - **potion_3** — a goods-sort / triple-match shelf game (pixel-art potion items)
+- **zen_farm** — an idle farming game with tool-based interaction and a land-expansion loop
 
 No npm, Makefile, or external build tools — everything runs through the Godot editor.
 
@@ -53,9 +54,16 @@ MasterMenu  (res://scenes/MasterMenu.tscn)
   │         │    └─ ‹ Back → MasterMenu
   │         └─ Game.tscn
   │              └─ ‹ Back → Menu.tscn
-  └─ tap "POTION_3" tile
-       └─ games/potion_3/scenes/Main.tscn  (orchestrator)
-            ├─ Menu.tscn  (title, difficulty selector, start, back)
+  ├─ tap "POTION_3" tile
+  │    └─ games/potion_3/scenes/Main.tscn  (orchestrator)
+  │         ├─ Menu.tscn  (title, difficulty selector, start, back)
+  │         │    ├─ Start  → Game.tscn
+  │         │    └─ ‹ Back → MasterMenu
+  │         └─ Game.tscn
+  │              └─ ‹ Back → Menu.tscn
+  └─ tap "ZEN FARM" tile
+       └─ games/zen_farm/scenes/Main.tscn  (orchestrator)
+            ├─ Menu.tscn  (title, continue/new game, back)
             │    ├─ Start  → Game.tscn
             │    └─ ‹ Back → MasterMenu
             └─ Game.tscn
@@ -118,6 +126,22 @@ match3_game/
         Menu.gd               emits start_game(difficulty) / back_to_master
         Game.gd               board generation, move/match/win logic, undo, save
         Cell.gd               class_name PotionCell; single shelf cell node
+    zen_farm/
+      assets/
+        sfx/                  plant, water, well_fill, harvest, weed_cut, buy_land,
+                               sell, upgrade, crop_tap, no_action (placeholder .mp3s)
+        music/                music.mp3 (melodic loop) + ambient.mp3 (ambient loop)
+      scenes/
+        Main.tscn             zen_farm orchestrator (Menu ↔ Game, fades, music)
+        Menu.tscn             title, Continue / New Farm, ‹ BACK
+        Game.tscn             4×4 grid + toolbar + well + seed panel + upgrade panel
+      scripts/
+        Main.gd               fades, music/ambient players, signal wiring
+        Menu.gd               emits start_game(is_new) / back_to_master
+        Game.gd               all farm logic (tools, crops, weeds, shop, animations)
+        FarmCell.gd           class_name FarmCell; single grid tile node
+        CropData.gd           class_name CropData; static crop definitions
+        SaveManager.gd        ConfigFile save/load (zen_farm_save.cfg)
   scenes/
     MasterMenu.tscn           master app menu (one tile per game)
   scripts/
@@ -141,6 +165,12 @@ match3_game/
 | `games/potion_3/scenes/Menu.tscn` | `…/scripts/Menu.gd` | Difficulty select; start + back signals |
 | `games/potion_3/scenes/Game.tscn` | `…/scripts/Game.gd` | Board + match + undo + win logic |
 | *(no .tscn — class only)* | `…/scripts/Cell.gd` | Single shelf cell; 3 slots + z-stack |
+| `games/zen_farm/scenes/Main.tscn` | `…/scripts/Main.gd` | zen_farm orchestrator; music |
+| `games/zen_farm/scenes/Menu.tscn` | `…/scripts/Menu.gd` | Continue/New Farm; start + back signals |
+| `games/zen_farm/scenes/Game.tscn` | `…/scripts/Game.gd` | All farm logic |
+| *(no .tscn — class only)* | `…/scripts/FarmCell.gd` | Single grid tile node |
+| *(no .tscn — class only)* | `…/scripts/CropData.gd` | Static crop data (5 crops) |
+| *(no .tscn — class only)* | `…/scripts/SaveManager.gd` | ConfigFile save/load |
 
 ### Communication Pattern
 
@@ -512,6 +542,136 @@ games/potion_3/
     Game.gd               all board logic
     Cell.gd               class_name PotionCell; shelf cell node
     Cell_triangular.gd    backup of triangular tessellation attempt (no class_name; not used)
+```
+
+---
+
+## zen_farm
+
+### Concept
+
+Idle farming game. The player owns a 4×4 grid of land tiles, all initially locked. They unlock tiles by spending coins, plant seeds, water crops, and harvest with shears to earn more coins. Weeds spawn on idle soil and must be cut. The watering can is a resource that must be refilled at the well. A shop panel offers watering can capacity upgrades.
+
+### Key Constants (`Game.gd`)
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `COLS` / `ROWS` | 4 / 4 | Grid size (16 tiles total) |
+| `TILE_SIZE` | 120 px | Inherits from `FarmCell.TILE_SIZE` |
+| `WEED_INTERVAL` | 45.0 s | Seconds between weed spawn attempts |
+
+### Tool System
+
+Three tools selected via the ToolBar:
+- **HAND** — default; taps locked tiles to purchase them; taps crops to inspect (shows status hint); contextual guidance for wrong-tool situations
+- **WATERING CAN** — waters crops / revives wilted crops; depletes charge per use; must be refilled at the Well; can is empty if `_can_water == 0`
+- **SHEARS** — harvests mature crops (earns coins + adds to inventory); cuts weeds (earns 1c + coin float); uproots seed-stage crops for a half-cost refund
+
+### Crops (`CropData.gd`)
+
+| Crop | ID | Unlock threshold | Seed cost | Sell value | Growth time |
+|------|----|-----------------|-----------|------------|-------------|
+| Lettuce | 1 | 0 tiles | 1c | 2c | 60 s |
+| Carrot | 0 | 4 tiles | 2c | 4c | 45 s |
+| Potato | 2 | 8 tiles | 3c | 6c | 90 s |
+| Tomato | 3 | 12 tiles | 4c | 9c | 120 s |
+| Pumpkin | 4 | 16 tiles | 6c | 15c | 180 s |
+
+Growth stages: seed → sprout → growing → READY (mature). Each non-mature stage requires watering; an unwatered crop accumulates `wilt_timer` and wilts after `stage_duration × 2` seconds without water.
+
+### Land Unlock Pricing
+
+Dynamic pricing based on tiles already owned (not locked):
+- 0–3 owned → 2c per tile
+- 4–7 owned → 4c per tile
+- 8–11 owned → 12c per tile
+- 12–15 owned → 25c per tile
+
+All locked tiles show the same current price at all times (updated after every purchase). A purchase is blocked if it would leave the player at 0 coins with no active crops growing (`_has_active_crops()` check).
+
+### Watering Can Upgrades (Shop)
+
+| Level | Capacity | Upgrade cost |
+|-------|----------|-------------|
+| 0 | 5 | — |
+| 1 | 10 | 15c |
+| 2 (MAX) | 20 | 35c |
+
+### Economy Safety Nets
+
+- **Weed cut → +1c**: cutting any weed with shears earns 1 coin; ensures recovery even with 0 crops
+- **Seed uproot refund**: shears on a seed-stage crop returns `max(1, seed_cost >> 1)` coins
+- **Purchase guard**: can't spend last coin on land if no crops are growing
+- **Sell button**: sells entire crop inventory at 70% of sell value
+
+### Save System (`SaveManager.gd`)
+
+Saves to `user://zen_farm_save.cfg`. Persists: coins, can_water, can_level, full inventory (all 5 crop IDs), and per-cell state (state, crop_id, growth_stage, time_in_stage, watered, wilt_timer). Offline catch-up simulates crop growth and wilting based on elapsed time since last save.
+
+### Audio
+
+- **Music**: `Main.gd` loads `assets/music/music.mp3` + `assets/music/ambient.mp3`; both loop continuously from app launch through menu and game; stopped before returning to MasterMenu. Set loop=true in Godot import settings for each file.
+- **SFX**: 10 `AudioStreamPlayer` nodes in `Game.tscn`; streams loaded at `_ready()` via `ResourceLoader.exists()` — missing files are silently skipped (no crash):
+
+| Node | File | Trigger |
+|------|------|---------|
+| `SfxPlant` | `sfx/plant.mp3` | Planting a seed |
+| `SfxWater` | `sfx/water.mp3` | Watering / reviving a crop |
+| `SfxWellFill` | `sfx/well_fill.mp3` | Refilling can at Well |
+| `SfxHarvest` | `sfx/harvest.mp3` | Harvesting a mature crop |
+| `SfxWeedCut` | `sfx/weed_cut.mp3` | Cutting a weed or uprooting a seed |
+| `SfxBuyLand` | `sfx/buy_land.mp3` | Purchasing a locked tile |
+| `SfxSell` | `sfx/sell.mp3` | Selling inventory |
+| `SfxUpgrade` | `sfx/upgrade.mp3` | Watering can upgrade |
+| `SfxCropTap` | `sfx/crop_tap.mp3` | Tapping a crop/wilted tile with HAND |
+| `SfxNoAction` | `sfx/no_action.mp3` | Any invalid or redirecting tap |
+
+### Data Flow
+
+```
+prepare_farm()
+  → _build_cells()           # 16 FarmCell nodes, all LOCKED state, cost=2
+  → SaveManager.load_game()  # load or reset to defaults (10 coins, can empty)
+  → _apply_offline_catchup() # simulate growth/wilting since last save
+
+_process(delta)
+  → _tick_crops()     # advance growth_stage; trigger wilt on unwatered
+  → _tick_weeds()     # every WEED_INTERVAL: 40% chance to spawn weed on soil
+
+User tap (FarmCell.tapped signal → Game._on_cell_tapped)
+  → if seeds panel open: _try_plant(cell)
+  → else match _active_tool:
+       HAND         → _try_hand(cell)
+       WATERING_CAN → _try_water_cell(cell)
+       SHEARS       → _try_shear(cell)
+
+Well tap (_on_well_gui_input)
+  → requires WATERING_CAN tool; fills _can_water to _can_max()
+```
+
+### Folder Structure
+
+```
+games/zen_farm/
+  assets/
+    sfx/
+      plant.mp3  water.mp3  well_fill.mp3  harvest.mp3  weed_cut.mp3
+      buy_land.mp3  sell.mp3  upgrade.mp3  crop_tap.mp3  no_action.mp3
+    music/
+      music.mp3     melodic loop
+      ambient.mp3   ambient/nature loop
+  scenes/
+    Main.tscn    orchestrator (Menu ↔ Game, fades, music/ambient players)
+    Menu.tscn    title + Continue/New Farm buttons + ‹ BACK
+    Game.tscn    4×4 grid, TopBar, ToolBar, WellPanel, SeedPanel,
+                 UpgradePanel, BottomBar, TipPanel, 10 SFX nodes, StatusTimer
+  scripts/
+    Main.gd        fades, music loading, signal wiring
+    Menu.gd        emits start_game(is_new: bool) / back_to_master
+    Game.gd        all farm logic (tools, growth, weeds, economy, animations, SFX)
+    FarmCell.gd    class_name FarmCell; Control node; 5 states; tapped signal
+    CropData.gd    class_name CropData; static tables for all 5 crops
+    SaveManager.gd static save/load via ConfigFile
 ```
 
 ---

@@ -18,8 +18,9 @@ Just tap-tap, clink-clink and some music.
 *   **Gem Match** (90% of features implemented, visual polish remaining) – A relaxed match-3 variant where gems merge and go boom. New modes added!
 *   **Tile Chain** (90%, more sets to be added) – A twist on NY-style tile game.
 *   **Alchemical Sort** (80%, most features implemented) – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
-*   **Potion Sort** (50%, core features implemented, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three. My favourite!
-    
+*   **Potion Sort** (60%, core loop complete, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three. My favourite!
+*   **Zen Farm** (50%, core loop complete, art & audio to be implemented) – An idle farming game. Unlock land, plant seeds, water crops, and harvest with shears. Weeds, a well, upgradeable watering can, and 5 crops with milestone unlocks.
+
 More small experiments and quiet mechanics will be added over time.
 ## Built With
 *   Godot Engine 4.3

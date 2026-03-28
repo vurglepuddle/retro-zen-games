@@ -302,6 +302,83 @@
 
 * * *
 * * *
+# ZEN FARM
+
+## Machine (Claude) Tasks
+
+**Core (Done)**
+* ~~Scaffold folder structure, scripts, scenes, MasterMenu tile~~ ✓
+* ~~4×4 grid of FarmCell nodes; LOCKED/SOIL/CROP/WILTED/WEED states~~ ✓
+* ~~Crop growth loop — 4 stages (seed/sprout/growing/mature); watered flag; wilt on neglect~~ ✓
+* ~~Weed spawning — every 45 s, 40% chance on idle soil; capped at 30% of soil tiles~~ ✓
+* ~~Tool system — HAND, WATERING CAN (resource), SHEARS (harvest/cut)~~ ✓
+* ~~Watering can — capacity 5; depletes on use; refills at Well~~ ✓
+* ~~Coin economy — harvest earns coins; sell button sells inventory at 70%; buy land costs coins~~ ✓
+* ~~Dynamic land pricing — 2c/4c/12c/25c per 4-tile bracket; all locked tiles show current price~~ ✓
+* ~~Onboarding — all tiles locked at start; tip panel on first play~~ ✓
+* ~~5 crops with milestone unlocks — Lettuce always, Carrot@4, Potato@8, Tomato@12, Pumpkin@16~~ ✓
+* ~~Seed costs — Lettuce 1c → Pumpkin 6c; paid on planting, not purchase~~ ✓
+* ~~Watering can upgrade shop — Lv0→Lv1 (15c, 10 charges) → Lv2 (35c, 20 charges, MAX)~~ ✓
+* ~~Save / load + offline catch-up (growth/wilt simulated from timestamp delta)~~ ✓
+* ~~Coin float animation on harvest; tile pop animation on unlock~~ ✓
+* ~~Economy safety nets — weed cut earns 1c; seed uproot refunds half cost; purchase guard vs 0-coin softlock~~ ✓
+* ~~SFX system — 10 AudioStreamPlayer nodes; graceful no-op when files missing~~ ✓
+* ~~Music — melodic loop + ambient loop in Main.gd; starts on load, stops on back-to-master~~ ✓
+
+**Feel & Polish**
+* Crop milestone notification animation — flash or banner when new seed type unlocks (currently just StatusLabel)
+* Harvest animation — beyond coin float; maybe a brief cell flash or bounce
+* Well fill animation — visual ripple or fill indicator on the well panel
+* Weed spawn animation — subtle "pop-in" when a weed appears
+* Can upgrade celebration — something more satisfying than just the status label
+* Win / completion state — what happens when all 16 tiles are unlocked and all crops are mature? Some kind of zen moment
+
+**Quality of Life**
+* Weed tip on first weed spawn — currently shows in StatusLabel; consider a TipPanel card like the intro
+* Crop milestone TipPanel cards — show what the newly unlocked crop costs/earns
+* Better "no action" feedback — distinguish "wrong tool" (redirect) vs "genuinely nothing here"
+* Time-to-mature indicator on crop tiles (e.g., a small progress bar or stage dots)
+
+---
+
+## Human Tasks
+
+**Art**
+* Background art for the game screen (farm/garden aesthetic)
+* "ZEN FARM" logo for Menu + MasterMenu tile card
+* Replace menu text buttons with TextureButtons
+* Well panel art — currently a plain gray rectangle
+* ToolBar icons — HAND, CAN, SHEARS are text buttons; need icon textures or illustrated buttons
+* FarmCell visual polish — crops are color blocks with text labels; could use simple sprite art
+* Coin float label polish — currently plain vetka text; could use a coin icon
+* Win / completion screen art
+
+**Sound**
+* `sfx/plant.mp3` — satisfying seed-plop or soil-pat
+* `sfx/water.mp3` — water pour / sprinkle
+* `sfx/well_fill.mp3` — bucket fill / splash
+* `sfx/harvest.mp3` — shear snip / crop pull
+* `sfx/weed_cut.mp3` — grass slash / snip
+* `sfx/buy_land.mp3` — earth thud / stone chunk
+* `sfx/sell.mp3` — coin clink / register
+* `sfx/upgrade.mp3` — level-up chime
+* `sfx/crop_tap.mp3` — soft inspection ping
+* `sfx/no_action.mp3` — very soft thud / nope
+* `music/music.mp3` — melodic loop (set loop=true in Godot import)
+* `music/ambient.mp3` — nature/wind ambient loop (set loop=true in Godot import)
+
+**Design Decisions**
+* ~~Should all tiles start locked?~~ ✓ Yes — all 16 locked; dynamic pricing by bracket
+* ~~Should seeds cost coins?~~ ✓ Yes — 1c–6c depending on crop
+* ~~Watering can upgrade model?~~ ✓ 5→10→20 charges for 15c/35c
+* ~~Weed cut reward?~~ ✓ +1c to provide a recovery path
+* Should weeds have a "danger" escalation? (e.g., spread to adjacent tiles over time)
+* Is 45 s weed interval right for mobile play sessions? Consider tuning
+* Should there be a "prestige" or reset loop once the farm is fully unlocked?
+* Final game name ("ZEN FARM" is placeholder)
+
+* * *
+* * *
 # ALL GAMES / GLOBAL
 
 ## Machine (Claude) Tasks
