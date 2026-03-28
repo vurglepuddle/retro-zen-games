@@ -42,6 +42,29 @@ var _lock_label:   Label = null    # shows remaining-match count on the overlay
 var _disp_dots:    Array[ColorRect] = []   # indicator dots for dispenser depth
 var _disp_total:   int = 0                 # total items at dispenser creation time
 
+# --- Mystery silhouette shaders (shared across all cells) ---
+# Colours are baked into the shader string to avoid uniform-setting issues.
+# Top layer + drag:  very dark blue, almost black  — edit the vec4 in _get_mystery_mat()
+# Preview layer:     light dusty blue              — edit the vec4 in _get_mystery_mat_prev()
+static var _mystery_mat_top:  ShaderMaterial = null
+static var _mystery_mat_prev: ShaderMaterial = null
+
+static func _get_mystery_mat() -> ShaderMaterial:
+	if _mystery_mat_top == null:
+		var s := Shader.new()
+		s.code = "shader_type canvas_item;\nvoid fragment() { float a = texture(TEXTURE, UV).a; COLOR = vec4(0.08, 0.08, 0.14, a); }"  # ← tweak RGB
+		_mystery_mat_top = ShaderMaterial.new()
+		_mystery_mat_top.shader = s
+	return _mystery_mat_top
+
+static func _get_mystery_mat_prev() -> ShaderMaterial:
+	if _mystery_mat_prev == null:
+		var s := Shader.new()
+		s.code = "shader_type canvas_item;\nvoid fragment() { float a = texture(TEXTURE, UV).a; COLOR = vec4(0.10, 0.10, 0.14, a * 0.65); }"  # ← tweak RGB / alpha
+		_mystery_mat_prev = ShaderMaterial.new()
+		_mystery_mat_prev.shader = s
+	return _mystery_mat_prev
+
 
 # ============================================================================
 #  Public API
@@ -220,6 +243,8 @@ func set_z_slot_mystery(layer_idx: int, slot_idx: int, val: bool) -> void:
 	if slot_idx < 0 or slot_idx >= 3:
 		return
 	_z_stack_mystery[layer_idx][slot_idx] = val
+	if layer_idx == 0:
+		_refresh_preview()
 
 
 # ============================================================================
@@ -294,15 +319,6 @@ func set_as_dispenser() -> void:
 			_preview_rects[i].visible = false
 		if i < _slot_highlights.size():
 			_slot_highlights[i].visible = false
-
-	# Small queue-depth indicator at the right edge of the cell.
-	var lbl := Label.new()
-	lbl.text = "⬇"
-	lbl.add_theme_font_size_override("font_size", 11)
-	lbl.add_theme_color_override("font_color", Color(0.55, 0.65, 1.0, 0.80))
-	lbl.position      = Vector2(CELL_W - 16, ITEM_SIZE / 2.0 - 8)
-	lbl.mouse_filter  = Control.MOUSE_FILTER_IGNORE
-	add_child(lbl)
 
 	_refresh_all()
 
@@ -449,7 +465,7 @@ func _build_visuals() -> void:
 		prect.size           = Vector2(ITEM_SIZE, ITEM_SIZE)
 		prect.position       = Vector2(SIDE_PAD - 2, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 10)
 		prect.pivot_offset   = Vector2(ITEM_SIZE * 0.5, ITEM_SIZE * 0.5)
-		prect.modulate       = Color(0.2, 0.2, 0.2, 0.85)
+		prect.modulate       = Color(0.2, 0.2, 0.2, 0.85)  # overwritten by _refresh_preview() — tweak there
 		prect.mouse_filter   = Control.MOUSE_FILTER_IGNORE
 		add_child(prect)
 		_preview_rects.append(prect)
@@ -492,7 +508,7 @@ func _build_visuals() -> void:
 	for i in range(SLOTS):
 		var mp := Panel.new()
 		var mp_style := StyleBoxFlat.new()
-		mp_style.bg_color = Color(0, 0, 0, 0)   # fully transparent — darkened sprite shows through
+		mp_style.bg_color = Color(0, 0, 0, 0)   # transparent — shader on the TextureRect handles the colour
 		mp_style.set_corner_radius_all(6)
 		mp.add_theme_stylebox_override("panel", mp_style)
 		mp.size         = Vector2(ITEM_SIZE, ITEM_SIZE)
@@ -529,11 +545,13 @@ func _refresh_slot(idx: int) -> void:
 		rect.visible = true
 		if is_mystery:
 			rect.texture  = _item_textures[item_id]
-			rect.modulate = Color(0.02, 0.03, 0.08, 1.0)   # near-black dusty blue — silhouette only
+			rect.material = _get_mystery_mat()
+			rect.modulate = Color.WHITE
 			if idx < _mystery_panels.size():
 				_mystery_panels[idx].visible = true
 		else:
 			rect.texture  = _item_textures[item_id]
+			rect.material = null
 			rect.modulate = Color.WHITE
 			if idx < _mystery_panels.size():
 				_mystery_panels[idx].visible = false
@@ -542,6 +560,8 @@ func _refresh_slot(idx: int) -> void:
 		rect.visible = false
 		if idx < _mystery_panels.size():
 			_mystery_panels[idx].visible = false
+	if _is_dispenser:
+		_refresh_dispenser_indicator()
 
 
 func _refresh_preview() -> void:
@@ -554,6 +574,9 @@ func _refresh_preview() -> void:
 			prect.visible = false
 		return
 	var next_layer: Array = _z_stack[0]
+	var next_mystery: Array = [false, false, false]
+	if not _z_stack_mystery.is_empty():
+		next_mystery = _z_stack_mystery[0]
 	for i in range(SLOTS):
 		# Dispenser cells only use slot 0; keep slots 1+ invisible.
 		if _is_dispenser and i > 0:
@@ -561,8 +584,12 @@ func _refresh_preview() -> void:
 			continue
 		var prect := _preview_rects[i]
 		var item_id: int = next_layer[i] as int
+		var is_mys: bool = next_mystery[i] as bool
 		if item_id != 0 and _item_textures.has(item_id):
-			prect.texture = _item_textures[item_id]
-			prect.visible = true
+			prect.texture  = _item_textures[item_id]
+			prect.modulate = Color(1.0, 1.0, 1.0, 0.85) if is_mys else Color(0.15, 0.15, 0.15, 0.50)
+			prect.material = _get_mystery_mat_prev() if is_mys else null
+			prect.visible  = true
 		else:
-			prect.visible = false
+			prect.material = null
+			prect.visible  = false

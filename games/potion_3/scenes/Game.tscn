@@ -61,15 +61,15 @@ flat = true
 visible = false
 z_index = 25
 layout_mode = 0
-offset_top = 710.0
+offset_top = 8.0
 offset_right = 540.0
-offset_bottom = 758.0
+offset_bottom = 52.0
 theme_override_colors/font_color = Color(0.7, 0.75, 0.82, 1)
 theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 24
-text = "No valid moves left."
+text = "No moves available!"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -78,15 +78,15 @@ visible = false
 z_index = 25
 layout_mode = 0
 offset_left = 140.0
-offset_top = 762.0
+offset_top = 55.0
 offset_right = 400.0
-offset_bottom = 820.0
+offset_bottom = 113.0
 theme_override_colors/font_color = Color(0.9, 0.85, 0.6, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.02, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 28
-text = "RESHUFFLE"
+text = "RESTART"
 flat = true
 
 [node name="BackButton" type="Button" parent="."]
