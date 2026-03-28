@@ -130,3 +130,9 @@ func _on_potion_3_pressed() -> void:
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/potion_3/scenes/Main.tscn")
+
+
+func _on_zen_farm_pressed() -> void:
+	if _sfx_click.stream: _sfx_click.play()
+	await _fade_to_black()
+	get_tree().change_scene_to_file("res://games/zen_farm/scenes/Main.tscn")

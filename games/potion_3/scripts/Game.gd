@@ -64,6 +64,7 @@ var _board_origin_x:   int  = 0                 # left x of the board grid (for 
 var _hazard_disp_scroll: bool      = false
 var _disp_scroll_cells: Array[PotionCell] = []
 var _disp_scroll_buffer: PotionCell = null
+var _scroll_tweens: Array[Tween]   = []   # killed in _clear_cells() to stop tween_method lambdas
 
 # ---- drag state --------------------------------------------------------------
 var _drag_active: bool     = false
@@ -360,6 +361,13 @@ func _load_textures() -> void:
 
 
 func _clear_cells() -> void:
+	# Kill all active scroll tweens first — their tween_method lambdas capture cell
+	# nodes, and those nodes are about to be queue_free()d. Without this, Godot fires
+	# "lambda capture at index 0 was freed" errors for every remaining tween frame.
+	for tw in _scroll_tweens:
+		if is_instance_valid(tw):
+			tw.kill()
+	_scroll_tweens.clear()
 	for row in _cells:
 		for cell in row:
 			(cell as PotionCell).queue_free()
@@ -671,7 +679,7 @@ func _start_drag(pos: Vector2) -> void:
 	_drag_sprite.size = Vector2(PotionCell.ITEM_SIZE, PotionCell.ITEM_SIZE)
 	_drag_sprite.pivot_offset = half
 	if _selected_cell.is_slot_mystery(_selected_slot):
-		_drag_sprite.modulate = Color(0.02, 0.03, 0.08, 1.0)
+		_drag_sprite.material = PotionCell._get_mystery_mat()
 	#_drag_sprite.rotation = -PI / 4.0  # uncomment for 45° CCW tilt
 	_drag_sprite.z_index = 50
 	_drag_sprite.position = pos - half
@@ -993,30 +1001,89 @@ func _on_win() -> void:
 
 
 func _has_valid_move() -> bool:
-	## A move is possible if there's at least one accessible non-empty slot
-	## AND at least one accessible empty slot.
-	## Locked cells and dispenser cells don't contribute empty slots.
-	var has_item := false
-	var has_empty := false
+	## Dead-state detection:
+	## 1. No empty slots at all → stuck.
+	## 2. Any item type with 3+ accessible copies that can be consolidated
+	##    into one cell (given available empty-slot budget) → valid.
+	## 3. With ≥2 empty slots: if any cell can be fully emptied to reveal
+	##    its next z-layer, that's still a valid state (might produce a match).
+
+	# Count accessible empty slots (non-locked, non-dispenser cells only).
+	var empty_slots := 0
+	for row in _cells:
+		for cell in row:
+			var c := cell as PotionCell
+			if c.is_locked() or c.is_dispenser():
+				continue
+			for s in range(PotionCell.SLOTS):
+				if c.get_item(s) == 0:
+					empty_slots += 1
+	if empty_slots == 0:
+		return false
+
+	# Collect all currently visible accessible items.
+	var item_counts: Dictionary = {}
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
 			if c.is_locked():
-				continue   # items inaccessible; empty slots don't count
+				continue
 			for s in range(PotionCell.SLOTS):
-				if c.get_item(s) != 0:
-					has_item = true
-				elif not c.is_dispenser():
-					has_empty = true   # dispensers have no placeable slots
-			if has_item and has_empty:
-				return true
-	# Dispenser items count as accessible items (can be picked up and placed elsewhere).
+				var id := c.get_item(s)
+				if id != 0:
+					item_counts[id] = item_counts.get(id, 0) + 1
 	for dc in _dispenser_cells:
-		if (dc as PotionCell).get_item(0) != 0:
-			has_item = true
-		if has_item and has_empty:
-			return true
-	return has_item and has_empty
+		var id := (dc as PotionCell).get_item(0)
+		if id != 0:
+			item_counts[id] = item_counts.get(id, 0) + 1
+	for dc in _disp_scroll_cells:
+		if dc == _disp_scroll_buffer:
+			continue
+		var id := (dc as PotionCell).get_item(0)
+		if id != 0:
+			item_counts[id] = item_counts.get(id, 0) + 1
+
+	# With ≥2 empty slots: if any non-locked, non-dispenser cell has a z-layer
+	# below AND all its current items fit within the empty-slot budget, clearing
+	# it to reveal fresh items is a legal play — don't call this dead.
+	if empty_slots >= 2:
+		for row in _cells:
+			for cell in row:
+				var c := cell as PotionCell
+				if c.is_locked() or c.is_dispenser():
+					continue
+				if c.layers_remaining() == 0:
+					continue
+				var items_in_cell := 0
+				for s in range(PotionCell.SLOTS):
+					if c.get_item(s) != 0:
+						items_in_cell += 1
+				if items_in_cell <= empty_slots:
+					return true   # can empty this cell to reveal next layer
+
+	# Check whether any item type has 3+ copies that could be consolidated
+	# into one cell using the available empty-slot budget.
+	for id in item_counts:
+		if item_counts[id] < 3:
+			continue
+		for row in _cells:
+			for cell in row:
+				var c := cell as PotionCell
+				if c.is_locked() or c.is_dispenser():
+					continue
+				var in_cell := 0
+				var empty_in_cell := 0
+				for s in range(PotionCell.SLOTS):
+					if c.get_item(s) == id:
+						in_cell += 1
+					elif c.get_item(s) == 0:
+						empty_in_cell += 1
+				# Slots needed from outside = 3 - in_cell.
+				# Available = cell's own empties + board empties.
+				if (3 - in_cell) <= (empty_in_cell + empty_slots):
+					return true
+
+	return false
 
 
 func _show_reshuffle_prompt() -> void:
@@ -1028,8 +1095,8 @@ func _show_reshuffle_prompt() -> void:
 func _on_reshuffle_pressed() -> void:
 	_reshuffle_lbl.visible = false
 	_reshuffle_btn.visible = false
-	_reshuffle_board()
-	_board_active = true
+	prepare_board()
+	start_game()
 
 
 func _reshuffle_board() -> void:
@@ -1210,7 +1277,7 @@ func _generate_special_cells() -> void:
 
 	# --- Mystery items (Medium+, ~60% chance, 3–5 items) ---
 	# Sprite darkened with "?" overlay; scattered across visible layer AND z-stack layers.
-	if randf() < 0.60:
+	if randf() < 0.70:
 		var mystery_count := randi_range(3, 5)
 		var mystery_candidates: Array = []
 		for r in range(_rows):
@@ -1290,6 +1357,7 @@ func _advance_scroll(row_idx: int) -> void:
 	var off_x := float(_board_origin_x + _cols_per_row * PotionCell.CELL_W)
 
 	var tween := create_tween()
+	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
 	for i in range(n):
 		var c := row_cells[i] as PotionCell
@@ -1386,6 +1454,7 @@ func _advance_disp_scroll() -> void:
 	var off_x_left := float(_board_origin_x - PotionCell.CELL_W)
 
 	var tween := create_tween()
+	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
 	for i in range(n):
 		var c := cells[i] as PotionCell
