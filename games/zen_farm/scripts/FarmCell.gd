@@ -33,8 +33,6 @@ var wilt_timer: float = 0.0  # seconds without water after stage expired
 # LOCKED
 var unlock_cost: int = 0
 
-signal tapped(cell)
-
 # ── internal nodes ─────────────────────────────────────────────────────────
 var _bg:     ColorRect
 var _label:  Label    # top line (tile type / crop name)
@@ -49,7 +47,7 @@ func _ready() -> void:
 
 	custom_minimum_size = Vector2(TILE_SIZE, TILE_SIZE)
 	size               = Vector2(TILE_SIZE, TILE_SIZE)
-	mouse_filter       = MOUSE_FILTER_STOP
+	mouse_filter       = MOUSE_FILTER_IGNORE
 
 	# background
 	_bg = ColorRect.new()
@@ -146,15 +144,3 @@ func _refresh_crop_visual() -> void:
 		var stage_str: String = _STAGE_LABELS[growth_stage] if growth_stage < _STAGE_LABELS.size() else "?"
 		var water_str: String = "" if watered else "\nwater!"
 		_sub.text = stage_str + water_str
-
-
-# ── input ──────────────────────────────────────────────────────────────────
-func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			tapped.emit(self)
-			accept_event()
-	elif event is InputEventScreenTouch:
-		if event.pressed:
-			tapped.emit(self)
-			accept_event()
