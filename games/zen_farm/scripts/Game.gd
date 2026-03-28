@@ -4,13 +4,20 @@ extends Control
 signal back_to_menu
 
 # ── layout ──────────────────────────────────────────────────────────────────
-const COLS        := 4
-const ROWS        := 4
-const TILE_SIZE   := FarmCell.TILE_SIZE
-const GAP         := 8
-const GRID_W      := COLS * (TILE_SIZE + GAP) - GAP
-const GRID_H      := ROWS * (TILE_SIZE + GAP) - GAP
-const GRID_X      := (540 - GRID_W) / 2.0
+const ROWS      := 4
+const TILE_SIZE := FarmCell.TILE_SIZE
+const GAP       := 8
+
+var _cols: int = 4        # grows when all current tiles are bought
+
+# manual pan (replaces ScrollContainer)
+var _scroll_x:     int = 0
+var _max_scroll_x: int = 0
+
+# tap-vs-drag tracking (touch + mouse)
+var _touch_start     := Vector2.ZERO
+var _touch_drag_dist := 0.0
+var _touch_cell: FarmCell = null
 
 # ── tools ───────────────────────────────────────────────────────────────────
 enum Tool { HAND, WATERING_CAN, SHEARS }
@@ -41,7 +48,7 @@ func _can_next_max() -> int:
 # Seed / shop panel state
 var _seeds_open:    bool = false
 var _shop_open:     bool = false
-var _selected_crop: int  = CropData.LETTUCE   # lettuce is always unlocked first
+var _selected_crop: int  = -1   # -1 = nothing selected yet
 
 # ── state ────────────────────────────────────────────────────────────────────
 var _cells: Array          = []
@@ -58,7 +65,7 @@ const WEED_INTERVAL       := 45.0
 @onready var _coins_label:    Label   = $TopBar/CoinsLabel
 @onready var _mode_label:     Label   = $TopBar/ModeLabel
 @onready var _status_label:   Label   = $StatusLabel
-@onready var _grid_container: Control = $GridContainer
+@onready var _grid_container: Control         = $FarmScroll/GridContainer
 @onready var _seed_panel:     Control = $SeedPanel
 @onready var _inv_label:      Label   = $SeedPanel/InvLabel
 @onready var _upgrade_panel:  Control = $UpgradePanel
@@ -111,6 +118,7 @@ func _ready() -> void:
 
 
 func prepare_farm() -> void:
+	_cols = SaveManager.load_cols()
 	_clear_cells()
 	_build_cells()
 	var loaded := SaveManager.load_game(self)
@@ -125,7 +133,7 @@ func prepare_farm() -> void:
 		_active_tool   = Tool.HAND
 		_seeds_open    = false
 		_shop_open     = false
-		_selected_crop = CropData.LETTUCE
+		_selected_crop = -1
 		_inventory.clear()
 		_weed_timer      = 0.0
 		_weed_tip_shown  = false
@@ -134,6 +142,9 @@ func prepare_farm() -> void:
 		_upgrade_panel.visible = false
 		_tip_panel.visible     = true
 	_refresh_ui()
+	# Defer so the ScrollContainer has completed its first layout pass before
+	# we set custom_minimum_size — otherwise the scroll range isn't registered.
+	_update_grid_size.call_deferred()
 
 
 func start_game() -> void:
@@ -155,13 +166,13 @@ func _clear_cells() -> void:
 
 func _build_cells() -> void:
 	for row in range(ROWS):
-		for col in range(COLS):
+		for col in range(_cols):
 			var cell := FarmCell.new()
 			_grid_container.add_child(cell)
 			cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
-			cell.tapped.connect(_on_cell_tapped)
 			_cells.append(cell)
 	_apply_initial_layout()
+	_update_grid_size()
 
 
 func _apply_initial_layout() -> void:
@@ -177,6 +188,44 @@ func _has_active_crops() -> bool:
 		if cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED:
 			return true
 	return false
+
+
+func _update_grid_size() -> void:
+	var stride    := TILE_SIZE + GAP
+	var content_w := _cols * stride - GAP
+	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
+	_max_scroll_x  = maxi(0, int(content_w + left_x + 18.0) - 540)
+	_scroll_x      = clampi(_scroll_x, 0, _max_scroll_x)
+	_grid_container.position = Vector2(left_x - _scroll_x, 2.0)
+
+
+func _apply_scroll(delta: int) -> void:
+	_scroll_x = clampi(_scroll_x + delta, 0, _max_scroll_x)
+	var stride    := TILE_SIZE + GAP
+	var content_w := _cols * stride - GAP
+	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
+	_grid_container.position = Vector2(left_x - _scroll_x, 2.0)
+
+
+func _check_expansion() -> void:
+	for cell in _cells:
+		if cell.state == FarmCell.TileState.LOCKED:
+			return
+	_add_column()
+
+
+func _add_column() -> void:
+	_cols += 1
+	var col := _cols - 1
+	for row in range(ROWS):
+		var cell := FarmCell.new()
+		_grid_container.add_child(cell)
+		cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
+		cell.state       = FarmCell.TileState.LOCKED
+		cell.unlock_cost = _next_unlock_cost()
+		cell.refresh_visual()
+		_cells.append(cell)
+	_update_grid_size()
 
 
 func _tiles_owned() -> int:
@@ -218,6 +267,45 @@ func _check_crop_unlocks(tiles_before: int) -> String:
 func _process(delta: float) -> void:
 	_tick_crops(delta)
 	_tick_weeds(delta)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_touch_start     = event.position
+			_touch_drag_dist = 0.0
+			_touch_cell      = _cell_at(event.position)
+		else:
+			if _touch_drag_dist < 12.0 and _touch_cell != null:
+				_on_cell_tapped(_touch_cell)
+			_touch_cell = null
+	elif event is InputEventScreenDrag:
+		_touch_drag_dist += abs(event.relative.x)
+		_apply_scroll(int(-event.relative.x))
+	elif event is InputEventMouseButton:
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_touch_start     = event.position
+			_touch_drag_dist = 0.0
+			_touch_cell      = _cell_at(event.position)
+		elif not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			if _touch_drag_dist < 8.0 and _touch_cell != null:
+				_on_cell_tapped(_touch_cell)
+			_touch_cell = null
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_apply_scroll(-60)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_apply_scroll(60)
+	elif event is InputEventMouseMotion:
+		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_touch_drag_dist += abs(event.relative.x)
+			_apply_scroll(int(-event.relative.x))
+
+
+func _cell_at(pos: Vector2) -> FarmCell:
+	for cell in _cells:
+		if cell.get_global_rect().has_point(pos):
+			return cell
+	return null
 
 
 func _tick_crops(delta: float) -> void:
@@ -416,6 +504,7 @@ func _try_hand(cell: FarmCell) -> void:
 				_show_status("Land unlocked!")
 				if not new_crop.is_empty():
 					_show_status(new_crop + " seeds unlocked!")
+				_check_expansion()
 				SaveManager.save_game(self)
 			else:
 				_play(_sfx_noaction)
@@ -516,6 +605,10 @@ func _try_shear(cell: FarmCell) -> void:
 
 # SEEDS panel: plant on soil
 func _try_plant(cell: FarmCell) -> void:
+	if _selected_crop == -1:
+		_play(_sfx_noaction)
+		_show_status("Pick a seed first!")
+		return
 	# Guard: can't plant an as-yet-locked crop (shouldn't happen since buttons
 	# are disabled, but defensive check for save-load edge cases)
 	if CropData.get_unlock_tile_count(_selected_crop) > _tiles_owned():
@@ -692,7 +785,7 @@ func _refresh_ui() -> void:
 		if unlocked:
 			btn.disabled = false
 			btn.modulate = Color.WHITE
-			var mark := "► " if _selected_crop == cid else ""
+			var mark := "> " if (_selected_crop != -1 and _selected_crop == cid) else ""
 			btn.text = mark + CropData.crop_name(cid) \
 				+ "  " + str(CropData.get_seed_cost(cid)) + "c"
 		else:
@@ -743,7 +836,7 @@ func _spawn_coin_float(cell: FarmCell, amount: int) -> void:
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.z_index = 15
 	lbl.size = Vector2(120, 60)
-	lbl.position = _grid_container.position + cell.position \
+	lbl.position = cell.get_global_rect().position \
 		+ Vector2(TILE_SIZE * 0.5 - 60, TILE_SIZE * 0.2)
 	add_child(lbl)
 	var tw := create_tween().set_parallel(true)

@@ -9,6 +9,7 @@ static func save_game(game: Node) -> void:
 	cfg.set_value("meta", "coins",     game._coins)
 	cfg.set_value("meta", "can_water", game._can_water)
 	cfg.set_value("meta", "can_level", game._can_level)
+	cfg.set_value("meta", "cols",      game._cols)
 
 	# inventory: crop_id → count
 	for cid in game._inventory:
@@ -38,6 +39,7 @@ static func load_game(game: Node) -> bool:
 	game._last_save_time  = cfg.get_value("meta", "timestamp", 0.0)
 	game._can_water       = cfg.get_value("meta", "can_water", 0)
 	game._can_level       = cfg.get_value("meta", "can_level", 0)
+	game._cols            = cfg.get_value("meta", "cols",      4)
 
 	for cid in [0, 1, 2, 3, 4]:  # CARROT, LETTUCE, POTATO, TOMATO, PUMPKIN
 		var count: int = cfg.get_value("inventory", str(cid), 0)
@@ -58,6 +60,13 @@ static func load_game(game: Node) -> bool:
 		cell.refresh_visual()
 
 	return true
+
+
+static func load_cols() -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return 4
+	return cfg.get_value("meta", "cols", 4)
 
 
 static func save_exists() -> bool:
