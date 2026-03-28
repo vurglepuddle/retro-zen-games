@@ -8,6 +8,7 @@ static func save_game(game: Node) -> void:
 	cfg.set_value("meta", "timestamp", Time.get_unix_time_from_system())
 	cfg.set_value("meta", "coins",     game._coins)
 	cfg.set_value("meta", "can_water", game._can_water)
+	cfg.set_value("meta", "can_level", game._can_level)
 
 	# inventory: crop_id → count
 	for cid in game._inventory:
@@ -36,8 +37,9 @@ static func load_game(game: Node) -> bool:
 	game._coins           = cfg.get_value("meta", "coins",     10)
 	game._last_save_time  = cfg.get_value("meta", "timestamp", 0.0)
 	game._can_water       = cfg.get_value("meta", "can_water", 0)
+	game._can_level       = cfg.get_value("meta", "can_level", 0)
 
-	for cid in [CropData.CARROT, CropData.LETTUCE, CropData.POTATO]:
+	for cid in [0, 1, 2, 3, 4]:  # CARROT, LETTUCE, POTATO, TOMATO, PUMPKIN
 		var count: int = cfg.get_value("inventory", str(cid), 0)
 		if count > 0:
 			game._inventory[cid] = count

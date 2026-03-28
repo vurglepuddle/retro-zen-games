@@ -7,8 +7,14 @@ extends Control
 const TILE_SIZE := 120
 
 # Local display tables — mirrors CropData constants to avoid cross-script static calls.
-const _CROP_NAMES  := ["Carrot", "Lettuce", "Potato"]
-const _CROP_COLORS := [Color(0.88, 0.48, 0.10), Color(0.28, 0.72, 0.28), Color(0.62, 0.50, 0.28)]
+const _CROP_NAMES  := ["Carrot", "Lettuce", "Potato", "Tomato", "Pumpkin"]
+const _CROP_COLORS := [
+	Color(0.88, 0.48, 0.10),  # Carrot
+	Color(0.28, 0.72, 0.28),  # Lettuce
+	Color(0.62, 0.50, 0.28),  # Potato
+	Color(0.90, 0.22, 0.12),  # Tomato
+	Color(0.92, 0.50, 0.08),  # Pumpkin
+]
 const _STAGE_LABELS := ["seed", "sprout", "growing", "READY"]
 const _STAGE_MATURE := 3
 
