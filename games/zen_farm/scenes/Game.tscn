@@ -32,7 +32,7 @@ mouse_filter = 2
 layout_mode = 0
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 320.0
+offset_right = 300.0
 offset_bottom = 70.0
 theme_override_colors/font_color = Color(1, 0.88, 0.3, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.08, 0.02, 1)
@@ -51,7 +51,7 @@ theme_override_colors/font_color = Color(0.6, 1, 0.5, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.12, 0.04, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 42
 horizontal_alignment = 2
 
 [node name="GridContainer" type="Control" parent="."]
@@ -72,16 +72,115 @@ theme_override_colors/font_color = Color(0.8, 1, 0.7, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
+theme_override_font_sizes/font_size = 38
 horizontal_alignment = 1
+
+[node name="ToolBar" type="Control" parent="."]
+anchors_preset = 0
+offset_top = 648.0
+offset_right = 540.0
+offset_bottom = 722.0
+mouse_filter = 2
+
+[node name="ToolBg" type="ColorRect" parent="ToolBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.07, 0.13, 0.07, 1)
+
+[node name="HandBtn" type="Button" parent="ToolBar"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 6.0
+offset_right = 174.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.85, 0.78, 0.6, 1)
+theme_override_colors/font_outline_color = Color(0.08, 0.07, 0.04, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 42
+text = "HAND"
+flat = true
+
+[node name="CanBtn" type="Button" parent="ToolBar"]
+layout_mode = 0
+offset_left = 182.0
+offset_top = 6.0
+offset_right = 358.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.45, 0.75, 1, 1)
+theme_override_colors/font_outline_color = Color(0.03, 0.06, 0.12, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 42
+text = "CAN 0/5"
+flat = true
+
+[node name="ShearsBtn" type="Button" parent="ToolBar"]
+layout_mode = 0
+offset_left = 366.0
+offset_top = 6.0
+offset_right = 536.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.9, 0.6, 0.35, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.02, 1)
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 42
+text = "SHEARS"
+flat = true
+
+[node name="WellPanel" type="Control" parent="."]
+anchors_preset = 0
+offset_left = 177.0
+offset_top = 730.0
+offset_right = 363.0
+offset_bottom = 808.0
+
+[node name="WellBg" type="ColorRect" parent="WellPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -1.0
+offset_right = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.22, 0.25, 0.28, 1)
+
+[node name="WellLabel" type="Label" parent="WellPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 1.0
+offset_right = -1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.08, 0.12, 1)
+theme_override_constants/line_spacing = -18
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 37
+text = "WELL
+tap to fill"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SeedPanel" type="Control" parent="."]
 visible = false
+z_index = 10
 anchors_preset = 0
-offset_left = 40.0
-offset_top = 650.0
+offset_left = 38.0
+offset_top = 841.0
 offset_right = 500.0
-offset_bottom = 876.0
+offset_bottom = 1104.0
 
 [node name="PanelBg" type="ColorRect" parent="SeedPanel"]
 layout_mode = 1
@@ -91,69 +190,69 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.06, 0.12, 0.06, 0.9)
+color = Color(0.06, 0.12, 0.06, 0.95)
 
 [node name="SeedLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
-offset_top = 10.0
+offset_top = 4.0
 offset_right = 460.0
-offset_bottom = 48.0
+offset_bottom = 55.0
 theme_override_colors/font_color = Color(0.8, 0.95, 0.6, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 36
+theme_override_font_sizes/font_size = 42
 text = "Choose seed:"
 horizontal_alignment = 1
 
 [node name="CarrotBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 58.0
+offset_top = 47.0
 offset_right = 380.0
-offset_bottom = 100.0
+offset_bottom = 101.0
 theme_override_colors/font_color = Color(0.9, 0.5, 0.1, 1)
 theme_override_colors/font_outline_color = Color(0.15, 0.06, 0.02, 1)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 38
 text = "Carrot"
 flat = true
 
 [node name="LettuceBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 112.0
+offset_top = 96.0
 offset_right = 380.0
-offset_bottom = 154.0
+offset_bottom = 150.0
 theme_override_colors/font_color = Color(0.3, 0.78, 0.3, 1)
 theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.04, 1)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 38
 text = "Lettuce"
 flat = true
 
 [node name="PotatoBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 80.0
-offset_top = 166.0
+offset_top = 144.0
 offset_right = 380.0
-offset_bottom = 206.0
+offset_bottom = 198.0
 theme_override_colors/font_color = Color(0.68, 0.55, 0.3, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.08, 0.04, 1)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 38
 text = "Potato"
 flat = true
 
 [node name="InvLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 10.0
-offset_top = 212.0
+offset_top = 209.0
 offset_right = 450.0
-offset_bottom = 224.0
+offset_bottom = 257.0
 theme_override_colors/font_color = Color(0.65, 0.85, 0.55, 1)
 theme_override_colors/font_outline_color = Color(0.04, 0.08, 0.03, 1)
 theme_override_constants/outline_size = 2
@@ -163,49 +262,135 @@ horizontal_alignment = 1
 
 [node name="BottomBar" type="Control" parent="."]
 anchors_preset = 0
-offset_top = 880.0
+offset_top = 1107.0
 offset_right = 540.0
-offset_bottom = 960.0
+offset_bottom = 1187.0
 mouse_filter = 2
 
 [node name="BackButton" type="Button" parent="BottomBar"]
 layout_mode = 0
 offset_left = 14.0
-offset_top = 18.0
+offset_top = 33.0
 offset_right = 140.0
-offset_bottom = 66.0
+offset_bottom = 92.0
 theme_override_colors/font_color = Color(0.55, 0.65, 0.5, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
 text = "< BACK"
 flat = true
 
-[node name="PlantButton" type="Button" parent="BottomBar"]
+[node name="SeedsButton" type="Button" parent="BottomBar"]
 layout_mode = 0
 offset_left = 168.0
-offset_top = 12.0
+offset_top = 21.0
 offset_right = 372.0
-offset_bottom = 72.0
+offset_bottom = 81.0
 theme_override_colors/font_color = Color(0.6, 1, 0.45, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.12, 0.04, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
-text = "PLANT"
+text = "SEEDS"
 flat = true
 
 [node name="SellButton" type="Button" parent="BottomBar"]
 layout_mode = 0
 offset_left = 394.0
-offset_top = 18.0
+offset_top = 33.0
 offset_right = 526.0
-offset_bottom = 66.0
+offset_bottom = 92.0
 theme_override_colors/font_color = Color(1, 0.88, 0.3, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.08, 0.02, 1)
 theme_override_constants/outline_size = 3
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
 text = "SELL"
+flat = true
+
+[node name="TipPanel" type="Control" parent="."]
+z_index = 20
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Overlay" type="ColorRect" parent="TipPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0.78)
+
+[node name="Card" type="Control" parent="TipPanel"]
+anchors_preset = 0
+offset_left = 40.0
+offset_top = 370.0
+offset_right = 500.0
+offset_bottom = 820.0
+
+[node name="CardBg" type="ColorRect" parent="TipPanel/Card"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.07, 0.14, 0.07, 1)
+
+[node name="TitleLabel" type="Label" parent="TipPanel/Card"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 16.0
+offset_right = 450.0
+offset_bottom = 130.0
+theme_override_colors/font_color = Color(0.85, 1, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.12, 0.04, 1)
+theme_override_constants/line_spacing = -26
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 56
+text = "Welcome to
+your farm!"
+horizontal_alignment = 1
+
+[node name="BodyLabel" type="Label" parent="TipPanel/Card"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 133.0
+offset_right = 440.0
+offset_bottom = 356.0
+theme_override_colors/font_color = Color(0.78, 0.92, 0.65, 1)
+theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.04, 1)
+theme_override_constants/line_spacing = -8
+theme_override_constants/outline_size = 2
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 42
+text = "Tap any locked tile to buy land.
+Plant seeds, water your crops,
+then harvest with SHEARS
+to earn coins and unlock
+even more of your farm."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="GotItBtn" type="Button" parent="TipPanel/Card"]
+layout_mode = 0
+offset_left = 100.0
+offset_top = 372.0
+offset_right = 360.0
+offset_bottom = 437.0
+theme_override_colors/font_color = Color(0.85, 1, 0.45, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.12, 0.03, 1)
+theme_override_constants/outline_size = 3
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 48
+text = "LET'S GO"
 flat = true
 
 [node name="StatusTimer" type="Timer" parent="."]
