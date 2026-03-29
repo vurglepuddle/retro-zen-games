@@ -557,8 +557,12 @@ Idle farming game. The player owns a 4×4 grid of land tiles, all initially lock
 | Constant | Value | Notes |
 |----------|-------|-------|
 | `COLS` / `ROWS` | 4 / 5 | Grid size (20 tiles total) |
-| `TILE_SIZE` | 120 px | Inherits from `FarmCell.TILE_SIZE` |
+| `TILE_SIZE` | 128 px | Inherits from `FarmCell.TILE_SIZE` (2 × 64 px tilemap tiles) |
+| `GRID_Y` | 64.0 px | Vertical offset of the farm grid inside FarmScroll — change once, applies to both `_update_grid_size()` and `_apply_scroll()` |
 | `WEED_INTERVAL` | 45.0 s | Seconds between weed spawn attempts |
+| `RAIN_CHECK_INTERVAL` | 180.0 s | Seconds between rain roll attempts |
+| `RAIN_CHANCE` | 0.25 | Probability of rain per check |
+| `RAIN_DURATION_MIN/MAX` | 60 / 120 s | Rain event duration range |
 
 ### Tool System
 
@@ -627,6 +631,17 @@ Saves to `user://zen_farm_save.cfg`. Persists: coins, can_water, can_level, full
 | `SfxCropTap` | `sfx/crop_tap.mp3` | Tapping a crop/wilted tile with HAND |
 | `SfxNoAction` | `sfx/no_action.mp3` | Any invalid or redirecting tap |
 
+### Rain System
+
+Random weather event managed entirely in `Game.gd`:
+- **Trigger**: every `RAIN_CHECK_INTERVAL` seconds, `RAIN_CHANCE` probability; duration is `randf_range(RAIN_DURATION_MIN, RAIN_DURATION_MAX)`
+- **On start** (`_start_rain`): all unwatered crops watered, wilted crops revived; `rain_changed(true)` signal fires
+- **During rain** (`_tick_crops`): any unwatered crop (e.g. freshly planted) is watered each tick; `_try_plant` sets `watered = _is_raining`
+- **On end** (`_stop_rain`): `rain_changed(false)` fires
+- **Visuals**: `CPUParticles2D` added as child of `$FarmScroll` (must be FarmScroll, not Game root — otherwise renders above UI panels); 2×10 px procedural streak texture, no external asset needed; blue `ColorRect` overlay fades in/out
+- **Audio** (`Main.gd`): `rain.mp3` crossfades in; ambients duck by 20 dB relative to their pre-rain volume, restored on stop
+- **Debug**: press **R** in-game to toggle rain (remove the `InputEventKey` block in `_input` when done)
+
 ### Data Flow
 
 ```
@@ -636,8 +651,9 @@ prepare_farm()
   → _apply_offline_catchup() # simulate growth/wilting since last save
 
 _process(delta)
-  → _tick_crops()     # advance growth_stage; trigger wilt on unwatered
+  → _tick_crops()     # advance growth_stage; trigger wilt on unwatered; auto-waters during rain
   → _tick_weeds()     # every WEED_INTERVAL: 40% chance to spawn weed on soil
+  → _tick_rain()      # rolls for rain start; counts down duration; calls _start_rain/_stop_rain
 
 User tap (FarmCell.tapped signal → Game._on_cell_tapped)
   → if seeds panel open: _try_plant(cell)
