@@ -15,10 +15,9 @@ static func save_game(game: Node) -> void:
 	for cid in game._inventory:
 		cfg.set_value("inventory", str(cid), game._inventory[cid])
 
-	# cells
-	for i in range(game._cells.size()):
-		var cell: FarmCell = game._cells[i]
-		var sec := "cell_%d" % i
+	# cells — keyed by grid position so column-expansion order doesn't matter
+	for cell: FarmCell in game._cells:
+		var sec := "cell_r%d_c%d" % [cell.grid_row, cell.grid_col]
 		cfg.set_value(sec, "state",        int(cell.state))
 		cfg.set_value(sec, "crop_id",      cell.crop_id)
 		cfg.set_value(sec, "growth_stage", cell.growth_stage)
@@ -46,11 +45,10 @@ static func load_game(game: Node) -> bool:
 		if count > 0:
 			game._inventory[cid] = count
 
-	for i in range(game._cells.size()):
-		var sec := "cell_%d" % i
+	for cell: FarmCell in game._cells:
+		var sec := "cell_r%d_c%d" % [cell.grid_row, cell.grid_col]
 		if not cfg.has_section(sec):
 			continue
-		var cell: FarmCell = game._cells[i]
 		cell.state        = cfg.get_value(sec, "state",        0) as FarmCell.TileState
 		cell.crop_id      = cfg.get_value(sec, "crop_id",      -1)
 		cell.growth_stage = cfg.get_value(sec, "growth_stage", 0)

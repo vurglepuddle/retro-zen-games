@@ -1,8 +1,11 @@
-[gd_scene load_steps=4 format=3 uid="uid://czf_main_01"]
+[gd_scene load_steps=7 format=3 uid="uid://d2ucxibi7oou2"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Main.gd" id="1"]
-[ext_resource type="PackedScene" path="res://games/zen_farm/scenes/Menu.tscn" id="2"]
-[ext_resource type="PackedScene" path="res://games/zen_farm/scenes/Game.tscn" id="3"]
+[ext_resource type="PackedScene" uid="uid://qknu28gy7kpo" path="res://games/zen_farm/scenes/Menu.tscn" id="2"]
+[ext_resource type="PackedScene" uid="uid://dtpkgpxa13pbd" path="res://games/zen_farm/scenes/Game.tscn" id="3"]
+[ext_resource type="AudioStream" uid="uid://qqv8ddx0tq2c" path="res://games/zen_farm/assets/music/music.mp3" id="4_5n3rk"]
+[ext_resource type="AudioStream" uid="uid://c2pttutvkrfyh" path="res://games/zen_farm/assets/music/ambient.mp3" id="4_irvvy"]
+[ext_resource type="AudioStream" uid="uid://q4hixm6dyuy1" path="res://games/zen_farm/assets/music/ambient2.mp3" id="6_q6uo4"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1")
@@ -24,7 +27,13 @@ mouse_filter = 2
 color = Color(0, 0, 0, 1)
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="."]
-volume_db = -10.0
+stream = ExtResource("4_5n3rk")
+volume_db = -25.0
 
 [node name="AmbientPlayer" type="AudioStreamPlayer" parent="."]
-volume_db = -15.0
+stream = ExtResource("4_irvvy")
+volume_db = -5.0
+
+[node name="Ambient2Player" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_q6uo4")
+volume_db = -8.0
