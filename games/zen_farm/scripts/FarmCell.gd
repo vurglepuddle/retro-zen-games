@@ -68,7 +68,7 @@ func _make_label(top: float, left: float, right: float, bot: float) -> Label:
 	lbl.add_theme_font_override("font", _font)
 	lbl.add_theme_color_override("font_color",         Color.WHITE)
 	lbl.add_theme_color_override("font_outline_color", Color.BLACK)
-	lbl.add_theme_constant_override("outline_size", 2)
+	lbl.add_theme_constant_override("outline_size", 5)
 	lbl.mouse_filter = MOUSE_FILTER_IGNORE
 	return lbl
 
@@ -84,13 +84,17 @@ func refresh_visual() -> void:
 		TileState.LOCKED:
 			_label.text = str(unlock_cost) + "c"
 		TileState.WEED:
-			_sub.text = "Weed!"
+			#_sub.text = "Weed!"
+			_sub.text = " "
 		TileState.CROP, TileState.WILTED:
 			if state == TileState.WILTED:
-				_sub.text = "wilted!"
+				_sub.text = " "
+				#_sub.text = "wilted!"
 			elif growth_stage == 3:
-				_sub.text = "READY!"
+				_sub.text = " "
+				#_sub.text = "ready!"
 			elif not watered:
-				_sub.text = "water!"
+				#_sub.text = "water!"
+				_sub.text = " "
 
 	visual_changed.emit()

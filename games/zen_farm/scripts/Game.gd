@@ -2,11 +2,13 @@
 extends Control
 
 signal back_to_menu
+signal rain_changed(is_raining: bool)
 
 # ── layout ──────────────────────────────────────────────────────────────────
 const ROWS      := 5
 const TILE_SIZE := FarmCell.TILE_SIZE
 const GAP       := 0
+const GRID_Y    := 64.0   # vertical offset of the farm grid from the top of FarmScroll
 
 var _cols: int = 4        # grows when all current tiles are bought
 
@@ -64,7 +66,19 @@ var _harvest_icons: Dictionary = {}       # Vector2i(col,row) → Sprite2D
 # Weed spawning
 var _weed_timer: float    = 0.0
 var _weed_tip_shown: bool = false
+
+var _is_raining:       bool           = false
+var _rain_check_timer: float          = 0.0
+var _rain_duration:    float          = 0.0
+var _rain_overlay:     ColorRect      = null
+var _rain_particles:   CPUParticles2D = null
 const WEED_INTERVAL       := 45.0
+
+# ── rain ─────────────────────────────────────────────────────────────────────
+const RAIN_CHECK_INTERVAL := 180.0   # seconds between roll attempts
+const RAIN_CHANCE         := 0.25    # probability per check
+const RAIN_DURATION_MIN   := 60.0
+const RAIN_DURATION_MAX   := 120.0
 
 # ── UI refs ──────────────────────────────────────────────────────────────────
 @onready var _coins_label:    Label   = $TopBar/CoinsLabel
@@ -126,11 +140,12 @@ func _ready() -> void:
 	_seeds_btn.pressed.connect(_on_seeds_btn_pressed)
 	_shop_btn.pressed.connect(_on_shop_btn_pressed)
 	_sell_btn.pressed.connect(_on_sell_pressed)
-	$SeedPanel/LettuceBtn.pressed.connect(func(): _select_seed(CropData.LETTUCE))
-	$SeedPanel/CarrotBtn.pressed.connect(func():  _select_seed(CropData.CARROT))
-	$SeedPanel/PotatoBtn.pressed.connect(func():  _select_seed(CropData.POTATO))
-	$SeedPanel/TomatoBtn.pressed.connect(func():  _select_seed(CropData.TOMATO))
-	$SeedPanel/PumpkinBtn.pressed.connect(func(): _select_seed(CropData.PUMPKIN))
+	$SeedPanel/LavenderBtn.pressed.connect(func(): _select_seed(CropData.LAVENDER))
+	$SeedPanel/RoseBtn.pressed.connect(func():  _select_seed(CropData.ROSE))
+	$SeedPanel/DaisyBtn.pressed.connect(func():  _select_seed(CropData.DAISY))
+	$SeedPanel/SunflowerBtn.pressed.connect(func():  _select_seed(CropData.SUNFLOWER))
+	$SeedPanel/HydrangeaBtn.pressed.connect(func(): _select_seed(CropData.HYDRANGEA))
+	$SeedPanel/TulipBtn.pressed.connect(func(): _select_seed(CropData.TULIP))
 	_can_upgrade_btn.pressed.connect(_on_can_upgrade_pressed)
 	_status_timer.timeout.connect(func(): _status_label.text = "")
 
@@ -144,6 +159,32 @@ func _ready() -> void:
 	_icon_container = Node2D.new()
 	_icon_container.z_index = 10
 	$FarmScroll.add_child(_icon_container)
+
+	_rain_overlay = ColorRect.new()
+	_rain_overlay.color = Color(0.35, 0.50, 0.75, 0.0)
+	_rain_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_rain_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rain_overlay.z_index = 5
+	add_child(_rain_overlay)
+
+	# rain streak texture: 2×10 px light-blue rectangle — no external asset needed
+	var img := Image.create(2, 10, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.82, 0.90, 1.0, 0.70))
+	_rain_particles = CPUParticles2D.new()
+	_rain_particles.texture           = ImageTexture.create_from_image(img)
+	_rain_particles.emitting          = false
+	_rain_particles.amount            = 220
+	_rain_particles.lifetime          = 1.2
+	_rain_particles.emission_shape       = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_rain_particles.emission_rect_extents = Vector2(310.0, 1.0)
+	_rain_particles.direction         = Vector2(0.12, 1.0).normalized()
+	_rain_particles.spread            = 2.0
+	_rain_particles.initial_velocity_min = 550.0
+	_rain_particles.initial_velocity_max = 800.0
+	_rain_particles.gravity  = Vector2.ZERO
+	_rain_particles.position = Vector2(270.0, -5.0)
+	_rain_particles.z_index  = 6
+	$FarmScroll.add_child(_rain_particles)
 
 
 func prepare_farm() -> void:
@@ -173,6 +214,15 @@ func prepare_farm() -> void:
 		_seed_panel.visible    = false
 		_upgrade_panel.visible = false
 		_tip_panel.visible     = true
+	# reset rain state each session
+	_is_raining = false
+	_rain_check_timer = 0.0
+	_rain_duration = 0.0
+	if _rain_overlay:
+		_rain_overlay.color.a = 0.0
+	if _rain_particles:
+		_rain_particles.emitting = false
+	rain_changed.emit(false)
 	_refresh_ui()
 	# Defer so the ScrollContainer has completed its first layout pass before
 	# we set custom_minimum_size — otherwise the scroll range isn't registered.
@@ -240,7 +290,7 @@ func _update_grid_size() -> void:
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
 	_max_scroll_x  = maxi(0, int(content_w + left_x + 18.0) - 540)
 	_scroll_x      = clampi(_scroll_x, 0, _max_scroll_x)
-	var pos := Vector2(left_x - _scroll_x, 34.0)
+	var pos := Vector2(left_x - _scroll_x, GRID_Y)
 	_grid_container.position = pos
 	_terrain_map.position    = pos
 	_decor_map.position      = pos
@@ -255,7 +305,7 @@ func _apply_scroll(delta: int) -> void:
 	var stride    := TILE_SIZE + GAP
 	var content_w := _cols * stride - GAP
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
-	var pos := Vector2(left_x - _scroll_x, 34.0)
+	var pos := Vector2(left_x - _scroll_x, GRID_Y)
 	_grid_container.position = pos
 	_terrain_map.position    = pos
 	_decor_map.position      = pos
@@ -289,9 +339,10 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 		FarmCell.TileState.LOCKED:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_GRASS)
 			if not _decor_placed.has(key):
-				_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
+				if randf() > 0.3:   # 70% chance of decor, 30% plain grass
+					_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
 				_decor_placed[key] = true
-			# else: decor already placed this session — leave it as-is
+			# else: decor already decided this session — leave it as-is
 
 		FarmCell.TileState.SOIL:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
@@ -301,9 +352,8 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 
 		FarmCell.TileState.WEED:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
-			# one random decor tile as weed visual
-			_decor_map.set_cells_terrain_connect(
-				[Vector2i(bx+1, by+1)], DM_TERRAIN_SET, DM_DECOR)
+			# cover all 4 tilemap tiles so the weed is clearly visible
+			_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
 			_decor_placed.erase(key)
 
 		FarmCell.TileState.CROP, FarmCell.TileState.WILTED:
@@ -430,13 +480,18 @@ func _place_top_border_decor(col_from: int, col_to: int) -> void:
 	if not _terrain_map or not _decor_map:
 		return
 	var tiles: Array[Vector2i] = []
+	var decor_tiles: Array[Vector2i] = []
 	for col in range(col_from, col_to):
 		var bx := col * 2
 		tiles.append(Vector2i(bx,     -1))
 		tiles.append(Vector2i(bx + 1, -1))
+		if randf() > 0.3:   # 70% chance of decor per column
+			decor_tiles.append(Vector2i(bx,     -1))
+			decor_tiles.append(Vector2i(bx + 1, -1))
 	if tiles.size() > 0:
 		_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
-		_decor_map.set_cells_terrain_connect(tiles, DM_TERRAIN_SET, DM_DECOR)
+		if decor_tiles.size() > 0:
+			_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
 
 
 func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
@@ -446,12 +501,13 @@ func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
 	var decor_tiles: Array[Vector2i] = []
 	for col in range(col_from, col_to):
 		var bx := col * 2
-		for by in [ROWS * 2, ROWS * 2 + 1]:
+		for by in [ROWS * 2, ROWS * 2 + 1, ROWS * 2 + 2]:
 			all_tiles.append(Vector2i(bx,     by))
 			all_tiles.append(Vector2i(bx + 1, by))
-		# decor only on the first row (64 px border); second row is plain grass for text
-		decor_tiles.append(Vector2i(col * 2,     ROWS * 2))
-		decor_tiles.append(Vector2i(col * 2 + 1, ROWS * 2))
+		# decor only on the first row (64 px border); 70% chance per column
+		if randf() > 0.3:
+			decor_tiles.append(Vector2i(col * 2,     ROWS * 2))
+			decor_tiles.append(Vector2i(col * 2 + 1, ROWS * 2))
 	if all_tiles.size() > 0:
 		_terrain_map.set_cells_terrain_connect(all_tiles, TM_TERRAIN_SET, TM_GRASS)
 		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
@@ -461,10 +517,14 @@ func _place_side_border_column(tx: int) -> void:
 	if not _terrain_map or not _decor_map:
 		return
 	var tiles: Array[Vector2i] = []
-	for row in range(-1, ROWS * 2 + 2):   # -1 = top border row, + both bottom border rows
+	var decor_tiles: Array[Vector2i] = []
+	for row in range(-1, ROWS * 2 + 3):   # -1 = top border row, + three bottom border rows
 		tiles.append(Vector2i(tx, row))
+		if randf() > 0.3:   # 70% chance of decor per tile
+			decor_tiles.append(Vector2i(tx, row))
 	_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
-	_decor_map.set_cells_terrain_connect(tiles, DM_TERRAIN_SET, DM_DECOR)
+	if decor_tiles.size() > 0:
+		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
 
 
 func _tiles_owned() -> int:
@@ -496,7 +556,7 @@ func _update_lock_costs() -> void:
 # Returns the newly unlocked crop name, or "" if no milestone was crossed.
 func _check_crop_unlocks(tiles_before: int) -> String:
 	var tiles_now := _tiles_owned()
-	var milestones := { 4: "Carrot", 8: "Potato", 12: "Tomato", 16: "Pumpkin" }
+	var milestones := { 4: "Rose", 8: "Daisy", 12: "Sunflower", 16: "Hydrangea", 20: "Tulip" }
 	for threshold in milestones:
 		if tiles_before < threshold and tiles_now >= threshold:
 			return milestones[threshold]
@@ -507,11 +567,18 @@ func _check_crop_unlocks(tiles_before: int) -> String:
 func _process(delta: float) -> void:
 	_tick_crops(delta)
 	_tick_weeds(delta)
+	_tick_rain(delta)
 
 
 func _input(event: InputEvent) -> void:
 	if not _game_active:
 		return
+	# DEBUG: press R to toggle rain
+	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
+		if _is_raining:
+			_stop_rain()
+		else:
+			_start_rain()
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touch_start     = event.position
@@ -556,6 +623,11 @@ func _tick_crops(delta: float) -> void:
 			continue
 		if cell.growth_stage == CropData.STAGE_MATURE:
 			continue
+		# rain keeps crops watered each tick (catches stage advances and new plantings)
+		if _is_raining and not cell.watered:
+			cell.watered = true
+			cell.wilt_timer = 0.0
+			cell.refresh_visual()
 		var dur: float = CropData.get_stage_durations(cell.crop_id)[cell.growth_stage]
 		if not cell.watered:
 			cell.wilt_timer += delta
@@ -601,6 +673,54 @@ func _tick_weeds(delta: float) -> void:
 		if not _weed_tip_shown:
 			_weed_tip_shown = true
 			_show_status("A weed appeared! Use SHEARS to cut it.")
+
+
+# ── rain ─────────────────────────────────────────────────────────────────────
+func _tick_rain(delta: float) -> void:
+	if not _game_active:
+		return
+	if _is_raining:
+		_rain_duration -= delta
+		if _rain_duration <= 0.0:
+			_stop_rain()
+	else:
+		_rain_check_timer += delta
+		if _rain_check_timer >= RAIN_CHECK_INTERVAL:
+			_rain_check_timer = 0.0
+			if randf() < RAIN_CHANCE:
+				_start_rain()
+
+
+func _start_rain() -> void:
+	_is_raining = true
+	_rain_duration = randf_range(RAIN_DURATION_MIN, RAIN_DURATION_MAX)
+	# water all crops and revive wilted immediately
+	for cell in _cells:
+		if cell.state == FarmCell.TileState.CROP \
+				and not cell.watered \
+				and cell.growth_stage < CropData.STAGE_MATURE:
+			cell.watered = true
+			cell.wilt_timer = 0.0
+			cell.refresh_visual()
+		elif cell.state == FarmCell.TileState.WILTED:
+			cell.state = FarmCell.TileState.CROP
+			cell.watered = true
+			cell.wilt_timer = 0.0
+			cell.refresh_visual()
+	_rain_particles.emitting = true
+	var tw := create_tween()
+	tw.tween_property(_rain_overlay, "color:a", 0.18, 1.5)
+	_show_status("It's raining! Crops are being watered.")
+	rain_changed.emit(true)
+
+
+func _stop_rain() -> void:
+	_is_raining = false
+	_rain_particles.emitting = false
+	var tw := create_tween()
+	tw.tween_property(_rain_overlay, "color:a", 0.0, 2.0)
+	_show_status("The rain has stopped.")
+	rain_changed.emit(false)
 
 
 # ── offline catch-up ──────────────────────────────────────────────────────
@@ -731,6 +851,8 @@ func _try_hand(cell: FarmCell) -> void:
 			_play(_sfx_crop_tap)
 			_show_status("Wilted! Use Watering Can.")
 		FarmCell.TileState.LOCKED:
+			if _tip_panel.visible:
+				return
 			var cost := _next_unlock_cost()
 			if _coins >= cost:
 				if _coins == cost and not _has_active_crops():
@@ -871,7 +993,7 @@ func _try_plant(cell: FarmCell) -> void:
 	cell.crop_id       = _selected_crop
 	cell.growth_stage  = CropData.STAGE_SEED
 	cell.time_in_stage = 0.0
-	cell.watered       = false
+	cell.watered       = _is_raining   # rain auto-waters fresh plantings
 	cell.wilt_timer    = 0.0
 	cell.refresh_visual()
 	_play(_sfx_plant)
@@ -1015,14 +1137,15 @@ func _refresh_ui() -> void:
 
 	# ── seed panel ────────────────────────────────────────────────────────
 	var owned := _tiles_owned()
-	var crop_ids   := [CropData.LETTUCE, CropData.CARROT, CropData.POTATO,
-					   CropData.TOMATO,  CropData.PUMPKIN]
+	var crop_ids   := [CropData.LAVENDER, CropData.ROSE, CropData.DAISY,
+					   CropData.SUNFLOWER,  CropData.HYDRANGEA, CropData.TULIP]
 	var crop_btns: Array[Button] = [
-		$SeedPanel/LettuceBtn,
-		$SeedPanel/CarrotBtn,
-		$SeedPanel/PotatoBtn,
-		$SeedPanel/TomatoBtn,
-		$SeedPanel/PumpkinBtn,
+		$SeedPanel/LavenderBtn,
+		$SeedPanel/RoseBtn,
+		$SeedPanel/DaisyBtn,
+		$SeedPanel/SunflowerBtn,
+		$SeedPanel/HydrangeaBtn,
+		$SeedPanel/TulipBtn,
 	]
 	for i in range(crop_ids.size()):
 		var cid: int    = crop_ids[i]
