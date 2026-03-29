@@ -3,7 +3,7 @@
 class_name CropData
 
 const CARROT  = 0
-const LETTUCE = 1
+const LETTUCE = 5
 const POTATO  = 2
 const TOMATO  = 3
 const PUMPKIN = 4
