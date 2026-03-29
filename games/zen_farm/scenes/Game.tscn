@@ -1,7 +1,16 @@
-[gd_scene load_steps=3 format=3 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=12 format=3 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="AudioStream" uid="uid://cfky7i8838guc" path="res://games/zen_farm/assets/sfx/plant.mp3" id="3_t5awd"]
+[ext_resource type="AudioStream" uid="uid://bqc5lf6nhwjxh" path="res://games/zen_farm/assets/sfx/water.mp3" id="3_tg6go"]
+[ext_resource type="AudioStream" uid="uid://di40l4ok412yo" path="res://games/zen_farm/assets/sfx/well_fill.mp3" id="4_4ylvw"]
+[ext_resource type="AudioStream" uid="uid://bh1coksfyebuf" path="res://games/zen_farm/assets/sfx/harvest.mp3" id="5_8n77c"]
+[ext_resource type="AudioStream" uid="uid://qyepyrt8wdr6" path="res://games/zen_farm/assets/sfx/weed_cut.mp3" id="6_hromi"]
+[ext_resource type="AudioStream" uid="uid://bvj76udjg2igm" path="res://games/zen_farm/assets/sfx/plant_tap.mp3" id="7_vla5i"]
+[ext_resource type="AudioStream" uid="uid://rkycd08ok7r7" path="res://games/zen_farm/assets/sfx/buy.mp3" id="8_a3t42"]
+[ext_resource type="AudioStream" uid="uid://cg80j64csiym5" path="res://games/zen_farm/assets/sfx/upgrade.mp3" id="9_ver5e"]
+[ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="11_s25m7"]
 
 [node name="Game" type="Control"]
 layout_mode = 3
@@ -24,16 +33,17 @@ color = Color(0.1, 0.18, 0.1, 1)
 
 [node name="TopBar" type="Control" parent="."]
 anchors_preset = 0
+offset_top = 792.0
 offset_right = 540.0
-offset_bottom = 72.0
+offset_bottom = 864.0
 mouse_filter = 2
 
 [node name="CoinsLabel" type="Label" parent="TopBar"]
 layout_mode = 0
-offset_left = 16.0
-offset_top = 10.0
-offset_right = 300.0
-offset_bottom = 64.0
+offset_left = 30.0
+offset_top = 2.0
+offset_right = 314.0
+offset_bottom = 50.0
 theme_override_colors/font_color = Color(1, 0.88, 0.3, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.08, 0.02, 1)
 theme_override_constants/outline_size = 4
@@ -43,10 +53,10 @@ text = "0 coins"
 
 [node name="ModeLabel" type="Label" parent="TopBar"]
 layout_mode = 0
-offset_left = 300.0
-offset_top = 10.0
-offset_right = 524.0
-offset_bottom = 64.0
+offset_left = 270.0
+offset_top = 2.0
+offset_right = 510.0
+offset_bottom = 50.0
 theme_override_colors/font_color = Color(0.6, 1, 0.5, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.12, 0.04, 1)
 theme_override_constants/outline_size = 3
@@ -57,9 +67,9 @@ horizontal_alignment = 2
 [node name="FarmScroll" type="Control" parent="."]
 clip_contents = true
 anchors_preset = 0
-offset_top = 72.0
+offset_top = 68.0
 offset_right = 540.0
-offset_bottom = 580.0
+offset_bottom = 702.0
 mouse_filter = 2
 
 [node name="GridContainer" type="Control" parent="FarmScroll"]
@@ -68,10 +78,10 @@ mouse_filter = 2
 
 [node name="StatusLabel" type="Label" parent="."]
 layout_mode = 0
-offset_left = 10.0
-offset_top = 582.0
-offset_right = 530.0
-offset_bottom = 626.0
+offset_left = 30.0
+offset_top = 701.0
+offset_right = 514.0
+offset_bottom = 745.0
 theme_override_colors/font_color = Color(0.8, 1, 0.7, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
 theme_override_constants/outline_size = 3
@@ -81,9 +91,9 @@ horizontal_alignment = 1
 
 [node name="ToolBar" type="Control" parent="."]
 anchors_preset = 0
-offset_top = 620.0
+offset_top = 736.0
 offset_right = 540.0
-offset_bottom = 674.0
+offset_bottom = 790.0
 mouse_filter = 2
 
 [node name="ToolBg" type="ColorRect" parent="ToolBar"]
@@ -141,10 +151,10 @@ flat = true
 
 [node name="WellPanel" type="Control" parent="."]
 anchors_preset = 0
-offset_left = 150.0
-offset_top = 677.0
-offset_right = 390.0
-offset_bottom = 731.0
+offset_left = 194.0
+offset_top = 795.0
+offset_right = 342.0
+offset_bottom = 854.0
 
 [node name="WellBg" type="ColorRect" parent="WellPanel"]
 layout_mode = 1
@@ -163,8 +173,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 1.0
-offset_right = -1.0
+offset_left = 57.0
+offset_top = -3.0
+offset_right = -57.0
+offset_bottom = 3.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.6, 0.85, 1, 1)
@@ -182,15 +194,17 @@ vertical_alignment = 1
 z_index = 10
 anchors_preset = 0
 offset_left = 38.0
-offset_top = 855.0
+offset_top = 856.0
 offset_right = 500.0
-offset_bottom = 1131.0
+offset_bottom = 1132.0
 
 [node name="PanelBg" type="ColorRect" parent="SeedPanel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = 5.0
+offset_bottom = 5.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -281,15 +295,15 @@ flat = true
 
 [node name="InvLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 10.0
-offset_top = 238.0
-offset_right = 456.0
-offset_bottom = 271.0
+offset_left = 38.0
+offset_top = 228.0
+offset_right = 416.0
+offset_bottom = 268.0
 theme_override_colors/font_color = Color(0.65, 0.85, 0.55, 1)
 theme_override_colors/font_outline_color = Color(0.04, 0.08, 0.03, 1)
 theme_override_constants/outline_size = 2
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 32
 horizontal_alignment = 1
 
 [node name="UpgradePanel" type="Control" parent="."]
@@ -297,9 +311,9 @@ visible = false
 z_index = 10
 anchors_preset = 0
 offset_left = 38.0
-offset_top = 930.0
+offset_top = 938.0
 offset_right = 500.0
-offset_bottom = 1128.0
+offset_bottom = 1136.0
 
 [node name="UpgradeBg" type="ColorRect" parent="UpgradePanel"]
 layout_mode = 1
@@ -340,17 +354,17 @@ flat = true
 
 [node name="BottomBar" type="Control" parent="."]
 anchors_preset = 0
-offset_top = 1137.0
+offset_top = 1135.0
 offset_right = 540.0
-offset_bottom = 1185.0
+offset_bottom = 1183.0
 mouse_filter = 2
 
 [node name="BackButton" type="Button" parent="BottomBar"]
 layout_mode = 0
-offset_left = 6.0
+offset_left = 30.0
 offset_top = 4.0
-offset_right = 116.0
-offset_bottom = 44.0
+offset_right = 108.0
+offset_bottom = 53.0
 theme_override_colors/font_color = Color(0.55, 0.65, 0.5, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 34
@@ -491,31 +505,40 @@ wait_time = 2.5
 one_shot = true
 
 [node name="SfxPlant" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_t5awd")
 volume_db = -4.0
 
 [node name="SfxWater" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_tg6go")
 volume_db = -6.0
 
 [node name="SfxWellFill" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("4_4ylvw")
 volume_db = -4.0
 
 [node name="SfxHarvest" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("5_8n77c")
 volume_db = -2.0
 
 [node name="SfxWeedCut" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_hromi")
 volume_db = -4.0
 
 [node name="SfxBuyLand" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("8_a3t42")
 volume_db = -4.0
 
 [node name="SfxSell" type="AudioStreamPlayer" parent="."]
 volume_db = -4.0
 
 [node name="SfxUpgrade" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("9_ver5e")
 volume_db = -2.0
 
 [node name="SfxCropTap" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("7_vla5i")
 volume_db = -10.0
 
 [node name="SfxNoAction" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("11_s25m7")
 volume_db = -14.0

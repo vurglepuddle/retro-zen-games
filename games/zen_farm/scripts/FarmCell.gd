@@ -4,18 +4,9 @@
 class_name FarmCell
 extends Control
 
-const TILE_SIZE := 120
+const TILE_SIZE := 112
 
-# Local display tables — mirrors CropData constants to avoid cross-script static calls.
-const _CROP_NAMES  := ["Carrot", "Lettuce", "Potato", "Tomato", "Pumpkin"]
-const _CROP_COLORS := [
-	Color(0.88, 0.48, 0.10),  # Carrot
-	Color(0.28, 0.72, 0.28),  # Lettuce
-	Color(0.62, 0.50, 0.28),  # Potato
-	Color(0.90, 0.22, 0.12),  # Tomato
-	Color(0.92, 0.50, 0.08),  # Pumpkin
-]
-const _STAGE_LABELS := ["seed", "sprout", "growing", "READY"]
+const _CROP_NAMES   := ["Carrot", "Lettuce", "Potato", "Tomato", "Pumpkin"]
 const _STAGE_MATURE := 3
 
 enum TileState { SOIL, CROP, WILTED, WEED, LOCKED }
@@ -25,67 +16,93 @@ var state: TileState = TileState.SOIL
 
 # CROP / WILTED
 var crop_id: int      = -1
-var growth_stage: int = 0    # 0=seed 1=sprout 2=growing 3=mature
+var growth_stage: int = 0    # 0=seed 1=sprout 2=growing(2-tall) 3=mature(2-tall)
 var time_in_stage: float = 0.0
 var watered: bool    = false
-var wilt_timer: float = 0.0  # seconds without water after stage expired
+var wilt_timer: float = 0.0
 
 # LOCKED
 var unlock_cost: int = 0
 
-# ── internal nodes ─────────────────────────────────────────────────────────
-var _bg:     ColorRect
-var _label:  Label    # top line (tile type / crop name)
-var _sub:    Label    # bottom line (stage / status)
-var _border: ColorRect  # 1 px inner border drawn by modulate hack
+# Grid coordinates — set by Game when the cell is created; used for save/load.
+var grid_row: int = 0
+var grid_col: int = 0
 
-static var _font: FontFile  # shared across all cells
+# ── atlas coordinates ─────────────────────────────────────────────────────
+# Use tile-grid coords (col, row) as shown in the Godot tileset editor.
+# Pixel position = col * _TS,  row * _TS.
+
+const _TS := 112  # px per tile in the source PNG (16×16 art scaled 4×)
+
+func _t(col: int, row: int) -> Rect2:
+	return Rect2(col * _TS, row * _TS, _TS, _TS)
+
+func _t2(col: int, row: int) -> Rect2:  # 2-tile-tall region
+	return Rect2(col * _TS, row * _TS, _TS, _TS * 2)
+
+# tileset.png — set col/row to match the Godot tileset editor coords
+const _TILE_SOIL_COL  := 0;  const _TILE_SOIL_ROW  := 2   # tilled dirt
+const _TILE_GRASS_COL := 16; const _TILE_GRASS_ROW := 5   # plain green (locked)
+const _TILE_WEED_COL  := 6;  const _TILE_WEED_ROW  := 5   # mushroom (weed)
+
+# objects.png — col = crop_id (0-4), row = stage start row
+# Stages 0-1: 1 tile tall.  Stages 2-3: 2 tiles tall (top row given).
+const _OBJ_SEED_ROW    := 2   # stage 0 — seed on ground
+const _OBJ_SPROUT_ROW  := 3   # stage 1 — tiny sprout
+const _OBJ_GROWING_ROW := 4   # stage 2 — immature plant (rows 4-5)
+const _OBJ_MATURE_ROW  := 6   # stage 3 — mature plant   (rows 6-7)
+
+# ── internal nodes ─────────────────────────────────────────────────────────
+var _tile_spr:  TextureRect   # base ground sprite (fills cell exactly)
+var _plant_spr: TextureRect   # plant overlay; 2-tall stages overflow upward
+var _label: Label
+var _sub:   Label
+
+static var _font:    FontFile
+static var _tileset: Texture2D
+static var _objects: Texture2D
+
 
 func _ready() -> void:
 	if not _font:
 		_font = load("res://assets/font/vetka.ttf")
+	if not _tileset:
+		_tileset = load("res://games/zen_farm/assets/tileset.png")
+	if not _objects:
+		_objects = load("res://games/zen_farm/assets/objects.png")
 
 	custom_minimum_size = Vector2(TILE_SIZE, TILE_SIZE)
 	size               = Vector2(TILE_SIZE, TILE_SIZE)
 	mouse_filter       = MOUSE_FILTER_IGNORE
 
-	# background
-	_bg = ColorRect.new()
-	_bg.set_anchors_preset(PRESET_FULL_RECT)
-	_bg.mouse_filter = MOUSE_FILTER_IGNORE
-	add_child(_bg)
+	# Ground tile — always fills the cell exactly.
+	_tile_spr = _make_tex_rect()
+	_tile_spr.set_anchors_preset(PRESET_FULL_RECT)
+	add_child(_tile_spr)
 
-	# 1 px dark inner border
-	_border = ColorRect.new()
-	_border.color = Color(0, 0, 0, 0.45)
-	_border.offset_left   = 0
-	_border.offset_top    = 0
-	_border.offset_right  = TILE_SIZE
-	_border.offset_bottom = 1
-	_border.mouse_filter  = MOUSE_FILTER_IGNORE
-	add_child(_border)
-	var _border_r := ColorRect.new()
-	_border_r.color = Color(0, 0, 0, 0.45)
-	_border_r.offset_left   = TILE_SIZE - 1
-	_border_r.offset_top    = 0
-	_border_r.offset_right  = TILE_SIZE
-	_border_r.offset_bottom = TILE_SIZE
-	_border_r.mouse_filter  = MOUSE_FILTER_IGNORE
-	add_child(_border_r)
+	# Plant sprite — positioned manually so 2-tall stages can overflow upward.
+	_plant_spr = _make_tex_rect()
+	add_child(_plant_spr)
 
-	# top label — crop name / tile type
 	_label = _make_label(8, 4, TILE_SIZE - 4, 62)
-	_label.add_theme_font_size_override("font_size", 42)
+	_label.add_theme_font_size_override("font_size", 34)
 	add_child(_label)
 
-	# bottom label — stage / status
 	_sub = _make_label(6, 4, TILE_SIZE - 4, TILE_SIZE - 4)
 	_sub.offset_top = 50
-	_sub.add_theme_font_size_override("font_size", 38)
+	_sub.add_theme_font_size_override("font_size", 30)
 	_sub.add_theme_constant_override("line_spacing", -18)
 	add_child(_sub)
 
 	refresh_visual()
+
+
+func _make_tex_rect() -> TextureRect:
+	var rect := TextureRect.new()
+	rect.stretch_mode   = TextureRect.STRETCH_SCALE
+	rect.texture_filter = TEXTURE_FILTER_NEAREST
+	rect.mouse_filter   = MOUSE_FILTER_IGNORE
+	return rect
 
 
 func _make_label(top: float, left: float, right: float, bot: float) -> Label:
@@ -104,43 +121,80 @@ func _make_label(top: float, left: float, right: float, bot: float) -> Label:
 	return lbl
 
 
+func _atlas(source: Texture2D, region: Rect2) -> AtlasTexture:
+	var a := AtlasTexture.new()
+	a.atlas  = source
+	a.region = region
+	return a
+
+
+func _set_plant(obj_row: int, two_tall: bool) -> void:
+	var col_x: int = crop_id * _TS
+	var row_y: int = obj_row * _TS
+	if two_tall:
+		_plant_spr.texture = _atlas(_objects, Rect2(col_x, row_y, _TS, _TS * 2))
+		_plant_spr.offset_left   = 0
+		_plant_spr.offset_right  = TILE_SIZE
+		_plant_spr.offset_top    = -TILE_SIZE
+		_plant_spr.offset_bottom = TILE_SIZE
+	else:
+		_plant_spr.texture = _atlas(_objects, Rect2(col_x, row_y, _TS, _TS))
+		_plant_spr.offset_left   = 0
+		_plant_spr.offset_right  = TILE_SIZE
+		_plant_spr.offset_top    = 0
+		_plant_spr.offset_bottom = TILE_SIZE
+	_plant_spr.visible = true
+
+
 func refresh_visual() -> void:
-	if not _bg:
+	if not _tile_spr:
 		return
+
+	_plant_spr.visible  = false
+	_tile_spr.modulate  = Color.WHITE
+	_plant_spr.modulate = Color.WHITE
+	_label.text = ""
+	_sub.text   = ""
+
 	match state:
-		TileState.SOIL:
-			_bg.color = Color(0.28, 0.19, 0.10)
-			_label.text = "soil"
-			_sub.text   = ""
-		TileState.WEED:
-			_bg.color = Color(0.22, 0.32, 0.14)
-			_label.text = "Weed"
-			_sub.text   = "tap!"
 		TileState.LOCKED:
-			_bg.color = Color(0.18, 0.18, 0.20)
-			_label.text = "Locked"
-			_sub.text   = str(unlock_cost) + "c"
+			_tile_spr.texture = _atlas(_tileset, _t(_TILE_GRASS_COL, _TILE_GRASS_ROW))
+			_label.text = str(unlock_cost) + "c"
+
+		TileState.SOIL:
+			_tile_spr.texture = _atlas(_tileset, _t(_TILE_SOIL_COL, _TILE_SOIL_ROW))
+
+		TileState.WEED:
+			_tile_spr.texture  = _atlas(_tileset, _t(_TILE_SOIL_COL, _TILE_SOIL_ROW))
+			_plant_spr.texture = _atlas(_tileset, _t(_TILE_WEED_COL, _TILE_WEED_ROW))
+			_plant_spr.offset_left   = 0
+			_plant_spr.offset_right  = TILE_SIZE
+			_plant_spr.offset_top    = 0
+			_plant_spr.offset_bottom = TILE_SIZE
+			_plant_spr.visible = true
+			_sub.text = "Weed!"
+
 		TileState.CROP, TileState.WILTED:
 			_refresh_crop_visual()
 
 
 func _refresh_crop_visual() -> void:
-	var base_col: Color  = _CROP_COLORS[crop_id] if crop_id >= 0 and crop_id < _CROP_COLORS.size() else Color.WHITE
-	var name_str: String = _CROP_NAMES[crop_id]  if crop_id >= 0 and crop_id < _CROP_NAMES.size()  else "?"
+	_tile_spr.texture = _atlas(_tileset, _t(_TILE_SOIL_COL, _TILE_SOIL_ROW))
 
-	if state == TileState.WILTED:
-		_bg.color   = base_col.lerp(Color(0.35, 0.32, 0.28), 0.72)
-		_label.text = name_str
-		_sub.text   = "wilted\nwater!"
+	if crop_id < 0 or crop_id >= _CROP_NAMES.size():
+		_label.text = "?"
 		return
 
-	var brightness: float = 0.55 + 0.15 * growth_stage
-	_bg.color   = base_col * brightness
-	_label.text = name_str
+	match growth_stage:
+		0: _set_plant(_OBJ_SEED_ROW,    false)
+		1: _set_plant(_OBJ_SPROUT_ROW,  false)
+		2: _set_plant(_OBJ_GROWING_ROW, true)
+		_: _set_plant(_OBJ_MATURE_ROW,  true)
 
-	if growth_stage == _STAGE_MATURE:
-		_sub.text = "READY\ntap!"
-	else:
-		var stage_str: String = _STAGE_LABELS[growth_stage] if growth_stage < _STAGE_LABELS.size() else "?"
-		var water_str: String = "" if watered else "\nwater!"
-		_sub.text = stage_str + water_str
+	if state == TileState.WILTED:
+		_plant_spr.modulate = Color(0.55, 0.50, 0.42)
+		_sub.text = "wilted!"
+	elif growth_stage == _STAGE_MATURE:
+		_sub.text = "READY!"
+	elif not watered:
+		_sub.text = "water!"

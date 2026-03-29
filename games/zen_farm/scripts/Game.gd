@@ -4,9 +4,9 @@ extends Control
 signal back_to_menu
 
 # ── layout ──────────────────────────────────────────────────────────────────
-const ROWS      := 4
+const ROWS      := 5
 const TILE_SIZE := FarmCell.TILE_SIZE
-const GAP       := 8
+const GAP       := 0
 
 var _cols: int = 4        # grows when all current tiles are bought
 
@@ -51,6 +51,7 @@ var _shop_open:     bool = false
 var _selected_crop: int  = -1   # -1 = nothing selected yet
 
 # ── state ────────────────────────────────────────────────────────────────────
+var _game_active: bool     = false   # true only while the player is in-session
 var _cells: Array          = []
 var _coins: int            = 10
 var _inventory: Dictionary = {}
@@ -118,11 +119,14 @@ func _ready() -> void:
 
 
 func prepare_farm() -> void:
+	_game_active = false
+	_touch_cell  = null
 	_cols = SaveManager.load_cols()
 	_clear_cells()
 	_build_cells()
 	var loaded := SaveManager.load_game(self)
 	if loaded:
+		_update_lock_costs()
 		_apply_offline_catchup()
 		_upgrade_panel.visible = false
 		_shop_open = false
@@ -148,6 +152,7 @@ func prepare_farm() -> void:
 
 
 func start_game() -> void:
+	_game_active = true
 	_active_tool = Tool.HAND
 	_seeds_open  = false
 	_shop_open   = false
@@ -170,6 +175,8 @@ func _build_cells() -> void:
 			var cell := FarmCell.new()
 			_grid_container.add_child(cell)
 			cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
+			cell.grid_row = row
+			cell.grid_col = col
 			_cells.append(cell)
 	_apply_initial_layout()
 	_update_grid_size()
@@ -221,6 +228,8 @@ func _add_column() -> void:
 		var cell := FarmCell.new()
 		_grid_container.add_child(cell)
 		cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
+		cell.grid_row    = row
+		cell.grid_col    = col
 		cell.state       = FarmCell.TileState.LOCKED
 		cell.unlock_cost = _next_unlock_cost()
 		cell.refresh_visual()
@@ -241,7 +250,8 @@ func _next_unlock_cost() -> int:
 	if bought < 4:  return 2
 	if bought < 8:  return 4
 	if bought < 12: return 12
-	return 25
+	if bought < 16: return 25
+	return 50
 
 
 func _update_lock_costs() -> void:
@@ -270,6 +280,8 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not _game_active:
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touch_start     = event.position
@@ -706,6 +718,7 @@ func _on_sell_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	_game_active = false
 	SaveManager.save_game(self)
 	back_to_menu.emit()
 
@@ -855,6 +868,7 @@ func _show_status(msg: String) -> void:
 # ── app background save ───────────────────────────────────────────────────
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_game_active = false
 		back_to_menu.emit()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		SaveManager.save_game(self)

@@ -556,7 +556,7 @@ Idle farming game. The player owns a 4×4 grid of land tiles, all initially lock
 
 | Constant | Value | Notes |
 |----------|-------|-------|
-| `COLS` / `ROWS` | 4 / 4 | Grid size (16 tiles total) |
+| `COLS` / `ROWS` | 4 / 5 | Grid size (20 tiles total) |
 | `TILE_SIZE` | 120 px | Inherits from `FarmCell.TILE_SIZE` |
 | `WEED_INTERVAL` | 45.0 s | Seconds between weed spawn attempts |
 
@@ -586,6 +586,7 @@ Dynamic pricing based on tiles already owned (not locked):
 - 4–7 owned → 4c per tile
 - 8–11 owned → 12c per tile
 - 12–15 owned → 25c per tile
+- 16–19 owned → 50c per tile
 
 All locked tiles show the same current price at all times (updated after every purchase). A purchase is blocked if it would leave the player at 0 coins with no active crops growing (`_has_active_crops()` check).
 
