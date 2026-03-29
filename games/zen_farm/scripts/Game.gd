@@ -56,6 +56,10 @@ var _cells: Array          = []
 var _coins: int            = 10
 var _inventory: Dictionary = {}
 var _last_save_time: float = 0.0
+var _decor_placed: Dictionary = {}   # Vector2i(col,row) → true; prevents re-RNG on refresh
+var _wilt_map: TileMapLayer = null   # brown overlay on wilted tiles; built in _ready()
+var _icon_container: Node2D = null        # parent for harvest-ready bounce icons
+var _harvest_icons: Dictionary = {}       # Vector2i(col,row) → Sprite2D
 
 # Weed spawning
 var _weed_timer: float    = 0.0
@@ -66,7 +70,27 @@ const WEED_INTERVAL       := 45.0
 @onready var _coins_label:    Label   = $TopBar/CoinsLabel
 @onready var _mode_label:     Label   = $TopBar/ModeLabel
 @onready var _status_label:   Label   = $StatusLabel
-@onready var _grid_container: Control         = $FarmScroll/GridContainer
+@onready var _grid_container: Control        = $FarmScroll/GridContainer
+@onready var _terrain_map:   TileMapLayer   = $FarmScroll/TerrainMapLayer
+@onready var _decor_map:     TileMapLayer   = $FarmScroll/DecorMapLayer
+@onready var _plant_map:     TileMapLayer   = $FarmScroll/PlantMapLayer
+@onready var _moisture_map:  TileMapLayer   = $FarmScroll/MoistureMapLayer
+
+# ── tilemap constants ─────────────────────────────────────────────────────────
+# TerrainMapLayer — terrain set 0
+const TM_TERRAIN_SET  := 0
+const TM_SOIL         := 0   # 47-tile autotile terrain
+const TM_GRASS        := 1   # single grass tile terrain
+# DecorMapLayer — terrain set 0
+const DM_TERRAIN_SET  := 0
+const DM_DECOR        := 0   # 16 random decor items
+# PlantMapLayer — source id 0 (objects.png)
+# atlas coords: col = crop_id (0-4), row = stage row
+const PM_SOURCE       := 1
+const PM_SEED_ROW     := 2   # stage 0 — seed (1-tall)
+const PM_SPROUT_ROW   := 3   # stage 1 — sprout (1-tall)
+const PM_GROWING_ROW  := 4   # stage 2 — growing (2-tall)
+const PM_MATURE_ROW   := 6   # stage 3 — mature (2-tall)
 @onready var _seed_panel:     Control = $SeedPanel
 @onready var _inv_label:      Label   = $SeedPanel/InvLabel
 @onready var _upgrade_panel:  Control = $UpgradePanel
@@ -116,6 +140,10 @@ func _ready() -> void:
 	_well_panel.gui_input.connect(_on_well_gui_input)
 	$TipPanel/Card/GotItBtn.pressed.connect(func(): _tip_panel.visible = false)
 	_load_sfx()
+	_setup_wilt_overlay()
+	_icon_container = Node2D.new()
+	_icon_container.z_index = 10
+	$FarmScroll.add_child(_icon_container)
 
 
 func prepare_farm() -> void:
@@ -131,7 +159,7 @@ func prepare_farm() -> void:
 		_upgrade_panel.visible = false
 		_shop_open = false
 	else:
-		_coins         = 10
+		_coins         = 100000
 		_can_water     = 0
 		_can_level     = 0
 		_active_tool   = Tool.HAND
@@ -167,6 +195,10 @@ func _clear_cells() -> void:
 		if is_instance_valid(c):
 			c.queue_free()
 	_cells.clear()
+	_decor_placed.clear()
+	for icon in _harvest_icons.values():
+		if is_instance_valid(icon): icon.queue_free()
+	_harvest_icons.clear()
 
 
 func _build_cells() -> void:
@@ -177,8 +209,13 @@ func _build_cells() -> void:
 			cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
 			cell.grid_row = row
 			cell.grid_col = col
+			cell.visual_changed.connect(_refresh_cell_tilemap.bind(cell))
 			_cells.append(cell)
 	_apply_initial_layout()
+	_place_bottom_border_decor(0, _cols)
+	_place_side_border_column(-1)          # left edge — placed once at build
+	_place_side_border_column(_cols * 2)   # right edge
+	_place_top_border_decor(0, _cols)
 	_update_grid_size()
 
 
@@ -203,7 +240,14 @@ func _update_grid_size() -> void:
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
 	_max_scroll_x  = maxi(0, int(content_w + left_x + 18.0) - 540)
 	_scroll_x      = clampi(_scroll_x, 0, _max_scroll_x)
-	_grid_container.position = Vector2(left_x - _scroll_x, 2.0)
+	var pos := Vector2(left_x - _scroll_x, 34.0)
+	_grid_container.position = pos
+	_terrain_map.position    = pos
+	_decor_map.position      = pos
+	_plant_map.position      = pos
+	if _wilt_map:           _wilt_map.position           = pos
+	if _icon_container:     _icon_container.position     = pos
+	if _moisture_map:       _moisture_map.position       = pos
 
 
 func _apply_scroll(delta: int) -> void:
@@ -211,7 +255,148 @@ func _apply_scroll(delta: int) -> void:
 	var stride    := TILE_SIZE + GAP
 	var content_w := _cols * stride - GAP
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
-	_grid_container.position = Vector2(left_x - _scroll_x, 2.0)
+	var pos := Vector2(left_x - _scroll_x, 34.0)
+	_grid_container.position = pos
+	_terrain_map.position    = pos
+	_decor_map.position      = pos
+	_plant_map.position      = pos
+	if _wilt_map:           _wilt_map.position           = pos
+	if _icon_container:     _icon_container.position     = pos
+	if _moisture_map:       _moisture_map.position       = pos
+
+
+# ── tilemap refresh ───────────────────────────────────────────────────────────
+func _cell_coords(cell: FarmCell) -> Array[Vector2i]:
+	var bx := cell.grid_col * 2
+	var by := cell.grid_row * 2
+	return [Vector2i(bx, by), Vector2i(bx+1, by), Vector2i(bx, by+1), Vector2i(bx+1, by+1)]
+
+
+func _refresh_cell_tilemap(cell: FarmCell) -> void:
+	if not _terrain_map or not _decor_map or not _plant_map:
+		return
+	var bx := cell.grid_col * 2
+	var by := cell.grid_row * 2
+	var all: Array[Vector2i] = [Vector2i(bx,by), Vector2i(bx+1,by), Vector2i(bx,by+1), Vector2i(bx+1,by+1)]
+
+	# always clear plant layer first
+	for c in all:
+		_plant_map.erase_cell(c)
+
+	var key := Vector2i(cell.grid_col, cell.grid_row)
+
+	match cell.state:
+		FarmCell.TileState.LOCKED:
+			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_GRASS)
+			if not _decor_placed.has(key):
+				_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
+				_decor_placed[key] = true
+			# else: decor already placed this session — leave it as-is
+
+		FarmCell.TileState.SOIL:
+			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
+			for c in all:
+				_decor_map.erase_cell(c)
+			_decor_placed.erase(key)
+
+		FarmCell.TileState.WEED:
+			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
+			# one random decor tile as weed visual
+			_decor_map.set_cells_terrain_connect(
+				[Vector2i(bx+1, by+1)], DM_TERRAIN_SET, DM_DECOR)
+			_decor_placed.erase(key)
+
+		FarmCell.TileState.CROP, FarmCell.TileState.WILTED:
+			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
+			for c in all:
+				_decor_map.erase_cell(c)
+			_decor_placed.erase(key)
+			if cell.crop_id >= 0:
+				var row: int
+				match cell.growth_stage:
+					0: row = PM_SEED_ROW
+					1: row = PM_SPROUT_ROW
+					2: row = PM_GROWING_ROW
+					_: row = PM_MATURE_ROW
+				var atlas := Vector2i(cell.crop_id, row)
+				for c in all:
+					_plant_map.set_cell(c, PM_SOURCE, atlas)
+
+	# wilt overlay
+	if _wilt_map:
+		for c in all:
+			_wilt_map.erase_cell(c)
+		if cell.state == FarmCell.TileState.WILTED:
+			for c in all:
+				_wilt_map.set_cell(c, 0, Vector2i(0, 0))
+
+	# moisture overlay — watered soil tile variant
+	if _moisture_map:
+		for c in all:
+			_moisture_map.erase_cell(c)
+		var is_watered := (cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED) and cell.watered
+		if is_watered:
+			for c in all:
+				_moisture_map.set_cell(c, 0, Vector2i(0, 0))
+
+	# harvest-ready bounce icon
+	var is_ready := cell.state == FarmCell.TileState.CROP and cell.growth_stage == 3
+	if is_ready:
+		_show_harvest_icon(cell)
+	else:
+		_hide_harvest_icon(key)
+
+
+func _show_harvest_icon(cell: FarmCell) -> void:
+	if not _icon_container:
+		return
+	var key := Vector2i(cell.grid_col, cell.grid_row)
+	if _harvest_icons.has(key):
+		return  # already showing
+	var tex_path := "res://games/zen_farm/assets/harvest_ready.png"
+	if not ResourceLoader.exists(tex_path):
+		return  # texture not made yet — skip silently
+	var icon := Sprite2D.new()
+	icon.texture = load(tex_path)
+	icon.position = Vector2(
+		cell.grid_col * TILE_SIZE + TILE_SIZE * 0.5,
+		cell.grid_row * TILE_SIZE - 24.0)
+	_icon_container.add_child(icon)
+	_harvest_icons[key] = icon
+	var base_y := icon.position.y
+	var tw := create_tween().set_loops()
+	tw.tween_property(icon, "position:y", base_y - 8.0, 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(icon, "position:y", base_y, 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	icon.set_meta("tween", tw)
+
+
+func _hide_harvest_icon(key: Vector2i) -> void:
+	if not _harvest_icons.has(key):
+		return
+	var icon: Sprite2D = _harvest_icons[key]
+	if icon.has_meta("tween"):
+		(icon.get_meta("tween") as Tween).kill()
+	icon.queue_free()
+	_harvest_icons.erase(key)
+
+
+func _setup_wilt_overlay() -> void:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.45, 0.22, 0.04, 0.50))
+	var tex := ImageTexture.create_from_image(img)
+	var source := TileSetAtlasSource.new()
+	source.texture = tex
+	source.texture_region_size = Vector2i(64, 64)
+	source.create_tile(Vector2i(0, 0))
+	var ts := TileSet.new()
+	ts.tile_size = Vector2i(64, 64)
+	ts.add_source(source, 0)
+	_wilt_map = TileMapLayer.new()
+	_wilt_map.tile_set = ts
+	_wilt_map.z_index  = 7   # above PlantMapLayer (z_index 6)
+	$FarmScroll.add_child(_wilt_map)
 
 
 func _check_expansion() -> void:
@@ -230,11 +415,56 @@ func _add_column() -> void:
 		cell.position = Vector2(col * (TILE_SIZE + GAP), row * (TILE_SIZE + GAP))
 		cell.grid_row    = row
 		cell.grid_col    = col
+		cell.visual_changed.connect(_refresh_cell_tilemap.bind(cell))
 		cell.state       = FarmCell.TileState.LOCKED
 		cell.unlock_cost = _next_unlock_cost()
 		cell.refresh_visual()
 		_cells.append(cell)
+	_place_bottom_border_decor(col, col + 2)
+	_place_top_border_decor(col, col + 2)
+	_place_side_border_column(_cols * 2)   # new right edge
 	_update_grid_size()
+
+
+func _place_top_border_decor(col_from: int, col_to: int) -> void:
+	if not _terrain_map or not _decor_map:
+		return
+	var tiles: Array[Vector2i] = []
+	for col in range(col_from, col_to):
+		var bx := col * 2
+		tiles.append(Vector2i(bx,     -1))
+		tiles.append(Vector2i(bx + 1, -1))
+	if tiles.size() > 0:
+		_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
+		_decor_map.set_cells_terrain_connect(tiles, DM_TERRAIN_SET, DM_DECOR)
+
+
+func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
+	if not _terrain_map or not _decor_map:
+		return
+	var all_tiles: Array[Vector2i] = []
+	var decor_tiles: Array[Vector2i] = []
+	for col in range(col_from, col_to):
+		var bx := col * 2
+		for by in [ROWS * 2, ROWS * 2 + 1]:
+			all_tiles.append(Vector2i(bx,     by))
+			all_tiles.append(Vector2i(bx + 1, by))
+		# decor only on the first row (64 px border); second row is plain grass for text
+		decor_tiles.append(Vector2i(col * 2,     ROWS * 2))
+		decor_tiles.append(Vector2i(col * 2 + 1, ROWS * 2))
+	if all_tiles.size() > 0:
+		_terrain_map.set_cells_terrain_connect(all_tiles, TM_TERRAIN_SET, TM_GRASS)
+		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+
+
+func _place_side_border_column(tx: int) -> void:
+	if not _terrain_map or not _decor_map:
+		return
+	var tiles: Array[Vector2i] = []
+	for row in range(-1, ROWS * 2 + 2):   # -1 = top border row, + both bottom border rows
+		tiles.append(Vector2i(tx, row))
+	_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
+	_decor_map.set_cells_terrain_connect(tiles, DM_TERRAIN_SET, DM_DECOR)
 
 
 func _tiles_owned() -> int:
@@ -415,6 +645,10 @@ func _apply_offline_catchup() -> void:
 # ── tool buttons ─────────────────────────────────────────────────────────
 func _on_hand_btn_pressed() -> void:
 	_active_tool = Tool.HAND
+	_seeds_open    = false
+	_shop_open     = false
+	_seed_panel.visible    = false
+	_upgrade_panel.visible = false
 	_refresh_ui()
 
 func _on_can_btn_pressed() -> void:
