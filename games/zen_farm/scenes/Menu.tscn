@@ -20,27 +20,27 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.12, 0.22, 0.12, 1)
+color = Color(0.0245641, 0.0943237, 0.0940658, 1)
 
 [node name="TitleLabel" type="Label" parent="."]
 layout_mode = 0
-offset_top = 160.0
+offset_top = 127.0
 offset_right = 540.0
-offset_bottom = 290.0
+offset_bottom = 270.0
 theme_override_colors/font_color = Color(0.85, 0.95, 0.6, 1)
 theme_override_colors/font_outline_color = Color(0.08, 0.14, 0.06, 1)
 theme_override_constants/outline_size = 8
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 64
+theme_override_font_sizes/font_size = 120
 text = "ZEN FARM"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SubLabel" type="Label" parent="."]
 layout_mode = 0
-offset_top = 300.0
+offset_top = 255.0
 offset_right = 540.0
-offset_bottom = 340.0
+offset_bottom = 301.0
 theme_override_colors/font_color = Color(0.6, 0.8, 0.5, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
 theme_override_constants/outline_size = 3
@@ -53,9 +53,9 @@ vertical_alignment = 1
 [node name="ContinueButton" type="Button" parent="."]
 layout_mode = 0
 offset_left = 170.0
-offset_top = 440.0
+offset_top = 415.0
 offset_right = 370.0
-offset_bottom = 490.0
+offset_bottom = 479.0
 theme_override_colors/font_color = Color(0.85, 0.95, 0.6, 1)
 theme_override_colors/font_outline_color = Color(0.08, 0.14, 0.06, 1)
 theme_override_constants/outline_size = 3
@@ -81,9 +81,9 @@ flat = true
 [node name="BackButton" type="Button" parent="."]
 layout_mode = 0
 offset_left = 200.0
-offset_top = 600.0
+offset_top = 751.0
 offset_right = 340.0
-offset_bottom = 640.0
+offset_bottom = 810.0
 theme_override_colors/font_color = Color(0.55, 0.6, 0.5, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42

@@ -8,7 +8,7 @@ signal rain_changed(is_raining: bool)
 const ROWS      := 5
 const TILE_SIZE := FarmCell.TILE_SIZE
 const GAP       := 0
-const GRID_Y    := 64.0   # vertical offset of the farm grid from the top of FarmScroll
+const GRID_Y    := 96.0   # vertical offset of the farm grid from the top of FarmScroll
 
 var _cols: int = 4        # grows when all current tiles are bought
 
@@ -62,6 +62,7 @@ var _decor_placed: Dictionary = {}   # Vector2i(col,row) → true; prevents re-R
 var _wilt_map: TileMapLayer = null   # brown overlay on wilted tiles; built in _ready()
 var _icon_container: Node2D = null        # parent for harvest-ready bounce icons
 var _harvest_icons: Dictionary = {}       # Vector2i(col,row) → Sprite2D
+var _harvest_icon_shown_once: Dictionary = {}  # Saving harvest icon state
 
 # Weed spawning
 var _weed_timer: float    = 0.0
@@ -160,6 +161,10 @@ func _ready() -> void:
 	_icon_container.z_index = 10
 	$FarmScroll.add_child(_icon_container)
 
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://games/zen_farm/assets/plant_sway.gdshader")
+	_plant_map.material = mat
+
 	_rain_overlay = ColorRect.new()
 	_rain_overlay.color = Color(0.35, 0.50, 0.75, 0.0)
 	_rain_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -200,7 +205,7 @@ func prepare_farm() -> void:
 		_upgrade_panel.visible = false
 		_shop_open = false
 	else:
-		_coins         = 100000
+		_coins         = 10
 		_can_water     = 0
 		_can_level     = 0
 		_active_tool   = Tool.HAND
@@ -400,19 +405,28 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 func _show_harvest_icon(cell: FarmCell) -> void:
 	if not _icon_container:
 		return
+
 	var key := Vector2i(cell.grid_col, cell.grid_row)
+
+	if _harvest_icon_shown_once.get(key, false):
+		return
+
 	if _harvest_icons.has(key):
 		return  # already showing
+
 	var tex_path := "res://games/zen_farm/assets/harvest_ready.png"
 	if not ResourceLoader.exists(tex_path):
 		return  # texture not made yet — skip silently
+
 	var icon := Sprite2D.new()
 	icon.texture = load(tex_path)
 	icon.position = Vector2(
 		cell.grid_col * TILE_SIZE + TILE_SIZE * 0.5,
-		cell.grid_row * TILE_SIZE - 24.0)
+		cell.grid_row * TILE_SIZE - 24.0
+	)
 	_icon_container.add_child(icon)
 	_harvest_icons[key] = icon
+
 	var base_y := icon.position.y
 	var tw := create_tween().set_loops()
 	tw.tween_property(icon, "position:y", base_y - 8.0, 0.45) \
@@ -420,6 +434,20 @@ func _show_harvest_icon(cell: FarmCell) -> void:
 	tw.tween_property(icon, "position:y", base_y, 0.45) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	icon.set_meta("tween", tw)
+
+	get_tree().create_timer(30.0).timeout.connect(func():
+		if not is_instance_valid(icon):
+			return
+		tw.kill()
+		var fade := create_tween()
+		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
+		fade.tween_callback(func():
+			if is_instance_valid(icon):
+				_harvest_icons.erase(key)
+				_harvest_icon_shown_once[key] = true
+				icon.queue_free()
+		)
+	)
 
 
 func _hide_harvest_icon(key: Vector2i) -> void:
@@ -471,7 +499,7 @@ func _add_column() -> void:
 		cell.refresh_visual()
 		_cells.append(cell)
 	_place_bottom_border_decor(col, col + 2)
-	_place_top_border_decor(col, col + 2)
+	_place_top_border_decor(col, col + 3)
 	_place_side_border_column(_cols * 2)   # new right edge
 	_update_grid_size()
 
@@ -479,19 +507,28 @@ func _add_column() -> void:
 func _place_top_border_decor(col_from: int, col_to: int) -> void:
 	if not _terrain_map or not _decor_map:
 		return
+
 	var tiles: Array[Vector2i] = []
 	var decor_tiles: Array[Vector2i] = []
-	for col in range(col_from, col_to):
-		var bx := col * 2
-		tiles.append(Vector2i(bx,     -1))
-		tiles.append(Vector2i(bx + 1, -1))
-		if randf() > 0.3:   # 70% chance of decor per column
-			decor_tiles.append(Vector2i(bx,     -1))
-			decor_tiles.append(Vector2i(bx + 1, -1))
+
+	# include decorative edge columns too
+	var bx_from := col_from * 2 - 1
+	var bx_to   := col_to   * 2
+
+	for bx in range(bx_from, bx_to + 1):
+		tiles.append(Vector2i(bx, -1))
+		tiles.append(Vector2i(bx, -2))
+
+		if randf() > 0.3:
+			decor_tiles.append(Vector2i(bx, -1))
+		if randf() > 0.3:
+			decor_tiles.append(Vector2i(bx, -2))
+
 	if tiles.size() > 0:
 		_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
-		if decor_tiles.size() > 0:
-			_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+
+	if decor_tiles.size() > 0:
+		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
 
 
 func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
@@ -817,6 +854,9 @@ func _on_well_gui_input(event: InputEvent) -> void:
 
 # ── cell tap handler ──────────────────────────────────────────────────────
 func _on_cell_tapped(cell: FarmCell) -> void:
+	if cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED:
+		_poke_plants(cell)
+
 	if _seeds_open:
 		if cell.state == FarmCell.TileState.SOIL:
 			_try_plant(cell)
@@ -828,6 +868,21 @@ func _on_cell_tapped(cell: FarmCell) -> void:
 		Tool.HAND:          _try_hand(cell)
 		Tool.WATERING_CAN:  _try_water_cell(cell)
 		Tool.SHEARS:        _try_shear(cell)
+
+
+func _poke_plants(cell: FarmCell) -> void:
+	var mat := _plant_map.material as ShaderMaterial
+	if not mat:
+		return
+	# pass global position — shader uses WORLD_MATRIX to match this space
+	#NOTE:
+	#poke_pos/local-space math is intentionally a bit mismatched here.
+	#It is not physically correct, but it gives the nicest visual result
+	#for the flower tilemap setup.
+	mat.set_shader_parameter("poke_pos", _plant_map.to_local(cell.get_global_rect().get_center()))
+	mat.set_shader_parameter("poke_age", 0.0)
+	var tw := create_tween()
+	tw.tween_method(func(v: float): mat.set_shader_parameter("poke_age", v), 0.0, 1.0, 0.6)
 
 
 # HAND tool: unlock tiles; guide player toward the right tool otherwise
@@ -917,6 +972,20 @@ func _try_water_cell(cell: FarmCell) -> void:
 			_play(_sfx_noaction)
 			_show_status("Nothing to water here.")
 
+# Helper for the state
+func _clear_harvest_icon_state(cell: FarmCell) -> void:
+	var key := Vector2i(cell.grid_col, cell.grid_row)
+	_harvest_icon_shown_once.erase(key)
+
+	if _harvest_icons.has(key):
+		var icon = _harvest_icons[key]
+		_harvest_icons.erase(key)
+		if is_instance_valid(icon):
+			var tw = icon.get_meta("tween", null)
+			if tw:
+				tw.kill()
+			icon.queue_free()
+
 
 # SHEARS tool: harvest mature crops and cut weeds
 func _try_shear(cell: FarmCell) -> void:
@@ -932,12 +1001,14 @@ func _try_shear(cell: FarmCell) -> void:
 				cell.time_in_stage = 0.0
 				cell.watered       = false
 				cell.wilt_timer    = 0.0
+				_clear_harvest_icon_state(cell)
 				cell.refresh_visual()
 				_play(_sfx_harvest)
 				_spawn_coin_float(cell, value)
 				_show_status("Harvested! +" + str(value) + "c")
 				_refresh_ui()
 				SaveManager.save_game(self)
+
 			elif cell.growth_stage == CropData.STAGE_SEED:
 				# Uproot a freshly planted seed — refund half the seed cost
 				var refund: int = maxi(1, CropData.get_seed_cost(cell.crop_id) >> 1)
@@ -948,17 +1019,21 @@ func _try_shear(cell: FarmCell) -> void:
 				cell.time_in_stage = 0.0
 				cell.watered       = false
 				cell.wilt_timer    = 0.0
+				_clear_harvest_icon_state(cell)
 				cell.refresh_visual()
 				_play(_sfx_weedcut)
 				_spawn_coin_float(cell, refund)
 				_show_status("Seed uprooted. +" + str(refund) + "c back.")
 				_refresh_ui()
 				SaveManager.save_game(self)
+
 			else:
 				_play(_sfx_noaction)
 				_show_status("Not ready yet — keep watering.")
+
 		FarmCell.TileState.WEED:
 			cell.state = FarmCell.TileState.SOIL
+			_clear_harvest_icon_state(cell)
 			cell.refresh_visual()
 			_coins += 1
 			_play(_sfx_weedcut)
@@ -966,10 +1041,10 @@ func _try_shear(cell: FarmCell) -> void:
 			_show_status("Weed cut! +1c")
 			_refresh_ui()
 			SaveManager.save_game(self)
+
 		_:
 			_play(_sfx_noaction)
 			_show_status("Nothing to cut here.")
-
 
 # SEEDS panel: plant on soil
 func _try_plant(cell: FarmCell) -> void:
