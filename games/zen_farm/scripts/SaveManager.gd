@@ -18,12 +18,14 @@ static func save_game(game: Node) -> void:
 	# cells — keyed by grid position so column-expansion order doesn't matter
 	for cell: FarmCell in game._cells:
 		var sec := "cell_r%d_c%d" % [cell.grid_row, cell.grid_col]
+		var key := Vector2i(cell.grid_col, cell.grid_row)
 		cfg.set_value(sec, "state",        int(cell.state))
 		cfg.set_value(sec, "crop_id",      cell.crop_id)
 		cfg.set_value(sec, "growth_stage", cell.growth_stage)
 		cfg.set_value(sec, "time_in_stage",cell.time_in_stage)
 		cfg.set_value(sec, "watered",      cell.watered)
 		cfg.set_value(sec, "wilt_timer",   cell.wilt_timer)
+		cfg.set_value(sec, "harvest_icon_shown_once", game._harvest_icon_shown_once.get(key, false))
 
 	cfg.save(SAVE_PATH)
 
@@ -49,12 +51,17 @@ static func load_game(game: Node) -> bool:
 		var sec := "cell_r%d_c%d" % [cell.grid_row, cell.grid_col]
 		if not cfg.has_section(sec):
 			continue
-		cell.state        = cfg.get_value(sec, "state",        0) as FarmCell.TileState
-		cell.crop_id      = cfg.get_value(sec, "crop_id",      -1)
-		cell.growth_stage = cfg.get_value(sec, "growth_stage", 0)
-		cell.time_in_stage= cfg.get_value(sec, "time_in_stage",0.0)
-		cell.watered      = cfg.get_value(sec, "watered",      false)
-		cell.wilt_timer   = cfg.get_value(sec, "wilt_timer",   0.0)
+
+		cell.state         = cfg.get_value(sec, "state",         0) as FarmCell.TileState
+		cell.crop_id       = cfg.get_value(sec, "crop_id",       -1)
+		cell.growth_stage  = cfg.get_value(sec, "growth_stage",  0)
+		cell.time_in_stage = cfg.get_value(sec, "time_in_stage", 0.0)
+		cell.watered       = cfg.get_value(sec, "watered",       false)
+		cell.wilt_timer    = cfg.get_value(sec, "wilt_timer",    0.0)
+
+		var key := Vector2i(cell.grid_col, cell.grid_row)
+		game._harvest_icon_shown_once[key] = cfg.get_value(sec, "harvest_icon_shown_once", false)
+
 		cell.refresh_visual()
 
 	return true
