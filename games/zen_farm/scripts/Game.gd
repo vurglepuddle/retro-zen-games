@@ -73,6 +73,10 @@ var _rain_check_timer: float          = 0.0
 var _rain_duration:    float          = 0.0
 var _rain_overlay:     ColorRect      = null
 var _rain_particles:   CPUParticles2D = null
+
+# ── butterflies ───────────────────────────────────────────────────────────────
+const BUTTERFLY_COUNT := 3
+var _butterflies: Array = []   # Array of {node, state, perched_cell, tween}
 const WEED_INTERVAL       := 45.0
 
 # ── rain ─────────────────────────────────────────────────────────────────────
@@ -119,9 +123,10 @@ const PM_MATURE_ROW   := 6   # stage 3 — mature (2-tall)
 @onready var _hand_btn:       Button  = $ToolBar/HandBtn
 @onready var _can_btn:        Button  = $ToolBar/CanBtn
 @onready var _shears_btn:     Button  = $ToolBar/ShearsBtn
-@onready var _well_panel:     Control = $WellPanel
-@onready var _well_label:     Label   = $WellPanel/WellLabel
-@onready var _tip_panel:      Control = $TipPanel
+@onready var _well_panel:         Control          = $WellPanel
+@onready var _well_label:         Label            = $WellPanel/WellLabel
+@onready var _tip_panel:          Control          = $TipPanel
+
 
 # ── SFX nodes ────────────────────────────────────────────────────────────────
 @onready var _sfx_plant:    AudioStreamPlayer = $SfxPlant
@@ -242,10 +247,19 @@ func start_game() -> void:
 	_seed_panel.visible    = false
 	_upgrade_panel.visible = false
 	_refresh_ui()
+	_clear_butterflies()
+	_setup_butterflies()
 
 
 # ── build ─────────────────────────────────────────────────────────────────
 func _clear_cells() -> void:
+	_clear_butterflies()
+	# clear all tilemap layers so border decor from prior session doesn't linger
+	if _terrain_map: _terrain_map.clear()
+	if _decor_map:   _decor_map.clear()
+	if _plant_map:   _plant_map.clear()
+	if _wilt_map:    _wilt_map.clear()
+	if _moisture_map: _moisture_map.clear()
 	for c in _cells:
 		if is_instance_valid(c):
 			c.queue_free()
@@ -748,6 +762,7 @@ func _start_rain() -> void:
 	var tw := create_tween()
 	tw.tween_property(_rain_overlay, "color:a", 0.18, 1.5)
 	_show_status("It's raining! Crops are being watered.")
+	_flee_butterflies()
 	rain_changed.emit(true)
 
 
@@ -758,6 +773,10 @@ func _stop_rain() -> void:
 	tw.tween_property(_rain_overlay, "color:a", 0.0, 2.0)
 	_show_status("The rain has stopped.")
 	rain_changed.emit(false)
+	get_tree().create_timer(8.0).timeout.connect(func():
+		if not _is_raining and _game_active:
+			_setup_butterflies()
+	)
 
 
 # ── offline catch-up ──────────────────────────────────────────────────────
@@ -854,6 +873,7 @@ func _on_well_gui_input(event: InputEvent) -> void:
 
 # ── cell tap handler ──────────────────────────────────────────────────────
 func _on_cell_tapped(cell: FarmCell) -> void:
+	_scatter_butterfly_from(cell)
 	if cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED:
 		_poke_plants(cell)
 
@@ -874,12 +894,12 @@ func _poke_plants(cell: FarmCell) -> void:
 	var mat := _plant_map.material as ShaderMaterial
 	if not mat:
 		return
-	# pass global position — shader uses WORLD_MATRIX to match this space
-	#NOTE:
-	#poke_pos/local-space math is intentionally a bit mismatched here.
-	#It is not physically correct, but it gives the nicest visual result
-	#for the flower tilemap setup.
-	mat.set_shader_parameter("poke_pos", _plant_map.to_local(cell.get_global_rect().get_center()))
+	# Pass poke_pos in viewport-pixel space to match CANVAS_MATRIX * MODEL_MATRIX in shader.
+	# get_canvas_transform() applies the same canvas→viewport scale as CANVAS_MATRIX,
+	# making this work correctly on both desktop and Android stretch modes.
+	var world_pos: Vector2 = cell.get_global_rect().get_center()
+	var viewport_pos: Vector2 = get_viewport().get_canvas_transform() * world_pos
+	mat.set_shader_parameter("poke_pos", viewport_pos)
 	mat.set_shader_parameter("poke_age", 0.0)
 	var tw := create_tween()
 	tw.tween_method(func(v: float): mat.set_shader_parameter("poke_age", v), 0.0, 1.0, 0.6)
@@ -1295,6 +1315,189 @@ func _spawn_coin_float(cell: FarmCell, amount: int) -> void:
 func _show_status(msg: String) -> void:
 	_status_label.text = msg
 	_status_timer.start(2.5)
+
+
+# ── butterflies ──────────────────────────────────────────────────────────────
+func _setup_butterflies() -> void:
+	var templates: Array = []
+	for tname in ["Butterfly1", "Butterfly2", "Butterfly3"]:
+		var t := get_node_or_null("FarmScroll/" + tname) as AnimatedSprite2D
+		if t:
+			templates.append(t)
+	if templates.is_empty():
+		return
+	var count := randi() % (BUTTERFLY_COUNT + 1)  # 0–3
+	for i in count:
+		var sprite := (templates[randi() % templates.size()] as AnimatedSprite2D).duplicate() as AnimatedSprite2D
+		if sprite == null:
+			continue
+		sprite.position = _butterfly_offscreen_pos()
+		sprite.visible  = true
+		sprite.scale    = Vector2(1.0, 1.0)
+		sprite.play("default", randf_range(0.8, 1.3))
+		sprite.frame          = randi() % 4
+		sprite.frame_progress = randf()
+		$FarmScroll.add_child(sprite)
+		var bfly := {"node": sprite, "state": "flying", "perched_cell": null, "tween": null}
+		_butterflies.append(bfly)
+		get_tree().create_timer(randf_range(0.5, 4.0) * i).timeout.connect(func():
+			if is_instance_valid(bfly["node"]):
+				_butterfly_wander(bfly)
+		)
+
+
+func _clear_butterflies() -> void:
+	for bfly in _butterflies:
+		if bfly.get("tween") and is_instance_valid(bfly["tween"]):
+			bfly["tween"].kill()
+		if is_instance_valid(bfly["node"]):
+			bfly["node"].queue_free()
+	_butterflies.clear()
+
+
+func _butterfly_offscreen_pos() -> Vector2:
+	var grid_w := float(_cols) * TILE_SIZE
+	match randi() % 3:  # 0=left, 1=right, 2=top
+		0: return Vector2(-60.0,        randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+		1: return Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+		_: return Vector2(randf_range(20.0, grid_w - 20.0), GRID_Y - 90.0)
+
+
+func _butterfly_wander_pos() -> Vector2:
+	var grid_w := float(_cols) * TILE_SIZE
+	return Vector2(
+		randf_range(20.0, grid_w - 20.0),
+		randf_range(GRID_Y - 60.0, GRID_Y + ROWS * TILE_SIZE - 60.0)
+	)
+
+
+func _butterfly_wander(bfly: Dictionary) -> void:
+	if not is_instance_valid(bfly["node"]):
+		return
+	bfly["state"] = "flying"
+	bfly["perched_cell"] = null
+
+	# 25% chance to try landing on a crop cell
+	if randf() < 0.25:
+		var eligible: Array = []
+		for cell in _cells:
+			if cell.state == FarmCell.TileState.CROP:
+				var taken := false
+				for b in _butterflies:
+					if b["perched_cell"] == cell:
+						taken = true
+						break
+				if not taken:
+					eligible.append(cell)
+		if not eligible.is_empty():
+			_butterfly_perch(bfly, eligible[randi() % eligible.size()])
+			return
+
+	var node_pos: Vector2 = bfly["node"].position
+
+	# 15% chance to fly off a screen edge and re-enter from another
+	if randf() < 0.15:
+		var grid_w := float(_cols) * TILE_SIZE
+		var exit_dir := randi() % 3   # 0=left, 1=right, 2=up
+		var exit_pos: Vector2
+		match exit_dir:
+			0: exit_pos = Vector2(-60.0,  randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+			1: exit_pos = Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+			_: exit_pos = Vector2(randf_range(40.0, grid_w - 40.0), GRID_Y - 90.0)
+		var exit_dur := clampf(node_pos.distance_to(exit_pos) / 110.0, 1.2, 4.0)
+		var exit_tw := create_tween()
+		bfly["tween"] = exit_tw
+		exit_tw.tween_property(bfly["node"], "position", exit_pos, exit_dur).set_trans(Tween.TRANS_SINE)
+		exit_tw.tween_callback(func():
+			if bfly["state"] != "flying":
+				return
+			# re-enter from a random opposite edge
+			var entry: Vector2
+			match exit_dir:
+				0: entry = Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+				1: entry = Vector2(-60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
+				_: entry = Vector2(randf_range(40.0, grid_w - 40.0), GRID_Y + ROWS * TILE_SIZE + 60.0)
+			bfly["node"].position = entry
+			_butterfly_wander(bfly)
+		)
+		return
+
+	# Normal lazy wander — slow arc through a midpoint, pause at destination
+	var target := _butterfly_wander_pos()
+	var mid: Vector2 = (node_pos + target) * 0.5 + Vector2(randf_range(-60.0, 60.0), randf_range(-50.0, 50.0))
+	var dur := clampf(node_pos.distance_to(target) / 110.0, 2.0, 5.5)
+	var pause := randf_range(1.5, 4.0)   # linger at destination before next move
+
+	var tw := create_tween()
+	bfly["tween"] = tw
+	tw.tween_property(bfly["node"], "position", mid,    dur * 0.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(bfly["node"], "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func(): (bfly["node"] as AnimatedSprite2D).stop())
+	tw.tween_interval(pause)
+	tw.tween_callback(func():
+		if bfly["state"] == "flying":
+			(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
+			_butterfly_wander(bfly)
+	)
+
+
+func _butterfly_perch(bfly: Dictionary, cell: FarmCell) -> void:
+	bfly["state"] = "perching"
+	bfly["perched_cell"] = cell
+	# Convert cell centre to FarmScroll local space
+	var dest: Vector2 = $FarmScroll.get_global_transform().affine_inverse() * cell.get_global_rect().get_center() + Vector2(randf_range(-8.0, 8.0), -18.0)
+	var bfly_pos: Vector2 = bfly["node"].position
+	var dist: float = bfly_pos.distance_to(dest)
+	var dur   := clampf(dist / 60.0, 1.5, 5.0)
+
+	var tw := create_tween()
+	bfly["tween"] = tw
+	tw.tween_property(bfly["node"], "position", dest, dur).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func():
+		if bfly["state"] != "perching":
+			return
+		bfly["state"] = "perched"
+		(bfly["node"] as AnimatedSprite2D).stop()
+		get_tree().create_timer(randf_range(4.0, 12.0)).timeout.connect(func():
+			if bfly["state"] == "perched" and is_instance_valid(bfly["node"]):
+				(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
+				_butterfly_wander(bfly)
+		)
+	)
+
+
+func _scatter_butterfly_from(cell: FarmCell) -> void:
+	for bfly in _butterflies:
+		if bfly["perched_cell"] == cell:
+			_butterfly_flee_one(bfly)
+			return
+
+
+func _flee_butterflies() -> void:
+	for bfly in _butterflies.duplicate():
+		_butterfly_flee_one(bfly)
+
+
+func _butterfly_flee_one(bfly: Dictionary) -> void:
+	if not is_instance_valid(bfly["node"]):
+		_butterflies.erase(bfly)
+		return
+	bfly["state"] = "fleeing"
+	bfly["perched_cell"] = null
+	if bfly.get("tween") and is_instance_valid(bfly["tween"]):
+		bfly["tween"].kill()
+	(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
+	var flee_x := randf_range(0.0, float(_cols) * TILE_SIZE)
+	var flee_y := GRID_Y - TILE_SIZE * 2.5
+	var tw := create_tween()
+	bfly["tween"] = tw
+	tw.tween_property(bfly["node"], "position", Vector2(flee_x, flee_y), 4) \
+		.set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func():
+		if is_instance_valid(bfly["node"]):
+			bfly["node"].queue_free()
+		_butterflies.erase(bfly)
+	)
 
 
 # ── app background save ───────────────────────────────────────────────────

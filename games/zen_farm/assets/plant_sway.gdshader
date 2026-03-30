@@ -6,8 +6,8 @@ uniform float wind_spread   : hint_range(0.0, 0.12) = 0.038;
 
 uniform vec2  poke_pos = vec2(-9999.0, -9999.0);
 uniform float poke_age : hint_range(0.0, 1.0) = 1.0;
-uniform float poke_radius : hint_range(1.0, 200.0) = 90.0;
-uniform float poke_strength : hint_range(0.0, 20.0) = 5.0;
+uniform float poke_radius : hint_range(1.0, 300.0) = 90.0;
+uniform float poke_strength : hint_range(0.0, 60.0) = 18.0;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -44,9 +44,11 @@ void vertex() {
 	float wind_offset = (wave1 * 0.7 + wave2 * 0.3) * wind_strength * amp_jitter;
 	VERTEX.x += wind_offset * sway;
 
-	// Keep your cursed-good poke version
-	vec2 canvas_pos = (CANVAS_MATRIX * MODEL_MATRIX * vec4(base_vertex, 0.0, 1.0)).xy;
-	vec2 offset = canvas_pos - poke_pos;
+	// poke_pos is passed in viewport-pixel space (get_canvas_transform() applied in GDScript)
+	// CANVAS_MATRIX * MODEL_MATRIX brings each vertex to the same viewport-pixel space
+	// — consistent on desktop and Android stretch modes
+	vec2 screen_pos = (CANVAS_MATRIX * MODEL_MATRIX * vec4(base_vertex, 0.0, 1.0)).xy;
+	vec2 offset = screen_pos - poke_pos;
 
 	float dist = length(offset);
 	float t = clamp(1.0 - dist / poke_radius, 0.0, 1.0);
