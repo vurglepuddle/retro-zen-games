@@ -1,11 +1,13 @@
-[gd_scene load_steps=26 format=3 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=44 format=3 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
+[ext_resource type="Texture2D" uid="uid://2bq6fux0yy0" path="res://games/zen_farm/assets/butterfly2.png" id="3_3iref"]
 [ext_resource type="Texture2D" uid="uid://b3tlbij622no2" path="res://games/zen_farm/assets/tileset_wet.png" id="3_sgfw2"]
 [ext_resource type="AudioStream" uid="uid://cfky7i8838guc" path="res://games/zen_farm/assets/sfx/plant.mp3" id="3_t5awd"]
 [ext_resource type="AudioStream" uid="uid://bqc5lf6nhwjxh" path="res://games/zen_farm/assets/sfx/water.mp3" id="3_tg6go"]
 [ext_resource type="AudioStream" uid="uid://di40l4ok412yo" path="res://games/zen_farm/assets/sfx/well_fill.mp3" id="4_4ylvw"]
+[ext_resource type="Texture2D" uid="uid://dwjhj7fsrywou" path="res://games/zen_farm/assets/butterfly3.png" id="4_my706"]
 [ext_resource type="AudioStream" uid="uid://bh1coksfyebuf" path="res://games/zen_farm/assets/sfx/harvest.mp3" id="5_8n77c"]
 [ext_resource type="AudioStream" uid="uid://qyepyrt8wdr6" path="res://games/zen_farm/assets/sfx/weed_cut.mp3" id="6_hromi"]
 [ext_resource type="Texture2D" uid="uid://cd2flabr343h0" path="res://games/zen_farm/assets/BG_UI.png" id="7_420xh"]
@@ -17,6 +19,115 @@
 [ext_resource type="Texture2D" uid="uid://daqmp3dgqi87a" path="res://games/zen_farm/assets/tileset2.png" id="12_7icwt"]
 [ext_resource type="Texture2D" uid="uid://d0d1seqpoivv2" path="res://games/zen_farm/assets/objects.png" id="13_65i8m"]
 [ext_resource type="Texture2D" uid="uid://cvou6eb6dtd6t" path="res://games/zen_farm/assets/tileset.png" id="13_yv806"]
+[ext_resource type="Texture2D" uid="uid://dlju0dj5h8d1s" path="res://games/zen_farm/assets/butterfly.png" id="18_14l61"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c535x"]
+atlas = ExtResource("18_14l61")
+region = Rect2(0, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ca4bg"]
+atlas = ExtResource("18_14l61")
+region = Rect2(40, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xuyqm"]
+atlas = ExtResource("18_14l61")
+region = Rect2(80, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5nl5f"]
+atlas = ExtResource("18_14l61")
+region = Rect2(120, 0, 40, 40)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xu8jt"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c535x")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ca4bg")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xuyqm")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5nl5f")
+}],
+"loop": true,
+"name": &"default",
+"speed": 4.0
+}]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_c4d8n"]
+atlas = ExtResource("3_3iref")
+region = Rect2(0, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qs0fv"]
+atlas = ExtResource("3_3iref")
+region = Rect2(40, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_dlcr8"]
+atlas = ExtResource("3_3iref")
+region = Rect2(80, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pxhfd"]
+atlas = ExtResource("3_3iref")
+region = Rect2(120, 0, 40, 40)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_hvydn"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_c4d8n")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_qs0fv")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_dlcr8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pxhfd")
+}],
+"loop": true,
+"name": &"default",
+"speed": 4.0
+}]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0ki3y"]
+atlas = ExtResource("4_my706")
+region = Rect2(0, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rf5y1"]
+atlas = ExtResource("4_my706")
+region = Rect2(40, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ogfqu"]
+atlas = ExtResource("4_my706")
+region = Rect2(80, 0, 40, 40)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8pgb2"]
+atlas = ExtResource("4_my706")
+region = Rect2(120, 0, 40, 40)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_sgpep"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0ki3y")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rf5y1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ogfqu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8pgb2")
+}],
+"loop": true,
+"name": &"default",
+"speed": 4.0
+}]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_xwbs3"]
 texture = ExtResource("12_7icwt")
@@ -821,6 +932,25 @@ offset_right = 540.0
 offset_bottom = 814.0
 mouse_filter = 2
 
+[node name="Butterfly1" type="AnimatedSprite2D" parent="FarmScroll"]
+visible = false
+z_index = 100
+position = Vector2(118, 359)
+sprite_frames = SubResource("SpriteFrames_xu8jt")
+frame_progress = 0.570325
+
+[node name="Butterfly2" type="AnimatedSprite2D" parent="FarmScroll"]
+visible = false
+z_index = 100
+position = Vector2(118, 359)
+sprite_frames = SubResource("SpriteFrames_hvydn")
+
+[node name="Butterfly3" type="AnimatedSprite2D" parent="FarmScroll"]
+visible = false
+z_index = 100
+position = Vector2(118, 359)
+sprite_frames = SubResource("SpriteFrames_sgpep")
+
 [node name="TerrainMapLayer" type="TileMapLayer" parent="FarmScroll"]
 position = Vector2(19, 56)
 tile_set = SubResource("TileSet_pj6u3")
@@ -838,6 +968,7 @@ tile_set = SubResource("TileSet_6eamb")
 z_index = 6
 y_sort_enabled = true
 position = Vector2(19, 56)
+tile_map_data = PackedByteArray(0, 0, 10, 0, 5, 0, 1, 0, 7, 0, 4, 0, 0, 0)
 tile_set = SubResource("TileSet_khsm7")
 
 [node name="GridContainer" type="Control" parent="FarmScroll"]
