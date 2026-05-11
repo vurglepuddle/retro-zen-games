@@ -3,17 +3,20 @@ extends Control
 
 signal back_to_menu
 signal rain_changed(is_raining: bool)
+signal day_night_changed(night_amount: float)
 
 # ── layout ──────────────────────────────────────────────────────────────────
 const ROWS      := 5
 const TILE_SIZE := FarmCell.TILE_SIZE
 const GAP       := 0
 const GRID_Y    := 96.0   # vertical offset of the farm grid from the top of FarmScroll
+const MIN_EARLY_SCROLL_RANGE := 72
 
 var _cols: int = 4        # grows when all current tiles are bought
 
 # manual pan (replaces ScrollContainer)
 var _scroll_x:     int = 0
+var _min_scroll_x: int = 0
 var _max_scroll_x: int = 0
 
 # tap-vs-drag tracking (touch + mouse)
@@ -59,8 +62,10 @@ var _coins: int            = 10
 var _inventory: Dictionary = {}
 var _last_save_time: float = 0.0
 var _decor_placed: Dictionary = {}   # Vector2i(col,row) → true; prevents re-RNG on refresh
-var _wilt_map: TileMapLayer = null   # brown overlay on wilted tiles; built in _ready()
+var _wilt_map: TileMapLayer = null        # brown overlay on wilted tiles; built in _ready()
+var _rock_decor_map: TileMapLayer = null  # static decor layer for rocks (no sway shader)
 var _icon_container: Node2D = null        # parent for harvest-ready bounce icons
+var _insect_container: Node2D = null      # parent for live butterflies/fireflies; scrolls with the field
 var _harvest_icons: Dictionary = {}       # Vector2i(col,row) → Sprite2D
 var _harvest_icon_shown_once: Dictionary = {}  # Saving harvest icon state
 
@@ -74,9 +79,35 @@ var _rain_duration:    float          = 0.0
 var _rain_overlay:     ColorRect      = null
 var _rain_particles:   CPUParticles2D = null
 
+# day/night color grading
+const DAY_NIGHT_CYCLE := 180.0
+const DAY_PHASE := 0.30
+const NIGHT_PHASE := 0.76
+const DAY_NIGHT_KEYS := [
+	{"t": 0.00, "shadow": Color(0.34, 0.42, 0.68, 1.0), "mid": Color(0.72, 0.82, 1.0, 1.0), "highlight": Color(1.00, 0.88, 0.55, 1.0), "night": 0.40, "dusk": 0.00, "dawn": 0.90, "sat": 0.72, "exposure": 0.86, "contrast": 0.92, "lift": 0.030, "vignette": 0.22, "lamp": 0.54},
+	{"t": 0.12, "shadow": Color(0.58, 0.55, 0.60, 1.0), "mid": Color(1.00, 0.95, 0.84, 1.0), "highlight": Color(1.00, 0.93, 0.70, 1.0), "night": 0.06, "dusk": 0.00, "dawn": 0.26, "sat": 1.04, "exposure": 1.00, "contrast": 1.00, "lift": 0.006, "vignette": 0.03, "lamp": 0.00},
+	{"t": 0.30, "shadow": Color(0.88, 0.91, 0.92, 1.0), "mid": Color(1.00, 1.00, 1.00, 1.0), "highlight": Color(1.00, 1.00, 0.94, 1.0), "night": 0.00, "dusk": 0.00, "dawn": 0.00, "sat": 1.00, "exposure": 1.00, "contrast": 1.02, "lift": 0.000, "vignette": 0.00, "lamp": 0.00},
+	{"t": 0.50, "shadow": Color(0.76, 0.74, 0.86, 1.0), "mid": Color(1.00, 0.92, 0.88, 1.0), "highlight": Color(1.00, 0.78, 0.58, 1.0), "night": 0.04, "dusk": 0.36, "dawn": 0.00, "sat": 1.08, "exposure": 0.98, "contrast": 1.02, "lift": 0.006, "vignette": 0.04, "lamp": 0.08},
+	{"t": 0.64, "shadow": Color(0.20, 0.10, 0.58, 1.0), "mid": Color(0.78, 0.42, 1.00, 1.0), "highlight": Color(1.00, 0.62, 0.72, 1.0), "night": 0.42, "dusk": 0.92, "dawn": 0.00, "sat": 1.08, "exposure": 0.80, "contrast": 1.00, "lift": 0.022, "vignette": 0.25, "lamp": 0.52},
+	{"t": 0.76, "shadow": Color(0.02, 0.06, 0.42, 1.0), "mid": Color(0.24, 0.16, 0.82, 1.0), "highlight": Color(0.62, 0.52, 1.00, 1.0), "night": 1.00, "dusk": 0.12, "dawn": 0.00, "sat": 1.40, "exposure": 0.52, "contrast": 1.04, "lift": 0.018, "vignette": 0.54, "lamp": 1.00},
+	{"t": 0.92, "shadow": Color(0.04, 0.04, 0.36, 1.0), "mid": Color(0.30, 0.12, 0.70, 1.0), "highlight": Color(0.58, 0.56, 1.00, 1.0), "night": 0.96, "dusk": 0.00, "dawn": 0.18, "sat": 1.34, "exposure": 0.58, "contrast": 1.00, "lift": 0.020, "vignette": 0.48, "lamp": 0.96},
+	{"t": 1.00, "shadow": Color(0.34, 0.42, 0.68, 1.0), "mid": Color(0.72, 0.82, 1.0, 1.0), "highlight": Color(1.00, 0.88, 0.55, 1.0), "night": 0.40, "dusk": 0.00, "dawn": 0.90, "sat": 0.72, "exposure": 0.86, "contrast": 0.92, "lift": 0.030, "vignette": 0.22, "lamp": 0.54},
+]
+var _day_seconds: float = DAY_NIGHT_CYCLE * 0.18
+var _day_night_overlay: ColorRect = null
+var _day_night_material: ShaderMaterial = null
+var _firefly_texture: Texture2D = null
+var _fireflies: Array = []
+var _last_insect_mode: String = ""
+var _night_amount: float = 0.0
+var _lamp_amount: float = 0.0
+var _last_audio_night_amount: float = -1.0
+
 # ── butterflies ───────────────────────────────────────────────────────────────
 const BUTTERFLY_COUNT := 3
 var _butterflies: Array = []   # Array of {node, state, perched_cell, tween}
+const FIREFLY_COUNT := 11
+const INSECT_SPAWN_MARGIN := 150.0
 const WEED_INTERVAL       := 45.0
 
 # ── rain ─────────────────────────────────────────────────────────────────────
@@ -103,6 +134,8 @@ const TM_GRASS        := 1   # single grass tile terrain
 # DecorMapLayer — terrain set 0
 const DM_TERRAIN_SET  := 0
 const DM_DECOR        := 0   # 16 random decor items
+# Atlas coords of rock tiles — these go on the static layer (no sway)
+const ROCK_ATLAS_COORDS := [Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5)]
 # PlantMapLayer — source id 0 (objects.png)
 # atlas coords: col = crop_id (0-4), row = stage row
 const PM_SOURCE       := 1
@@ -162,20 +195,37 @@ func _ready() -> void:
 	$TipPanel/Card/GotItBtn.pressed.connect(func(): _tip_panel.visible = false)
 	_load_sfx()
 	_setup_wilt_overlay()
+	_setup_day_night_overlay()
 	_icon_container = Node2D.new()
 	_icon_container.z_index = 10
 	$FarmScroll.add_child(_icon_container)
+	_insect_container = Node2D.new()
+	_insect_container.z_index = 0
+	$FarmScroll.add_child(_insect_container)
 
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://games/zen_farm/assets/plant_sway.gdshader")
 	_plant_map.material = mat
 
+	# Decor sway — same shader, much gentler; rocks go on a separate static layer
+	var decor_mat := ShaderMaterial.new()
+	decor_mat.shader = mat.shader
+	decor_mat.set_shader_parameter("wind_strength", 5.0)
+	decor_mat.set_shader_parameter("wind_speed",    1.0)
+	decor_mat.set_shader_parameter("wind_spread",   0.038)
+	_decor_map.material = decor_mat
+
+	_rock_decor_map = TileMapLayer.new()
+	_rock_decor_map.z_index   = _decor_map.z_index
+	_rock_decor_map.tile_set  = _decor_map.tile_set
+	$FarmScroll.add_child(_rock_decor_map)
+
 	_rain_overlay = ColorRect.new()
 	_rain_overlay.color = Color(0.35, 0.50, 0.75, 0.0)
 	_rain_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_rain_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_rain_overlay.z_index = 5
-	add_child(_rain_overlay)
+	_rain_overlay.z_index = 9
+	$FarmScroll.add_child(_rain_overlay)
 
 	# rain streak texture: 2×10 px light-blue rectangle — no external asset needed
 	var img := Image.create(2, 10, false, Image.FORMAT_RGBA8)
@@ -193,8 +243,9 @@ func _ready() -> void:
 	_rain_particles.initial_velocity_max = 800.0
 	_rain_particles.gravity  = Vector2.ZERO
 	_rain_particles.position = Vector2(270.0, -5.0)
-	_rain_particles.z_index  = 6
+	_rain_particles.z_index  = 10
 	$FarmScroll.add_child(_rain_particles)
+	_update_day_night(0.0)
 
 
 func prepare_farm() -> void:
@@ -233,6 +284,9 @@ func prepare_farm() -> void:
 	if _rain_particles:
 		_rain_particles.emitting = false
 	rain_changed.emit(false)
+	_last_insect_mode = ""
+	_clear_fireflies()
+	_update_day_night(0.0)
 	_refresh_ui()
 	# Defer so the ScrollContainer has completed its first layout pass before
 	# we set custom_minimum_size — otherwise the scroll range isn't registered.
@@ -248,18 +302,21 @@ func start_game() -> void:
 	_upgrade_panel.visible = false
 	_refresh_ui()
 	_clear_butterflies()
-	_setup_butterflies()
+	_last_insect_mode = ""
+	_sync_day_night_insects()
 
 
 # ── build ─────────────────────────────────────────────────────────────────
 func _clear_cells() -> void:
 	_clear_butterflies()
+	_clear_fireflies()
 	# clear all tilemap layers so border decor from prior session doesn't linger
-	if _terrain_map: _terrain_map.clear()
-	if _decor_map:   _decor_map.clear()
-	if _plant_map:   _plant_map.clear()
-	if _wilt_map:    _wilt_map.clear()
-	if _moisture_map: _moisture_map.clear()
+	if _terrain_map:    _terrain_map.clear()
+	if _decor_map:      _decor_map.clear()
+	if _rock_decor_map: _rock_decor_map.clear()
+	if _plant_map:      _plant_map.clear()
+	if _wilt_map:       _wilt_map.clear()
+	if _moisture_map:   _moisture_map.clear()
 	for c in _cells:
 		if is_instance_valid(c):
 			c.queue_free()
@@ -307,20 +364,26 @@ func _update_grid_size() -> void:
 	var stride    := TILE_SIZE + GAP
 	var content_w := _cols * stride - GAP
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
-	_max_scroll_x  = maxi(0, int(content_w + left_x + 18.0) - 540)
-	_scroll_x      = clampi(_scroll_x, 0, _max_scroll_x)
+	var natural_max := maxi(0, int(content_w + left_x + 18.0) - 540)
+	var extra_range := maxi(0, MIN_EARLY_SCROLL_RANGE - natural_max)
+	var extra_left := int(extra_range * 0.5)
+	_min_scroll_x = -extra_left
+	_max_scroll_x = natural_max + extra_range - extra_left
+	_scroll_x = clampi(_scroll_x, _min_scroll_x, _max_scroll_x)
 	var pos := Vector2(left_x - _scroll_x, GRID_Y)
 	_grid_container.position = pos
 	_terrain_map.position    = pos
 	_decor_map.position      = pos
+	if _rock_decor_map:     _rock_decor_map.position     = pos
 	_plant_map.position      = pos
 	if _wilt_map:           _wilt_map.position           = pos
 	if _icon_container:     _icon_container.position     = pos
+	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
 
 
 func _apply_scroll(delta: int) -> void:
-	_scroll_x = clampi(_scroll_x + delta, 0, _max_scroll_x)
+	_scroll_x = clampi(_scroll_x + delta, _min_scroll_x, _max_scroll_x)
 	var stride    := TILE_SIZE + GAP
 	var content_w := _cols * stride - GAP
 	var left_x    := maxf(18.0, (540.0 - content_w) * 0.5)
@@ -328,9 +391,11 @@ func _apply_scroll(delta: int) -> void:
 	_grid_container.position = pos
 	_terrain_map.position    = pos
 	_decor_map.position      = pos
+	if _rock_decor_map:     _rock_decor_map.position     = pos
 	_plant_map.position      = pos
 	if _wilt_map:           _wilt_map.position           = pos
 	if _icon_container:     _icon_container.position     = pos
+	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
 
 
@@ -360,6 +425,7 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 			if not _decor_placed.has(key):
 				if randf() > 0.3:   # 70% chance of decor, 30% plain grass
 					_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
+					_move_rocks_from_decor(all)
 				_decor_placed[key] = true
 			# else: decor already decided this session — leave it as-is
 
@@ -367,18 +433,21 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
 			for c in all:
 				_decor_map.erase_cell(c)
+				if _rock_decor_map: _rock_decor_map.erase_cell(c)
 			_decor_placed.erase(key)
 
 		FarmCell.TileState.WEED:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
 			# cover all 4 tilemap tiles so the weed is clearly visible
 			_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
+			_move_rocks_from_decor(all)
 			_decor_placed.erase(key)
 
 		FarmCell.TileState.CROP, FarmCell.TileState.WILTED:
 			_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_SOIL)
 			for c in all:
 				_decor_map.erase_cell(c)
+				if _rock_decor_map: _rock_decor_map.erase_cell(c)
 			_decor_placed.erase(key)
 			if cell.crop_id >= 0:
 				var row: int
@@ -543,6 +612,7 @@ func _place_top_border_decor(col_from: int, col_to: int) -> void:
 
 	if decor_tiles.size() > 0:
 		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+		_move_rocks_from_decor(decor_tiles)
 
 
 func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
@@ -561,7 +631,9 @@ func _place_bottom_border_decor(col_from: int, col_to: int) -> void:
 			decor_tiles.append(Vector2i(col * 2 + 1, ROWS * 2))
 	if all_tiles.size() > 0:
 		_terrain_map.set_cells_terrain_connect(all_tiles, TM_TERRAIN_SET, TM_GRASS)
-		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+		if decor_tiles.size() > 0:
+			_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+			_move_rocks_from_decor(decor_tiles)
 
 
 func _place_side_border_column(tx: int) -> void:
@@ -576,6 +648,19 @@ func _place_side_border_column(tx: int) -> void:
 	_terrain_map.set_cells_terrain_connect(tiles, TM_TERRAIN_SET, TM_GRASS)
 	if decor_tiles.size() > 0:
 		_decor_map.set_cells_terrain_connect(decor_tiles, DM_TERRAIN_SET, DM_DECOR)
+		_move_rocks_from_decor(decor_tiles)
+
+
+func _move_rocks_from_decor(tiles: Array[Vector2i]) -> void:
+	if not _rock_decor_map:
+		return
+	for coord in tiles:
+		var atlas := _decor_map.get_cell_atlas_coords(coord)
+		if atlas in ROCK_ATLAS_COORDS:
+			var src := _decor_map.get_cell_source_id(coord)
+			var alt := _decor_map.get_cell_alternative_tile(coord)
+			_decor_map.erase_cell(coord)
+			_rock_decor_map.set_cell(coord, src, atlas, alt)
 
 
 func _tiles_owned() -> int:
@@ -616,20 +701,153 @@ func _check_crop_unlocks(tiles_before: int) -> String:
 
 # ── process ───────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
+	_update_day_night(delta)
 	_tick_crops(delta)
 	_tick_weeds(delta)
 	_tick_rain(delta)
+	_tick_fireflies()
+
+
+# -- day/night ---------------------------------------------------------------
+func _setup_day_night_overlay() -> void:
+	_day_night_material = ShaderMaterial.new()
+	_day_night_material.shader = load("res://games/zen_farm/assets/day_night_grade.gdshader")
+
+	_day_night_overlay = ColorRect.new()
+	_day_night_overlay.color = Color.WHITE
+	_day_night_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_day_night_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_day_night_overlay.z_index = 8
+	_day_night_overlay.material = _day_night_material
+	$FarmScroll.add_child(_day_night_overlay)
+
+	_firefly_texture = _make_radial_texture(96, Color(1.0, 0.90, 0.38, 0.92))
+
+
+func _make_radial_texture(size: int, color: Color) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var center := Vector2(size * 0.5, size * 0.5)
+	var radius := size * 0.5
+	for y in range(size):
+		for x in range(size):
+			var d := center.distance_to(Vector2(x, y)) / radius
+			var a := pow(clampf(1.0 - d, 0.0, 1.0), 2.55)
+			var px := color
+			px.a *= a
+			img.set_pixel(x, y, px)
+	return ImageTexture.create_from_image(img)
+
+
+func _update_day_night(delta: float) -> void:
+	if _game_active:
+		_day_seconds = fposmod(_day_seconds + delta, DAY_NIGHT_CYCLE)
+	var phase := _day_seconds / DAY_NIGHT_CYCLE
+	var params := _day_night_params(phase)
+	_night_amount = float(params["night"])
+	_lamp_amount = float(params["lamp"])
+
+	if _day_night_material:
+		_day_night_material.set_shader_parameter("shadow_tint", params["shadow"])
+		_day_night_material.set_shader_parameter("mid_tint", params["mid"])
+		_day_night_material.set_shader_parameter("highlight_tint", params["highlight"])
+		_day_night_material.set_shader_parameter("night_amount", params["night"])
+		_day_night_material.set_shader_parameter("dusk_amount", params["dusk"])
+		_day_night_material.set_shader_parameter("dawn_amount", params["dawn"])
+		_day_night_material.set_shader_parameter("saturation", params["sat"])
+		_day_night_material.set_shader_parameter("exposure", params["exposure"])
+		_day_night_material.set_shader_parameter("contrast", params["contrast"])
+		_day_night_material.set_shader_parameter("lift", params["lift"])
+		_day_night_material.set_shader_parameter("vignette_strength", params["vignette"])
+
+	if absf(_night_amount - _last_audio_night_amount) > 0.02:
+		_last_audio_night_amount = _night_amount
+		day_night_changed.emit(_night_amount)
+	_sync_day_night_insects()
+
+
+func _day_night_params(phase: float) -> Dictionary:
+	var previous: Dictionary = DAY_NIGHT_KEYS[0]
+	for i in range(1, DAY_NIGHT_KEYS.size()):
+		var next: Dictionary = DAY_NIGHT_KEYS[i]
+		var next_t := float(next["t"])
+		if phase <= next_t:
+			var prev_t := float(previous["t"])
+			var span := maxf(0.001, next_t - prev_t)
+			var u := smoothstep(0.0, 1.0, clampf((phase - prev_t) / span, 0.0, 1.0))
+			var shadow_a: Color = previous["shadow"]
+			var shadow_b: Color = next["shadow"]
+			var mid_a: Color = previous["mid"]
+			var mid_b: Color = next["mid"]
+			var highlight_a: Color = previous["highlight"]
+			var highlight_b: Color = next["highlight"]
+			return {
+				"shadow": shadow_a.lerp(shadow_b, u),
+				"mid": mid_a.lerp(mid_b, u),
+				"highlight": highlight_a.lerp(highlight_b, u),
+				"night": lerpf(float(previous["night"]), float(next["night"]), u),
+				"dusk": lerpf(float(previous["dusk"]), float(next["dusk"]), u),
+				"dawn": lerpf(float(previous["dawn"]), float(next["dawn"]), u),
+				"sat": lerpf(float(previous["sat"]), float(next["sat"]), u),
+				"exposure": lerpf(float(previous["exposure"]), float(next["exposure"]), u),
+				"contrast": lerpf(float(previous["contrast"]), float(next["contrast"]), u),
+				"lift": lerpf(float(previous["lift"]), float(next["lift"]), u),
+				"vignette": lerpf(float(previous["vignette"]), float(next["vignette"]), u),
+				"lamp": lerpf(float(previous["lamp"]), float(next["lamp"]), u),
+			}
+		previous = next
+	return DAY_NIGHT_KEYS[0]
+
+
+func _sync_day_night_insects() -> void:
+	if not _game_active:
+		return
+	var target := _last_insect_mode
+	if _is_raining:
+		target = "none"
+	elif _night_amount >= 0.30:
+		target = "night"
+	elif _night_amount <= 0.12:
+		target = "day"
+	elif target == "":
+		target = "day"
+
+	if target == _last_insect_mode:
+		return
+
+	if target != "day":
+		_flee_butterflies()
+	if target != "night":
+		_flee_fireflies()
+
+	if target == "day" and _butterflies.is_empty():
+		_setup_butterflies()
+	elif target == "night" and _fireflies.is_empty():
+		_setup_fireflies()
+
+	_last_insect_mode = target
+
+
+func _jump_day_night_to(phase: float) -> void:
+	_day_seconds = clampf(phase, 0.0, 0.999) * DAY_NIGHT_CYCLE
+	_last_insect_mode = ""
+	_update_day_night(0.0)
 
 
 func _input(event: InputEvent) -> void:
 	if not _game_active:
 		return
-	# DEBUG: press R to toggle rain
-	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
-		if _is_raining:
-			_stop_rain()
-		else:
-			_start_rain()
+	# DEBUG: R toggles rain, D jumps to day, N jumps to night.
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_R:
+				if _is_raining:
+					_stop_rain()
+				else:
+					_start_rain()
+			KEY_D:
+				_jump_day_night_to(DAY_PHASE)
+			KEY_N:
+				_jump_day_night_to(NIGHT_PHASE)
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touch_start     = event.position
@@ -763,6 +981,7 @@ func _start_rain() -> void:
 	tw.tween_property(_rain_overlay, "color:a", 0.18, 1.5)
 	_show_status("It's raining! Crops are being watered.")
 	_flee_butterflies()
+	_flee_fireflies()
 	rain_changed.emit(true)
 
 
@@ -775,7 +994,8 @@ func _stop_rain() -> void:
 	rain_changed.emit(false)
 	get_tree().create_timer(8.0).timeout.connect(func():
 		if not _is_raining and _game_active:
-			_setup_butterflies()
+			_last_insect_mode = ""
+			_sync_day_night_insects()
 	)
 
 
@@ -1318,7 +1538,33 @@ func _show_status(msg: String) -> void:
 
 
 # ── butterflies ──────────────────────────────────────────────────────────────
+func _insect_parent() -> Node:
+	return _insect_container if _insect_container else $FarmScroll
+
+
+func _visible_content_rect() -> Rect2:
+	var pos := Vector2.ZERO
+	if _insect_container:
+		pos = _insect_container.position
+	return Rect2(Vector2(-pos.x, -pos.y), Vector2(540.0, 814.0))
+
+
+func _offscreen_content_pos(side: int) -> Vector2:
+	var rect := _visible_content_rect()
+	match side:
+		0:
+			return Vector2(rect.position.x - INSECT_SPAWN_MARGIN, randf_range(rect.position.y, rect.end.y))
+		1:
+			return Vector2(rect.end.x + INSECT_SPAWN_MARGIN, randf_range(rect.position.y, rect.end.y))
+		2:
+			return Vector2(randf_range(rect.position.x, rect.end.x), rect.position.y - INSECT_SPAWN_MARGIN)
+		_:
+			return Vector2(randf_range(rect.position.x, rect.end.x), rect.end.y + INSECT_SPAWN_MARGIN)
+
+
 func _setup_butterflies() -> void:
+	if _is_raining or _night_amount >= 0.30:
+		return
 	var templates: Array = []
 	for tname in ["Butterfly1", "Butterfly2", "Butterfly3"]:
 		var t := get_node_or_null("FarmScroll/" + tname) as AnimatedSprite2D
@@ -1332,12 +1578,13 @@ func _setup_butterflies() -> void:
 		if sprite == null:
 			continue
 		sprite.position = _butterfly_offscreen_pos()
+		sprite.z_index = 10
 		sprite.visible  = true
 		sprite.scale    = Vector2(1.0, 1.0)
 		sprite.play("default", randf_range(0.8, 1.3))
 		sprite.frame          = randi() % 4
 		sprite.frame_progress = randf()
-		$FarmScroll.add_child(sprite)
+		_insect_parent().add_child(sprite)
 		var bfly := {"node": sprite, "state": "flying", "perched_cell": null, "tween": null}
 		_butterflies.append(bfly)
 		get_tree().create_timer(randf_range(0.5, 4.0) * i).timeout.connect(func():
@@ -1355,19 +1602,119 @@ func _clear_butterflies() -> void:
 	_butterflies.clear()
 
 
+func _setup_fireflies() -> void:
+	if _firefly_texture == null:
+		return
+	var add_mat := CanvasItemMaterial.new()
+	add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	var count := FIREFLY_COUNT - randi() % 4
+	for i in range(count):
+		var sprite := Sprite2D.new()
+		sprite.texture = _firefly_texture
+		sprite.position = _firefly_offscreen_pos()
+		sprite.scale = Vector2.ONE * randf_range(0.34, 0.72)
+		sprite.z_index = 10
+		sprite.modulate = Color(1.0, 0.82, 0.28, 0.0)
+		sprite.material = add_mat
+		_insect_parent().add_child(sprite)
+		var fly := {
+			"node": sprite,
+			"tween": null,
+			"base_alpha": randf_range(0.48, 0.85),
+			"flicker_speed": randf_range(2.0, 4.8),
+			"flicker_offset": randf_range(0.0, TAU),
+		}
+		_fireflies.append(fly)
+		get_tree().create_timer(randf_range(0.10, 0.34) * float(i + 1)).timeout.connect(func():
+			if _fireflies.has(fly) and is_instance_valid(fly["node"]):
+				_firefly_wander(fly)
+		)
+
+
+func _clear_fireflies() -> void:
+	for fly in _fireflies:
+		if fly.get("tween") and is_instance_valid(fly["tween"]):
+			fly["tween"].kill()
+		if is_instance_valid(fly["node"]):
+			fly["node"].queue_free()
+	_fireflies.clear()
+
+
+func _flee_fireflies() -> void:
+	for fly in _fireflies.duplicate():
+		if not is_instance_valid(fly["node"]):
+			_fireflies.erase(fly)
+			continue
+		if fly.get("tween") and is_instance_valid(fly["tween"]):
+			fly["tween"].kill()
+		var node := fly["node"] as Sprite2D
+		var rect := _visible_content_rect()
+		var target := Vector2(randf_range(rect.position.x, rect.end.x), rect.position.y - INSECT_SPAWN_MARGIN)
+		var tw := create_tween()
+		fly["tween"] = tw
+		tw.tween_property(node, "position", target, randf_range(1.8, 3.8)).set_trans(Tween.TRANS_SINE)
+		tw.parallel().tween_property(node, "modulate:a", 0.0, 1.2)
+		tw.tween_callback(func():
+			if is_instance_valid(node):
+				node.queue_free()
+			_fireflies.erase(fly)
+		)
+
+
+func _tick_fireflies() -> void:
+	if _fireflies.is_empty():
+		return
+	var now := Time.get_ticks_msec() * 0.001
+	for fly in _fireflies.duplicate():
+		if not is_instance_valid(fly["node"]):
+			_fireflies.erase(fly)
+			continue
+		var node := fly["node"] as Sprite2D
+		var flicker := 0.62 + 0.38 * sin(now * float(fly["flicker_speed"]) + float(fly["flicker_offset"]))
+		node.modulate.a = clampf(_lamp_amount * float(fly["base_alpha"]) * flicker, 0.0, 0.95)
+
+
+func _firefly_offscreen_pos() -> Vector2:
+	return _offscreen_content_pos(randi() % 4)
+
+
+func _firefly_wander_pos() -> Vector2:
+	var grid_w := maxf(float(_cols) * TILE_SIZE, 64.0)
+	return Vector2(
+		randf_range(28.0, grid_w - 28.0),
+		randf_range(-34.0, ROWS * TILE_SIZE + 40.0)
+	)
+
+
+func _firefly_wander(fly: Dictionary) -> void:
+	if not _fireflies.has(fly) or not is_instance_valid(fly["node"]):
+		return
+	var node := fly["node"] as Sprite2D
+	var start := node.position
+	var target := _firefly_wander_pos()
+	var mid := (start + target) * 0.5 + Vector2(randf_range(-38.0, 38.0), randf_range(-48.0, 36.0))
+	var dur := clampf(start.distance_to(target) / 48.0, 2.4, 6.4)
+	var pause := randf_range(0.3, 1.8)
+	var tw := create_tween()
+	fly["tween"] = tw
+	tw.tween_property(node, "position", mid, dur * 0.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(node, "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_interval(pause)
+	tw.tween_callback(func():
+		if _fireflies.has(fly) and not _is_raining and _night_amount >= 0.20:
+			_firefly_wander(fly)
+	)
+
+
 func _butterfly_offscreen_pos() -> Vector2:
-	var grid_w := float(_cols) * TILE_SIZE
-	match randi() % 3:  # 0=left, 1=right, 2=top
-		0: return Vector2(-60.0,        randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-		1: return Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-		_: return Vector2(randf_range(20.0, grid_w - 20.0), GRID_Y - 90.0)
+	return _offscreen_content_pos(randi() % 3)
 
 
 func _butterfly_wander_pos() -> Vector2:
-	var grid_w := float(_cols) * TILE_SIZE
+	var grid_w := maxf(float(_cols) * TILE_SIZE, 64.0)
 	return Vector2(
 		randf_range(20.0, grid_w - 20.0),
-		randf_range(GRID_Y - 60.0, GRID_Y + ROWS * TILE_SIZE - 60.0)
+		randf_range(-60.0, ROWS * TILE_SIZE - 60.0)
 	)
 
 
@@ -1397,13 +1744,8 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 
 	# 15% chance to fly off a screen edge and re-enter from another
 	if randf() < 0.15:
-		var grid_w := float(_cols) * TILE_SIZE
 		var exit_dir := randi() % 3   # 0=left, 1=right, 2=up
-		var exit_pos: Vector2
-		match exit_dir:
-			0: exit_pos = Vector2(-60.0,  randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-			1: exit_pos = Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-			_: exit_pos = Vector2(randf_range(40.0, grid_w - 40.0), GRID_Y - 90.0)
+		var exit_pos := _offscreen_content_pos(exit_dir)
 		var exit_dur := clampf(node_pos.distance_to(exit_pos) / 110.0, 1.2, 4.0)
 		var exit_tw := create_tween()
 		bfly["tween"] = exit_tw
@@ -1414,9 +1756,9 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 			# re-enter from a random opposite edge
 			var entry: Vector2
 			match exit_dir:
-				0: entry = Vector2(grid_w + 60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-				1: entry = Vector2(-60.0, randf_range(GRID_Y, GRID_Y + ROWS * TILE_SIZE))
-				_: entry = Vector2(randf_range(40.0, grid_w - 40.0), GRID_Y + ROWS * TILE_SIZE + 60.0)
+				0: entry = _offscreen_content_pos(1)
+				1: entry = _offscreen_content_pos(0)
+				_: entry = _offscreen_content_pos(3)
 			bfly["node"].position = entry
 			_butterfly_wander(bfly)
 		)
@@ -1444,8 +1786,10 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 func _butterfly_perch(bfly: Dictionary, cell: FarmCell) -> void:
 	bfly["state"] = "perching"
 	bfly["perched_cell"] = cell
-	# Convert cell centre to FarmScroll local space
-	var dest: Vector2 = $FarmScroll.get_global_transform().affine_inverse() * cell.get_global_rect().get_center() + Vector2(randf_range(-8.0, 8.0), -18.0)
+	var dest := Vector2(
+		cell.grid_col * TILE_SIZE + TILE_SIZE * 0.5,
+		cell.grid_row * TILE_SIZE + TILE_SIZE * 0.5
+	) + Vector2(randf_range(-8.0, 8.0), -18.0)
 	var bfly_pos: Vector2 = bfly["node"].position
 	var dist: float = bfly_pos.distance_to(dest)
 	var dur   := clampf(dist / 60.0, 1.5, 5.0)
@@ -1488,7 +1832,7 @@ func _butterfly_flee_one(bfly: Dictionary) -> void:
 		bfly["tween"].kill()
 	(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
 	var flee_x := randf_range(0.0, float(_cols) * TILE_SIZE)
-	var flee_y := GRID_Y - TILE_SIZE * 2.5
+	var flee_y := -TILE_SIZE * 2.5
 	var tw := create_tween()
 	bfly["tween"] = tw
 	tw.tween_property(bfly["node"], "position", Vector2(flee_x, flee_y), 4) \

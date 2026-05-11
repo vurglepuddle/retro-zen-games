@@ -1,4 +1,4 @@
-[gd_scene load_steps=44 format=3 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=53 format=3 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -20,6 +20,8 @@
 [ext_resource type="Texture2D" uid="uid://d0d1seqpoivv2" path="res://games/zen_farm/assets/objects.png" id="13_65i8m"]
 [ext_resource type="Texture2D" uid="uid://cvou6eb6dtd6t" path="res://games/zen_farm/assets/tileset.png" id="13_yv806"]
 [ext_resource type="Texture2D" uid="uid://dlju0dj5h8d1s" path="res://games/zen_farm/assets/butterfly.png" id="18_14l61"]
+[ext_resource type="Texture2D" uid="uid://duneehqcqfby0" path="res://games/zen_farm/assets/fx/Rain.png" id="21_1sgoj"]
+[ext_resource type="Texture2D" uid="uid://bhi57amn8722t" path="res://games/zen_farm/assets/fx/RainOnFloor.png" id="22_gvchx"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_c535x"]
 atlas = ExtResource("18_14l61")
@@ -905,6 +907,61 @@ terrain_set_0/terrain_1/name = "grown"
 terrain_set_0/terrain_1/color = Color(0.5, 0.4375, 0.25, 1)
 sources/1 = SubResource("TileSetAtlasSource_vsuop")
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_r4y48"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xbinr"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(16, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pef1a"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(32, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_uvidc"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(16, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yy6yf"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t3lid"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(32, 0, 16, 16)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_ggvkr"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_r4y48")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xbinr")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pef1a")
+}],
+"loop": true,
+"name": &"rain",
+"speed": 3.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_uvidc")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yy6yf")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t3lid")
+}],
+"loop": true,
+"name": &"rain_on_ground",
+"speed": 5.0
+}]
+
 [node name="Game" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -1481,8 +1538,16 @@ volume_db = -2.0
 
 [node name="SfxCropTap" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("7_vla5i")
-volume_db = -10.0
+volume_db = -7.0
 
 [node name="SfxNoAction" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("11_s25m7")
 volume_db = -14.0
+
+[node name="Rain" type="AnimatedSprite2D" parent="."]
+visible = false
+position = Vector2(135, 79)
+sprite_frames = SubResource("SpriteFrames_ggvkr")
+animation = &"rain"
+frame = 2
+frame_progress = 0.845059
