@@ -10,10 +10,13 @@ extends Node
 const _AMBIENT_PATH  := "res://games/zen_farm/assets/music/ambient.mp3"
 const _AMBIENT2_PATH := "res://games/zen_farm/assets/music/ambient2.mp3"
 const _RAIN_PATH     := "res://games/zen_farm/assets/music/rain.mp3"
+const _DAY_AMBIENT_DB := -5.0
+const _NIGHT_AMBIENT_DB := -8.0
+const _SILENT_DB := -80.0
 
 var _rain_player: AudioStreamPlayer
-var _ambient_vol:  float
-var _ambient2_vol: float
+var _night_mix: float = 0.0
+var _rain_duck_db: float = 0.0
 
 
 func _ready() -> void:
@@ -22,6 +25,7 @@ func _ready() -> void:
 	_menu.back_to_master.connect(_on_back_to_master)
 	_game.back_to_menu.connect(_on_back_to_menu)
 	_game.rain_changed.connect(_on_rain_changed)
+	_game.day_night_changed.connect(_on_day_night_changed)
 	_rain_player = AudioStreamPlayer.new()
 	add_child(_rain_player)
 	AudioManager.play_music(load("res://games/zen_farm/assets/music/music.mp3"))
@@ -42,6 +46,7 @@ func _start_ambients() -> void:
 			s.loop = true
 			_ambient2_player.stream = s
 			_ambient2_player.play()
+	_apply_ambient_mix()
 
 
 func _stop_ambients() -> void:
@@ -52,27 +57,41 @@ func _stop_ambients() -> void:
 
 func _on_rain_changed(is_raining: bool) -> void:
 	if is_raining:
-		_ambient_vol  = _ambient_player.volume_db
-		_ambient2_vol = _ambient2_player.volume_db
 		if ResourceLoader.exists(_RAIN_PATH):
 			var s := load(_RAIN_PATH) as AudioStreamMP3
 			if s:
 				s.loop = true
 				_rain_player.stream = s
-				_rain_player.volume_db = -80.0
+				_rain_player.volume_db = _SILENT_DB
 				_rain_player.play()
 				var tw := create_tween()
 				tw.tween_property(_rain_player, "volume_db", 0.0, 2.0)
 		var tw2 := create_tween()
-		tw2.tween_property(_ambient_player,  "volume_db", _ambient_vol  - 20.0, 2.0)
-		tw2.parallel().tween_property(_ambient2_player, "volume_db", _ambient2_vol - 20.0, 2.0)
+		tw2.tween_method(_set_rain_duck, _rain_duck_db, -18.0, 2.0)
 	else:
 		var tw := create_tween()
-		tw.tween_property(_rain_player, "volume_db", -80.0, 2.0)
+		tw.tween_property(_rain_player, "volume_db", _SILENT_DB, 2.0)
 		tw.tween_callback(_rain_player.stop)
 		var tw2 := create_tween()
-		tw2.tween_property(_ambient_player,  "volume_db", _ambient_vol,  2.0)
-		tw2.parallel().tween_property(_ambient2_player, "volume_db", _ambient2_vol, 2.0)
+		tw2.tween_method(_set_rain_duck, _rain_duck_db, 0.0, 2.0)
+
+
+func _on_day_night_changed(night_amount: float) -> void:
+	_night_mix = smoothstep(0.18, 0.72, night_amount)
+	_apply_ambient_mix()
+
+
+func _set_rain_duck(value: float) -> void:
+	_rain_duck_db = value
+	_apply_ambient_mix()
+
+
+func _apply_ambient_mix() -> void:
+	var day_mix := 1.0 - _night_mix
+	if _ambient_player:
+		_ambient_player.volume_db = _SILENT_DB if day_mix <= 0.01 else _DAY_AMBIENT_DB + linear_to_db(day_mix) + _rain_duck_db
+	if _ambient2_player:
+		_ambient2_player.volume_db = _SILENT_DB if _night_mix <= 0.01 else _NIGHT_AMBIENT_DB + linear_to_db(_night_mix) + _rain_duck_db
 
 
 func _on_start_game(_is_new: bool) -> void:

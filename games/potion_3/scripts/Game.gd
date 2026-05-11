@@ -1037,8 +1037,6 @@ func _has_valid_move() -> bool:
 		if id != 0:
 			item_counts[id] = item_counts.get(id, 0) + 1
 	for dc in _disp_scroll_cells:
-		if dc == _disp_scroll_buffer:
-			continue
 		var id := (dc as PotionCell).get_item(0)
 		if id != 0:
 			item_counts[id] = item_counts.get(id, 0) + 1
@@ -1082,6 +1080,18 @@ func _has_valid_move() -> bool:
 				# Available = cell's own empties + board empties.
 				if (3 - in_cell) <= (empty_in_cell + empty_slots):
 					return true
+
+	# If any dispenser or belt cell has a takeable item and there's at least one
+	# empty regular slot, the player can always take that item — the game is not
+	# stuck. Dispenser items are guaranteed to have siblings on the board (board
+	# gen places all 3 copies), so this is always a meaningful move.
+	if empty_slots > 0:
+		for dc in _dispenser_cells:
+			if (dc as PotionCell).get_item(0) != 0:
+				return true
+		for dc in _disp_scroll_cells:
+			if (dc as PotionCell).get_item(0) != 0:
+				return true
 
 	return false
 
