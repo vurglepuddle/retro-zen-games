@@ -41,8 +41,8 @@ void fragment() {
 	color = mix(color, highlight_grade, highlight_mask * night * 0.58);
 
 	vec3 deep_blue = vec3(0.015, 0.045, 0.300);
-	vec3 violet = vec3(0.370, 0.080, 0.470);
-//	vec3 violet = vec3(0.270, 0.080, 0.470);
+	//vec3 violet = vec3(0.370, 0.080, 0.470);
+	vec3 violet = vec3(0.270, 0.080, 0.470);
 	vec3 cobalt = vec3(0.020, 0.190, 0.850);
 	vec3 moon_lilac = vec3(0.680, 0.560, 1.000);
 	vec3 night_palette = mix(deep_blue, violet, smoothstep(0.08, 0.46, luma));
