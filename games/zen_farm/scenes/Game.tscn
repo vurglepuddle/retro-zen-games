@@ -1,4 +1,4 @@
-[gd_scene load_steps=53 format=3 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=56 format=4 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -13,8 +13,10 @@
 [ext_resource type="Texture2D" uid="uid://cd2flabr343h0" path="res://games/zen_farm/assets/BG_UI.png" id="7_420xh"]
 [ext_resource type="AudioStream" uid="uid://bvj76udjg2igm" path="res://games/zen_farm/assets/sfx/plant_tap.mp3" id="7_vla5i"]
 [ext_resource type="AudioStream" uid="uid://rkycd08ok7r7" path="res://games/zen_farm/assets/sfx/buy.mp3" id="8_a3t42"]
+[ext_resource type="Texture2D" uid="uid://cx4nimu0qbv4g" path="res://games/zen_farm/assets/tileset_water.png" id="8_y44d4"]
 [ext_resource type="Texture2D" uid="uid://bp8iek4nb4qdi" path="res://games/zen_farm/assets/BG_UI_panel1.png" id="8_yow1a"]
 [ext_resource type="AudioStream" uid="uid://cg80j64csiym5" path="res://games/zen_farm/assets/sfx/upgrade.mp3" id="9_ver5e"]
+[ext_resource type="Theme" path="res://assets/theme.tres" id="11_4d5gv"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="11_s25m7"]
 [ext_resource type="Texture2D" uid="uid://daqmp3dgqi87a" path="res://games/zen_farm/assets/tileset2.png" id="12_7icwt"]
 [ext_resource type="Texture2D" uid="uid://d0d1seqpoivv2" path="res://games/zen_farm/assets/objects.png" id="13_65i8m"]
@@ -22,6 +24,61 @@
 [ext_resource type="Texture2D" uid="uid://dlju0dj5h8d1s" path="res://games/zen_farm/assets/butterfly.png" id="18_14l61"]
 [ext_resource type="Texture2D" uid="uid://duneehqcqfby0" path="res://games/zen_farm/assets/fx/Rain.png" id="21_1sgoj"]
 [ext_resource type="Texture2D" uid="uid://bhi57amn8722t" path="res://games/zen_farm/assets/fx/RainOnFloor.png" id="22_gvchx"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_r4y48"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_xbinr"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(16, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pef1a"]
+atlas = ExtResource("21_1sgoj")
+region = Rect2(32, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_uvidc"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(16, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_yy6yf"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(0, 0, 16, 16)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_t3lid"]
+atlas = ExtResource("22_gvchx")
+region = Rect2(32, 0, 16, 16)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_ggvkr"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_r4y48")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_xbinr")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pef1a")
+}],
+"loop": true,
+"name": &"rain",
+"speed": 3.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_uvidc")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_yy6yf")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_t3lid")
+}],
+"loop": true,
+"name": &"rain_on_ground",
+"speed": 5.0
+}]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_c535x"]
 atlas = ExtResource("18_14l61")
@@ -509,14 +566,403 @@ texture_region_size = Vector2i(64, 64)
 10:4/0 = 0
 11:4/0 = 0
 
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_tpjhd"]
+texture = ExtResource("8_y44d4")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+0:0/0/terrain_set = 0
+0:0/0/terrain = 2
+0:0/0/terrains_peering_bit/bottom_side = 2
+1:0/0 = 0
+1:0/0/terrain_set = 0
+1:0/0/terrain = 2
+1:0/0/terrains_peering_bit/right_side = 2
+1:0/0/terrains_peering_bit/bottom_side = 2
+2:0/0 = 0
+2:0/0/terrain_set = 0
+2:0/0/terrain = 2
+2:0/0/terrains_peering_bit/right_side = 2
+2:0/0/terrains_peering_bit/bottom_side = 2
+2:0/0/terrains_peering_bit/left_side = 2
+3:0/0 = 0
+3:0/0/terrain_set = 0
+3:0/0/terrain = 2
+3:0/0/terrains_peering_bit/bottom_side = 2
+3:0/0/terrains_peering_bit/left_side = 2
+4:0/0 = 0
+4:0/0/terrain_set = 0
+4:0/0/terrain = 2
+4:0/0/terrains_peering_bit/right_side = 2
+4:0/0/terrains_peering_bit/bottom_side = 2
+4:0/0/terrains_peering_bit/top_side = 2
+4:0/0/terrains_peering_bit/top_right_corner = 2
+5:0/0 = 0
+5:0/0/terrain_set = 0
+5:0/0/terrain = 2
+5:0/0/terrains_peering_bit/right_side = 2
+5:0/0/terrains_peering_bit/bottom_right_corner = 2
+5:0/0/terrains_peering_bit/bottom_side = 2
+5:0/0/terrains_peering_bit/left_side = 2
+6:0/0 = 0
+6:0/0/terrain_set = 0
+6:0/0/terrain = 2
+6:0/0/terrains_peering_bit/right_side = 2
+6:0/0/terrains_peering_bit/bottom_side = 2
+6:0/0/terrains_peering_bit/bottom_left_corner = 2
+6:0/0/terrains_peering_bit/left_side = 2
+7:0/0 = 0
+7:0/0/terrain_set = 0
+7:0/0/terrain = 2
+7:0/0/terrains_peering_bit/right_side = 2
+7:0/0/terrains_peering_bit/bottom_side = 2
+7:0/0/terrains_peering_bit/left_side = 2
+7:0/0/terrains_peering_bit/top_side = 2
+7:0/0/terrains_peering_bit/top_right_corner = 2
+8:0/0 = 0
+8:0/0/terrain_set = 0
+8:0/0/terrain = 2
+8:0/0/terrains_peering_bit/right_side = 2
+8:0/0/terrains_peering_bit/bottom_right_corner = 2
+8:0/0/terrains_peering_bit/bottom_side = 2
+9:0/0 = 0
+9:0/0/terrain_set = 0
+9:0/0/terrain = 2
+9:0/0/terrains_peering_bit/right_side = 2
+9:0/0/terrains_peering_bit/bottom_right_corner = 2
+9:0/0/terrains_peering_bit/bottom_side = 2
+9:0/0/terrains_peering_bit/bottom_left_corner = 2
+9:0/0/terrains_peering_bit/left_side = 2
+9:0/0/terrains_peering_bit/top_side = 2
+10:0/0 = 0
+10:0/0/terrain_set = 0
+10:0/0/terrain = 2
+10:0/0/terrains_peering_bit/right_side = 2
+10:0/0/terrains_peering_bit/bottom_right_corner = 2
+10:0/0/terrains_peering_bit/bottom_side = 2
+10:0/0/terrains_peering_bit/bottom_left_corner = 2
+10:0/0/terrains_peering_bit/left_side = 2
+11:0/0 = 0
+11:0/0/terrain_set = 0
+11:0/0/terrain = 2
+11:0/0/terrains_peering_bit/bottom_side = 2
+11:0/0/terrains_peering_bit/bottom_left_corner = 2
+11:0/0/terrains_peering_bit/left_side = 2
+0:1/0 = 0
+0:1/0/terrain_set = 0
+0:1/0/terrain = 2
+0:1/0/terrains_peering_bit/bottom_side = 2
+0:1/0/terrains_peering_bit/top_side = 2
+1:1/0 = 0
+1:1/0/terrain_set = 0
+1:1/0/terrain = 2
+1:1/0/terrains_peering_bit/right_side = 2
+1:1/0/terrains_peering_bit/bottom_side = 2
+1:1/0/terrains_peering_bit/top_side = 2
+2:1/0 = 0
+2:1/0/terrain_set = 0
+2:1/0/terrain = 2
+2:1/0/terrains_peering_bit/right_side = 2
+2:1/0/terrains_peering_bit/bottom_side = 2
+2:1/0/terrains_peering_bit/left_side = 2
+2:1/0/terrains_peering_bit/top_side = 2
+3:1/0 = 0
+3:1/0/terrain_set = 0
+3:1/0/terrain = 2
+3:1/0/terrains_peering_bit/bottom_side = 2
+3:1/0/terrains_peering_bit/left_side = 2
+3:1/0/terrains_peering_bit/top_side = 2
+4:1/0 = 0
+4:1/0/terrain_set = 0
+4:1/0/terrain = 2
+4:1/0/terrains_peering_bit/right_side = 2
+4:1/0/terrains_peering_bit/bottom_right_corner = 2
+4:1/0/terrains_peering_bit/bottom_side = 2
+4:1/0/terrains_peering_bit/top_side = 2
+5:1/0 = 0
+5:1/0/terrain_set = 0
+5:1/0/terrain = 2
+5:1/0/terrains_peering_bit/right_side = 2
+5:1/0/terrains_peering_bit/bottom_right_corner = 2
+5:1/0/terrains_peering_bit/bottom_side = 2
+5:1/0/terrains_peering_bit/bottom_left_corner = 2
+5:1/0/terrains_peering_bit/left_side = 2
+5:1/0/terrains_peering_bit/top_side = 2
+5:1/0/terrains_peering_bit/top_right_corner = 2
+6:1/0 = 0
+6:1/0/terrain_set = 0
+6:1/0/terrain = 2
+6:1/0/terrains_peering_bit/right_side = 2
+6:1/0/terrains_peering_bit/bottom_right_corner = 2
+6:1/0/terrains_peering_bit/bottom_side = 2
+6:1/0/terrains_peering_bit/bottom_left_corner = 2
+6:1/0/terrains_peering_bit/left_side = 2
+6:1/0/terrains_peering_bit/top_left_corner = 2
+6:1/0/terrains_peering_bit/top_side = 2
+7:1/0 = 0
+7:1/0/terrain_set = 0
+7:1/0/terrain = 2
+7:1/0/terrains_peering_bit/bottom_side = 2
+7:1/0/terrains_peering_bit/bottom_left_corner = 2
+7:1/0/terrains_peering_bit/left_side = 2
+7:1/0/terrains_peering_bit/top_side = 2
+8:1/0 = 0
+8:1/0/terrain_set = 0
+8:1/0/terrain = 2
+8:1/0/terrains_peering_bit/right_side = 2
+8:1/0/terrains_peering_bit/bottom_right_corner = 2
+8:1/0/terrains_peering_bit/bottom_side = 2
+8:1/0/terrains_peering_bit/top_side = 2
+8:1/0/terrains_peering_bit/top_right_corner = 2
+9:1/0 = 0
+9:1/0/terrain_set = 0
+9:1/0/terrain = 2
+9:1/0/terrains_peering_bit/right_side = 2
+9:1/0/terrains_peering_bit/bottom_side = 2
+9:1/0/terrains_peering_bit/bottom_left_corner = 2
+9:1/0/terrains_peering_bit/left_side = 2
+9:1/0/terrains_peering_bit/top_side = 2
+9:1/0/terrains_peering_bit/top_right_corner = 2
+10:1/0 = 0
+10:1/0/terrain_set = 0
+10:1/0/terrain = 2
+11:1/0 = 0
+11:1/0/terrain_set = 0
+11:1/0/terrain = 2
+11:1/0/terrains_peering_bit/right_side = 2
+11:1/0/terrains_peering_bit/bottom_side = 2
+11:1/0/terrains_peering_bit/bottom_left_corner = 2
+11:1/0/terrains_peering_bit/left_side = 2
+11:1/0/terrains_peering_bit/top_left_corner = 2
+11:1/0/terrains_peering_bit/top_side = 2
+0:2/0 = 0
+0:2/0/terrain_set = 0
+0:2/0/terrain = 2
+0:2/0/terrains_peering_bit/top_side = 2
+1:2/0 = 0
+1:2/0/terrain_set = 0
+1:2/0/terrain = 2
+1:2/0/terrains_peering_bit/right_side = 2
+1:2/0/terrains_peering_bit/top_side = 2
+2:2/0 = 0
+2:2/0/terrain_set = 0
+2:2/0/terrain = 2
+2:2/0/terrains_peering_bit/right_side = 2
+2:2/0/terrains_peering_bit/left_side = 2
+2:2/0/terrains_peering_bit/top_side = 2
+3:2/0 = 0
+3:2/0/terrain_set = 0
+3:2/0/terrain = 2
+3:2/0/terrains_peering_bit/left_side = 2
+3:2/0/terrains_peering_bit/top_side = 2
+4:2/0 = 0
+4:2/0/terrain_set = 0
+4:2/0/terrain = 2
+4:2/0/terrains_peering_bit/right_side = 2
+4:2/0/terrains_peering_bit/bottom_side = 2
+4:2/0/terrains_peering_bit/top_side = 2
+4:2/0/terrains_peering_bit/top_right_corner = 2
+5:2/0 = 0
+5:2/0/terrain_set = 0
+5:2/0/terrain = 2
+5:2/0/terrains_peering_bit/right_side = 2
+5:2/0/terrains_peering_bit/bottom_right_corner = 2
+5:2/0/terrains_peering_bit/bottom_side = 2
+5:2/0/terrains_peering_bit/left_side = 2
+5:2/0/terrains_peering_bit/top_left_corner = 2
+5:2/0/terrains_peering_bit/top_side = 2
+5:2/0/terrains_peering_bit/top_right_corner = 2
+6:2/0 = 0
+6:2/0/terrain_set = 0
+6:2/0/terrain = 2
+6:2/0/terrains_peering_bit/right_side = 2
+6:2/0/terrains_peering_bit/bottom_side = 2
+6:2/0/terrains_peering_bit/bottom_left_corner = 2
+6:2/0/terrains_peering_bit/left_side = 2
+6:2/0/terrains_peering_bit/top_left_corner = 2
+6:2/0/terrains_peering_bit/top_side = 2
+6:2/0/terrains_peering_bit/top_right_corner = 2
+7:2/0 = 0
+7:2/0/terrain_set = 0
+7:2/0/terrain = 2
+7:2/0/terrains_peering_bit/bottom_side = 2
+7:2/0/terrains_peering_bit/left_side = 2
+7:2/0/terrains_peering_bit/top_left_corner = 2
+7:2/0/terrains_peering_bit/top_side = 2
+8:2/0 = 0
+8:2/0/terrain_set = 0
+8:2/0/terrain = 2
+8:2/0/terrains_peering_bit/right_side = 2
+8:2/0/terrains_peering_bit/bottom_right_corner = 2
+8:2/0/terrains_peering_bit/bottom_side = 2
+8:2/0/terrains_peering_bit/left_side = 2
+8:2/0/terrains_peering_bit/top_side = 2
+8:2/0/terrains_peering_bit/top_right_corner = 2
+9:2/0 = 0
+9:2/0/terrain_set = 0
+10:2/0 = 0
+10:2/0/terrain_set = 0
+10:2/0/terrain = 2
+10:2/0/terrains_peering_bit/right_side = 2
+10:2/0/terrains_peering_bit/bottom_right_corner = 2
+10:2/0/terrains_peering_bit/bottom_side = 2
+10:2/0/terrains_peering_bit/left_side = 2
+10:2/0/terrains_peering_bit/top_left_corner = 2
+10:2/0/terrains_peering_bit/top_side = 2
+11:2/0 = 0
+11:2/0/terrain_set = 0
+11:2/0/terrain = 2
+11:2/0/terrains_peering_bit/bottom_side = 2
+11:2/0/terrains_peering_bit/bottom_left_corner = 2
+11:2/0/terrains_peering_bit/left_side = 2
+11:2/0/terrains_peering_bit/top_left_corner = 2
+11:2/0/terrains_peering_bit/top_side = 2
+0:3/0 = 0
+0:3/0/terrain_set = 0
+0:3/0/terrain = 2
+1:3/0 = 0
+1:3/0/terrain_set = 0
+1:3/0/terrain = 2
+1:3/0/terrains_peering_bit/right_side = 2
+2:3/0 = 0
+2:3/0/terrain_set = 0
+2:3/0/terrain = 2
+2:3/0/terrains_peering_bit/right_side = 2
+2:3/0/terrains_peering_bit/left_side = 2
+3:3/0 = 0
+3:3/0/terrain_set = 0
+3:3/0/terrain = 2
+3:3/0/terrains_peering_bit/left_side = 2
+4:3/0 = 0
+4:3/0/terrain_set = 0
+4:3/0/terrain = 2
+4:3/0/terrains_peering_bit/right_side = 2
+4:3/0/terrains_peering_bit/bottom_side = 2
+4:3/0/terrains_peering_bit/bottom_left_corner = 2
+4:3/0/terrains_peering_bit/left_side = 2
+4:3/0/terrains_peering_bit/top_side = 2
+5:3/0 = 0
+5:3/0/terrain_set = 0
+5:3/0/terrain = 2
+5:3/0/terrains_peering_bit/right_side = 2
+5:3/0/terrains_peering_bit/left_side = 2
+5:3/0/terrains_peering_bit/top_side = 2
+5:3/0/terrains_peering_bit/top_right_corner = 2
+6:3/0 = 0
+6:3/0/terrain_set = 0
+6:3/0/terrain = 2
+6:3/0/terrains_peering_bit/right_side = 2
+6:3/0/terrains_peering_bit/left_side = 2
+6:3/0/terrains_peering_bit/top_left_corner = 2
+6:3/0/terrains_peering_bit/top_side = 2
+7:3/0 = 0
+7:3/0/terrain_set = 0
+7:3/0/terrain = 2
+7:3/0/terrains_peering_bit/right_side = 2
+7:3/0/terrains_peering_bit/bottom_right_corner = 2
+7:3/0/terrains_peering_bit/bottom_side = 2
+7:3/0/terrains_peering_bit/left_side = 2
+7:3/0/terrains_peering_bit/top_side = 2
+8:3/0 = 0
+8:3/0/terrain_set = 0
+8:3/0/terrain = 2
+8:3/0/terrains_peering_bit/right_side = 2
+8:3/0/terrains_peering_bit/top_side = 2
+8:3/0/terrains_peering_bit/top_right_corner = 2
+9:3/0 = 0
+9:3/0/terrain_set = 0
+9:3/0/terrain = 2
+9:3/0/terrains_peering_bit/right_side = 2
+9:3/0/terrains_peering_bit/left_side = 2
+9:3/0/terrains_peering_bit/top_left_corner = 2
+9:3/0/terrains_peering_bit/top_side = 2
+9:3/0/terrains_peering_bit/top_right_corner = 2
+10:3/0 = 0
+10:3/0/terrain_set = 0
+10:3/0/terrain = 2
+10:3/0/terrains_peering_bit/right_side = 2
+10:3/0/terrains_peering_bit/bottom_side = 2
+10:3/0/terrains_peering_bit/left_side = 2
+10:3/0/terrains_peering_bit/top_left_corner = 2
+10:3/0/terrains_peering_bit/top_side = 2
+10:3/0/terrains_peering_bit/top_right_corner = 2
+11:3/0 = 0
+11:3/0/terrain_set = 0
+11:3/0/terrain = 2
+11:3/0/terrains_peering_bit/left_side = 2
+11:3/0/terrains_peering_bit/top_left_corner = 2
+11:3/0/terrains_peering_bit/top_side = 2
+0:4/0 = 0
+0:4/0/terrain_set = 0
+0:4/0/terrain = 2
+0:4/0/terrains_peering_bit/right_side = 2
+0:4/0/terrains_peering_bit/bottom_right_corner = 2
+0:4/0/terrains_peering_bit/bottom_side = 2
+0:4/0/terrains_peering_bit/bottom_left_corner = 2
+0:4/0/terrains_peering_bit/left_side = 2
+0:4/0/terrains_peering_bit/top_left_corner = 2
+0:4/0/terrains_peering_bit/top_side = 2
+0:4/0/terrains_peering_bit/top_right_corner = 2
+1:4/0 = 0
+1:4/0/terrain_set = 0
+1:4/0/terrain = 2
+1:4/0/terrains_peering_bit/right_side = 2
+1:4/0/terrains_peering_bit/bottom_right_corner = 2
+1:4/0/terrains_peering_bit/bottom_side = 2
+1:4/0/terrains_peering_bit/bottom_left_corner = 2
+1:4/0/terrains_peering_bit/left_side = 2
+1:4/0/terrains_peering_bit/top_left_corner = 2
+1:4/0/terrains_peering_bit/top_side = 2
+1:4/0/terrains_peering_bit/top_right_corner = 2
+2:4/0 = 0
+2:4/0/terrain_set = 0
+2:4/0/terrain = 2
+2:4/0/terrains_peering_bit/right_side = 2
+2:4/0/terrains_peering_bit/bottom_right_corner = 2
+2:4/0/terrains_peering_bit/bottom_side = 2
+2:4/0/terrains_peering_bit/bottom_left_corner = 2
+2:4/0/terrains_peering_bit/left_side = 2
+2:4/0/terrains_peering_bit/top_left_corner = 2
+2:4/0/terrains_peering_bit/top_side = 2
+2:4/0/terrains_peering_bit/top_right_corner = 2
+3:4/0 = 0
+3:4/0/terrain_set = 0
+3:4/0/terrain = 2
+3:4/0/terrains_peering_bit/right_side = 2
+3:4/0/terrains_peering_bit/bottom_right_corner = 2
+3:4/0/terrains_peering_bit/bottom_side = 2
+3:4/0/terrains_peering_bit/bottom_left_corner = 2
+3:4/0/terrains_peering_bit/left_side = 2
+3:4/0/terrains_peering_bit/top_left_corner = 2
+3:4/0/terrains_peering_bit/top_side = 2
+3:4/0/terrains_peering_bit/top_right_corner = 2
+4:4/0 = 0
+4:4/0/terrain_set = 0
+5:4/0 = 0
+5:4/0/terrain_set = 0
+6:4/0 = 0
+6:4/0/terrain_set = 0
+7:4/0 = 0
+7:4/0/terrain_set = 0
+8:4/0 = 0
+8:4/0/terrain_set = 0
+9:4/0 = 0
+9:4/0/terrain_set = 0
+10:4/0 = 0
+10:4/0/terrain_set = 0
+11:4/0 = 0
+11:4/0/terrain_set = 0
+
 [sub_resource type="TileSet" id="TileSet_pj6u3"]
 tile_size = Vector2i(64, 64)
 terrain_set_0/mode = 0
 terrain_set_0/terrain_0/name = "Terrain 1"
-terrain_set_0/terrain_0/color = Color(0.5, 0.4375, 0.25, 1)
+terrain_set_0/terrain_0/color = Color(0.705466, 0.460003, 0.16795, 1)
 terrain_set_0/terrain_1/name = "grass"
 terrain_set_0/terrain_1/color = Color(0.0768635, 0.439557, 0.437471, 1)
+terrain_set_0/terrain_2/name = "water"
+terrain_set_0/terrain_2/color = Color(0.0108834, 0.244882, 0.426294, 1)
 sources/0 = SubResource("TileSetAtlasSource_xwbs3")
+sources/2 = SubResource("TileSetAtlasSource_tpjhd")
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_pdg2i"]
 texture = ExtResource("3_sgfw2")
@@ -897,6 +1343,60 @@ texture_region_size = Vector2i(64, 64)
 8:4/0/y_sort_origin = 2
 8:4/0/terrain_set = 0
 8:4/0/terrain = 1
+0:0/0 = 0
+0:0/0/terrain_set = 0
+0:0/0/terrain = 2
+1:0/0 = 0
+1:0/0/terrain_set = 0
+1:0/0/terrain = 2
+2:0/0 = 0
+2:0/0/terrain_set = 0
+2:0/0/terrain = 2
+3:0/0 = 0
+3:0/0/terrain_set = 0
+3:0/0/terrain = 2
+4:0/0 = 0
+4:0/0/terrain_set = 0
+4:0/0/terrain = 2
+5:0/0 = 0
+5:0/0/terrain_set = 0
+5:0/0/terrain = 2
+6:0/0 = 0
+6:0/0/terrain_set = 0
+6:0/0/terrain = 2
+7:0/0 = 0
+7:0/0/terrain_set = 0
+7:0/0/terrain = 2
+8:0/0 = 0
+8:0/0/terrain_set = 0
+8:0/0/terrain = 2
+0:1/0 = 0
+0:1/0/terrain_set = 0
+0:1/0/terrain = 3
+1:1/0 = 0
+1:1/0/terrain_set = 0
+1:1/0/terrain = 3
+2:1/0 = 0
+2:1/0/terrain_set = 0
+2:1/0/terrain = 3
+3:1/0 = 0
+3:1/0/terrain_set = 0
+3:1/0/terrain = 3
+4:1/0 = 0
+4:1/0/terrain_set = 0
+4:1/0/terrain = 3
+5:1/0 = 0
+5:1/0/terrain_set = 0
+5:1/0/terrain = 3
+6:1/0 = 0
+6:1/0/terrain_set = 0
+6:1/0/terrain = 3
+7:1/0 = 0
+7:1/0/terrain_set = 0
+7:1/0/terrain = 3
+8:1/0 = 0
+8:1/0/terrain_set = 0
+8:1/0/terrain = 3
 
 [sub_resource type="TileSet" id="TileSet_khsm7"]
 tile_size = Vector2i(64, 64)
@@ -905,62 +1405,11 @@ terrain_set_0/terrain_0/name = "seed"
 terrain_set_0/terrain_0/color = Color(0.501961, 0.109804, 0.25098, 1)
 terrain_set_0/terrain_1/name = "grown"
 terrain_set_0/terrain_1/color = Color(0.5, 0.4375, 0.25, 1)
+terrain_set_0/terrain_2/name = "pack"
+terrain_set_0/terrain_2/color = Color(0.733238, 0.283329, 0.545997, 1)
+terrain_set_0/terrain_3/name = "blossom"
+terrain_set_0/terrain_3/color = Color(0.693006, 0.341515, 0.131175, 1)
 sources/1 = SubResource("TileSetAtlasSource_vsuop")
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_r4y48"]
-atlas = ExtResource("21_1sgoj")
-region = Rect2(0, 0, 16, 16)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_xbinr"]
-atlas = ExtResource("21_1sgoj")
-region = Rect2(16, 0, 16, 16)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_pef1a"]
-atlas = ExtResource("21_1sgoj")
-region = Rect2(32, 0, 16, 16)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_uvidc"]
-atlas = ExtResource("22_gvchx")
-region = Rect2(16, 0, 16, 16)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_yy6yf"]
-atlas = ExtResource("22_gvchx")
-region = Rect2(0, 0, 16, 16)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_t3lid"]
-atlas = ExtResource("22_gvchx")
-region = Rect2(32, 0, 16, 16)
-
-[sub_resource type="SpriteFrames" id="SpriteFrames_ggvkr"]
-animations = [{
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_r4y48")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_xbinr")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_pef1a")
-}],
-"loop": true,
-"name": &"rain",
-"speed": 3.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_uvidc")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_yy6yf")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_t3lid")
-}],
-"loop": true,
-"name": &"rain_on_ground",
-"speed": 5.0
-}]
 
 [node name="Game" type="Control"]
 layout_mode = 3
@@ -988,6 +1437,17 @@ anchors_preset = 0
 offset_right = 540.0
 offset_bottom = 814.0
 mouse_filter = 2
+
+[node name="Rain" type="AnimatedSprite2D" parent="FarmScroll"]
+visible = false
+modulate = Color(1, 1, 1, 0.4)
+self_modulate = Color(1, 1, 1, 0.403922)
+z_index = 25
+position = Vector2(135, 79)
+sprite_frames = SubResource("SpriteFrames_ggvkr")
+animation = &"rain"
+frame = 2
+frame_progress = 0.845059
 
 [node name="Butterfly1" type="AnimatedSprite2D" parent="FarmScroll"]
 visible = false
@@ -1025,7 +1485,7 @@ tile_set = SubResource("TileSet_6eamb")
 z_index = 6
 y_sort_enabled = true
 position = Vector2(19, 56)
-tile_map_data = PackedByteArray(0, 0, 10, 0, 5, 0, 1, 0, 7, 0, 4, 0, 0, 0)
+tile_map_data = PackedByteArray("AAAKAAUAAQAHAAQAAAALAAoAAQAAAAAAAAALAAsAAQAAAAAAAAAMAAsAAQAAAAAAAAANAAsAAQAAAAAAAAAOAAsAAQAAAAAAAAAOAAoAAQAAAAAAAAAPAAoAAQAAAAAAAAAPAAkAAQAAAAAAAAAOAAkAAQAAAAAAAAAIABEAAQAIAAYAAAA=")
 tile_set = SubResource("TileSet_khsm7")
 
 [node name="GridContainer" type="Control" parent="FarmScroll"]
@@ -1065,9 +1525,9 @@ horizontal_alignment = 2
 z_index = 11
 layout_mode = 0
 offset_left = 1.0
-offset_top = 768.0
+offset_top = 782.0
 offset_right = 538.0
-offset_bottom = 819.0
+offset_bottom = 830.0
 theme_override_colors/font_color = Color(0.971584, 0.912141, 0.933392, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
@@ -1094,9 +1554,11 @@ texture = ExtResource("7_420xh")
 z_index = 20
 layout_mode = 0
 offset_left = 4.0
-offset_top = 4.0
+offset_top = 9.0
 offset_right = 174.0
-offset_bottom = 63.0
+offset_bottom = 68.0
+theme = ExtResource("11_4d5gv")
+theme_type_variation = &"FlatButton"
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
@@ -1107,9 +1569,9 @@ flat = true
 z_index = 20
 layout_mode = 0
 offset_left = 182.0
-offset_top = 4.0
+offset_top = 9.0
 offset_right = 358.0
-offset_bottom = 63.0
+offset_bottom = 68.0
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
@@ -1120,9 +1582,9 @@ flat = true
 z_index = 20
 layout_mode = 0
 offset_left = 366.0
-offset_top = 4.0
+offset_top = 9.0
 offset_right = 536.0
-offset_bottom = 63.0
+offset_bottom = 68.0
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
@@ -1166,15 +1628,17 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = -4.5
-offset_right = -19.0
-offset_bottom = -2.5
+offset_left = 1.5
+offset_top = -1.5
+offset_right = -0.5
+offset_bottom = 0.5
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("11_4d5gv")
+theme_type_variation = &"TooltipLabel"
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.08, 0.12, 1)
-theme_override_constants/line_spacing = -27
+theme_override_constants/line_spacing = -17
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 36
 text = "WELL
@@ -1210,9 +1674,9 @@ color = Color(0.06, 0.12, 0.06, 0.95)
 [node name="SeedLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 16.0
-offset_top = 13.0
-offset_right = 436.0
-offset_bottom = 64.0
+offset_top = 21.0
+offset_right = 431.0
+offset_bottom = 72.0
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.04, 1)
 theme_override_fonts/font = ExtResource("2_font")
@@ -1223,88 +1687,100 @@ horizontal_alignment = 1
 [node name="LavenderBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 29.0
-offset_top = 47.0
-offset_right = 162.0
-offset_bottom = 106.0
+offset_top = 48.0
+offset_right = 140.0
+offset_bottom = 107.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 38
-text = "Lavender"
+text = "ITEM 1"
 flat = true
-alignment = 0
-
-[node name="RoseBtn" type="Button" parent="SeedPanel"]
-layout_mode = 0
-offset_left = 243.0
-offset_top = 47.0
-offset_right = 316.0
-offset_bottom = 106.0
-theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 38
-text = "Rose"
-flat = true
-alignment = 0
+alignment = 2
 
 [node name="DaisyBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 29.0
-offset_top = 87.0
-offset_right = 112.0
-offset_bottom = 146.0
+offset_left = 158.0
+offset_top = 48.0
+offset_right = 269.0
+offset_bottom = 107.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 38
-text = "Daisy"
+text = "ITEM 2"
 flat = true
-alignment = 0
+alignment = 2
 
-[node name="SunflowerBtn" type="Button" parent="SeedPanel"]
+[node name="RoseBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 243.0
-offset_top = 87.0
-offset_right = 384.0
-offset_bottom = 146.0
+offset_left = 29.0
+offset_top = 100.0
+offset_right = 140.0
+offset_bottom = 159.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 38
-text = "Sunflower"
+text = "ITEM 4"
 flat = true
-alignment = 0
+alignment = 2
 
 [node name="HydrangeaBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 29.0
-offset_top = 126.0
-offset_right = 178.0
-offset_bottom = 185.0
+offset_left = 284.0
+offset_top = 48.0
+offset_right = 395.0
+offset_bottom = 107.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 38
-text = "Hydrangea"
+text = "ITEM 3"
 flat = true
-alignment = 0
+alignment = 2
+
+[node name="SunflowerBtn" type="Button" parent="SeedPanel"]
+layout_mode = 0
+offset_left = 158.0
+offset_top = 100.0
+offset_right = 269.0
+offset_bottom = 159.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "ITEM 5"
+flat = true
+alignment = 2
 
 [node name="TulipBtn" type="Button" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 243.0
-offset_top = 126.0
-offset_right = 330.0
-offset_bottom = 185.0
+offset_left = 284.0
+offset_top = 100.0
+offset_right = 395.0
+offset_bottom = 159.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 38
-text = "Tulip
-"
+text = "ITEM 6"
 flat = true
-alignment = 0
+alignment = 2
+
+[node name="LotusBtn" type="Button" parent="SeedPanel"]
+layout_mode = 0
+offset_left = 29.0
+offset_top = 152.0
+offset_right = 140.0
+offset_bottom = 211.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "ITEM 7"
+flat = true
+alignment = 2
 
 [node name="InvLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
-offset_left = 38.0
+offset_left = 150.0
 offset_top = 168.0
-offset_right = 422.0
-offset_bottom = 208.0
+offset_right = 430.0
+offset_bottom = 212.0
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 36
@@ -1342,6 +1818,7 @@ offset_top = -6.0
 offset_right = 436.0
 offset_bottom = 45.0
 theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+theme_override_constants/line_spacing = 0
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 42
 text = "Upgrades:"
@@ -1350,13 +1827,37 @@ horizontal_alignment = 1
 [node name="CanUpgradeBtn" type="Button" parent="UpgradePanel"]
 layout_mode = 0
 offset_left = 15.0
-offset_top = 63.0
-offset_right = 438.0
-offset_bottom = 123.0
+offset_top = 43.0
+offset_right = 433.0
+offset_bottom = 88.0
 theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 35
+theme_override_font_sizes/font_size = 34
 text = "Can Lv0→1 (5→10 charges)  15c"
+flat = true
+
+[node name="GrassToggleBtn" type="Button" parent="UpgradePanel"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 90.0
+offset_right = 433.0
+offset_bottom = 135.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 34
+text = "Grass Toggle  100c"
+flat = true
+
+[node name="WaterToggleBtn" type="Button" parent="UpgradePanel"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 137.0
+offset_right = 433.0
+offset_bottom = 182.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 34
+text = "Water Toggle  100c"
 flat = true
 
 [node name="BottomBar" type="Control" parent="."]
@@ -1416,7 +1917,7 @@ flat = true
 
 [node name="TipPanel" type="Control" parent="."]
 visible = false
-z_index = 20
+z_index = 50
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -1469,9 +1970,9 @@ horizontal_alignment = 1
 
 [node name="BodyLabel" type="Label" parent="TipPanel/Card"]
 layout_mode = 0
-offset_left = 20.0
+offset_left = 17.0
 offset_top = 133.0
-offset_right = 440.0
+offset_right = 444.0
 offset_bottom = 356.0
 theme_override_colors/font_color = Color(0.78, 0.92, 0.65, 1)
 theme_override_colors/font_outline_color = Color(0.04, 0.1, 0.04, 1)
@@ -1543,11 +2044,3 @@ volume_db = -7.0
 [node name="SfxNoAction" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("11_s25m7")
 volume_db = -14.0
-
-[node name="Rain" type="AnimatedSprite2D" parent="."]
-visible = false
-position = Vector2(135, 79)
-sprite_frames = SubResource("SpriteFrames_ggvkr")
-animation = &"rain"
-frame = 2
-frame_progress = 0.845059

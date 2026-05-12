@@ -6,12 +6,14 @@ extends Control
 
 const TILE_SIZE := 128   # 2 × 64 px tilemap tiles per game cell
 
-enum TileState { SOIL, CROP, WILTED, WEED, LOCKED }
+enum TileState { SOIL, CROP, WILTED, WEED, LOCKED, GRASS, WATER }
+enum SlotState { EMPTY, CROP, WILTED, WEED }
 
 signal visual_changed   # Game.gd connects this to _refresh_cell_tilemap(cell)
 
 # ── state ──────────────────────────────────────────────────────────────────
 var state: TileState = TileState.SOIL
+var is_water_plot: bool = false
 
 # CROP / WILTED
 var crop_id: int      = -1
@@ -19,6 +21,14 @@ var growth_stage: int = 0    # 0=seed 1=sprout 2=growing(2-tall) 3=mature(2-tall
 var time_in_stage: float = 0.0
 var watered: bool    = false
 var wilt_timer: float = 0.0
+
+const SLOT_COUNT := 4
+var slot_states: Array[int] = []
+var slot_crop_ids: Array[int] = []
+var slot_growth_stages: Array[int] = []
+var slot_time_in_stage: Array[float] = []
+var slot_watered: Array[bool] = []
+var slot_wilt_timers: Array[float] = []
 
 # LOCKED
 var unlock_cost: int = 0
@@ -32,6 +42,103 @@ var _label: Label   # price or READY hint
 var _sub:   Label   # water! / wilted! / Weed!
 
 static var _font: FontFile
+
+
+func _init() -> void:
+	reset_slots()
+
+
+func reset_slots() -> void:
+	slot_states = []
+	slot_crop_ids = []
+	slot_growth_stages = []
+	slot_time_in_stage = []
+	slot_watered = []
+	slot_wilt_timers = []
+	for i in range(SLOT_COUNT):
+		slot_states.append(SlotState.EMPTY)
+		slot_crop_ids.append(-1)
+		slot_growth_stages.append(0)
+		slot_time_in_stage.append(0.0)
+		slot_watered.append(false)
+		slot_wilt_timers.append(0.0)
+
+
+func clear_slot(slot: int) -> void:
+	if slot < 0 or slot >= SLOT_COUNT:
+		return
+	slot_states[slot] = SlotState.EMPTY
+	slot_crop_ids[slot] = -1
+	slot_growth_stages[slot] = 0
+	slot_time_in_stage[slot] = 0.0
+	slot_watered[slot] = false
+	slot_wilt_timers[slot] = 0.0
+	refresh_summary_state()
+
+
+func refresh_summary_state() -> void:
+	if state == TileState.LOCKED:
+		return
+	var was_grass := state == TileState.GRASS
+	var was_water := state == TileState.WATER or is_water_plot
+	var has_crop := false
+	var has_wilted := false
+	var has_weed := false
+	for slot in range(SLOT_COUNT):
+		match slot_states[slot]:
+			SlotState.WILTED:
+				has_wilted = true
+			SlotState.CROP:
+				has_crop = true
+			SlotState.WEED:
+				has_weed = true
+	if has_wilted:
+		state = TileState.WILTED
+	elif has_crop:
+		state = TileState.CROP
+	elif has_weed:
+		state = TileState.WEED
+	else:
+		if was_water:
+			state = TileState.WATER
+		elif was_grass:
+			state = TileState.GRASS
+		else:
+			state = TileState.SOIL
+
+
+func has_active_crops() -> bool:
+	for slot in range(SLOT_COUNT):
+		if slot_states[slot] == SlotState.CROP or slot_states[slot] == SlotState.WILTED:
+			return true
+	return false
+
+
+func has_ready_crop() -> bool:
+	for slot in range(SLOT_COUNT):
+		if slot_states[slot] == SlotState.CROP and slot_growth_stages[slot] == CropData.STAGE_MATURE:
+			return true
+	return false
+
+
+func has_thirsty_crop() -> bool:
+	for slot in range(SLOT_COUNT):
+		if slot_states[slot] == SlotState.WILTED:
+			return true
+		if slot_states[slot] == SlotState.CROP \
+				and slot_growth_stages[slot] < CropData.STAGE_MATURE \
+				and not slot_watered[slot] \
+				and not CropData.is_water_crop(slot_crop_ids[slot]):
+			return true
+	return false
+
+
+func empty_slot_count() -> int:
+	var count := 0
+	for slot in range(SLOT_COUNT):
+		if slot_states[slot] == SlotState.EMPTY:
+			count += 1
+	return count
 
 
 func _ready() -> void:
@@ -77,6 +184,7 @@ func refresh_visual() -> void:
 	if not _label:
 		return
 
+	refresh_summary_state()
 	_label.text = ""
 	_sub.text   = ""
 
@@ -90,10 +198,10 @@ func refresh_visual() -> void:
 			if state == TileState.WILTED:
 				_sub.text = " "
 				#_sub.text = "wilted!"
-			elif growth_stage == 3:
+			elif has_ready_crop():
 				_sub.text = " "
 				#_sub.text = "ready!"
-			elif not watered:
+			elif has_thirsty_crop():
 				#_sub.text = "water!"
 				_sub.text = " "
 

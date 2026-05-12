@@ -23,6 +23,7 @@ var _max_scroll_x: int = 0
 var _touch_start     := Vector2.ZERO
 var _touch_drag_dist := 0.0
 var _touch_cell: FarmCell = null
+var _touch_slot: int = 0
 
 # ── tools ───────────────────────────────────────────────────────────────────
 enum Tool { HAND, WATERING_CAN, SHEARS }
@@ -61,11 +62,16 @@ var _cells: Array          = []
 var _coins: int            = 10
 var _inventory: Dictionary = {}
 var _last_save_time: float = 0.0
+var _grass_toggle_unlocked: bool = false
+var _water_toggle_unlocked: bool = false
 var _decor_placed: Dictionary = {}   # Vector2i(col,row) → true; prevents re-RNG on refresh
+var _soil_placed: Dictionary = {}    # Vector2i(col,row) → true; prevents soil re-RNG on crop refresh
 var _wilt_map: TileMapLayer = null        # brown overlay on wilted tiles; built in _ready()
 var _rock_decor_map: TileMapLayer = null  # static decor layer for rocks (no sway shader)
 var _icon_container: Node2D = null        # parent for harvest-ready bounce icons
 var _insect_container: Node2D = null      # parent for live butterflies/fireflies; scrolls with the field
+var _inventory_icon_row: HBoxContainer = null
+var _objects_texture: Texture2D = null
 var _harvest_icons: Dictionary = {}       # Vector2i(col,row) → Sprite2D
 var _harvest_icon_shown_once: Dictionary = {}  # Saving harvest icon state
 
@@ -78,19 +84,27 @@ var _rain_check_timer: float          = 0.0
 var _rain_duration:    float          = 0.0
 var _rain_overlay:     ColorRect      = null
 var _rain_particles:   CPUParticles2D = null
+var _rain_visual_layer: Node2D = null
+var _rain_ground_layer: Node2D = null
+var _rain_streaks: Array = []
+var _rain_ground: Array = []
 
 # day/night color grading
 const DAY_NIGHT_CYCLE := 180.0
 const DAY_PHASE := 0.30
 const NIGHT_PHASE := 0.76
+const GRASS_TOGGLE_COST := 100
+const WATER_TOGGLE_COST := 100
+const FIREFLY_PHASE_START := 0.62
+const FIREFLY_PHASE_END := 0.92
 const DAY_NIGHT_KEYS := [
 	{"t": 0.00, "shadow": Color(0.34, 0.42, 0.68, 1.0), "mid": Color(0.72, 0.82, 1.0, 1.0), "highlight": Color(1.00, 0.88, 0.55, 1.0), "night": 0.40, "dusk": 0.00, "dawn": 0.90, "sat": 0.72, "exposure": 0.86, "contrast": 0.92, "lift": 0.030, "vignette": 0.22, "lamp": 0.54},
 	{"t": 0.12, "shadow": Color(0.58, 0.55, 0.60, 1.0), "mid": Color(1.00, 0.95, 0.84, 1.0), "highlight": Color(1.00, 0.93, 0.70, 1.0), "night": 0.06, "dusk": 0.00, "dawn": 0.26, "sat": 1.04, "exposure": 1.00, "contrast": 1.00, "lift": 0.006, "vignette": 0.03, "lamp": 0.00},
 	{"t": 0.30, "shadow": Color(0.88, 0.91, 0.92, 1.0), "mid": Color(1.00, 1.00, 1.00, 1.0), "highlight": Color(1.00, 1.00, 0.94, 1.0), "night": 0.00, "dusk": 0.00, "dawn": 0.00, "sat": 1.00, "exposure": 1.00, "contrast": 1.02, "lift": 0.000, "vignette": 0.00, "lamp": 0.00},
 	{"t": 0.50, "shadow": Color(0.76, 0.74, 0.86, 1.0), "mid": Color(1.00, 0.92, 0.88, 1.0), "highlight": Color(1.00, 0.78, 0.58, 1.0), "night": 0.04, "dusk": 0.36, "dawn": 0.00, "sat": 1.08, "exposure": 0.98, "contrast": 1.02, "lift": 0.006, "vignette": 0.04, "lamp": 0.08},
-	{"t": 0.64, "shadow": Color(0.20, 0.10, 0.58, 1.0), "mid": Color(0.78, 0.42, 1.00, 1.0), "highlight": Color(1.00, 0.62, 0.72, 1.0), "night": 0.42, "dusk": 0.92, "dawn": 0.00, "sat": 1.08, "exposure": 0.80, "contrast": 1.00, "lift": 0.022, "vignette": 0.25, "lamp": 0.52},
-	{"t": 0.76, "shadow": Color(0.02, 0.06, 0.42, 1.0), "mid": Color(0.24, 0.16, 0.82, 1.0), "highlight": Color(0.62, 0.52, 1.00, 1.0), "night": 1.00, "dusk": 0.12, "dawn": 0.00, "sat": 1.40, "exposure": 0.52, "contrast": 1.04, "lift": 0.018, "vignette": 0.54, "lamp": 1.00},
-	{"t": 0.92, "shadow": Color(0.04, 0.04, 0.36, 1.0), "mid": Color(0.30, 0.12, 0.70, 1.0), "highlight": Color(0.58, 0.56, 1.00, 1.0), "night": 0.96, "dusk": 0.00, "dawn": 0.18, "sat": 1.34, "exposure": 0.58, "contrast": 1.00, "lift": 0.020, "vignette": 0.48, "lamp": 0.96},
+	{"t": 0.64, "shadow": Color(0.20, 0.10, 0.58, 1.0), "mid": Color(0.78, 0.42, 1.00, 1.0), "highlight": Color(1.00, 0.62, 0.72, 1.0), "night": 0.42, "dusk": 0.92, "dawn": 0.00, "sat": 1.08, "exposure": 0.80, "contrast": 1.10, "lift": 0.022, "vignette": 0.25, "lamp": 0.52},
+	{"t": 0.76, "shadow": Color(0.02, 0.06, 0.42, 1.0), "mid": Color(0.24, 0.16, 0.82, 1.0), "highlight": Color(0.62, 0.52, 1.00, 1.0), "night": 1.00, "dusk": 0.12, "dawn": 0.00, "sat": 1.40, "exposure": 0.52, "contrast": 1.24, "lift": 0.018, "vignette": 0.54, "lamp": 1.00},
+	{"t": 0.92, "shadow": Color(0.04, 0.04, 0.36, 1.0), "mid": Color(0.30, 0.12, 0.70, 1.0), "highlight": Color(0.58, 0.56, 1.00, 1.0), "night": 0.96, "dusk": 0.00, "dawn": 0.18, "sat": 1.34, "exposure": 0.58, "contrast": 1.10, "lift": 0.020, "vignette": 0.48, "lamp": 0.96},
 	{"t": 1.00, "shadow": Color(0.34, 0.42, 0.68, 1.0), "mid": Color(0.72, 0.82, 1.0, 1.0), "highlight": Color(1.00, 0.88, 0.55, 1.0), "night": 0.40, "dusk": 0.00, "dawn": 0.90, "sat": 0.72, "exposure": 0.86, "contrast": 0.92, "lift": 0.030, "vignette": 0.22, "lamp": 0.54},
 ]
 var _day_seconds: float = DAY_NIGHT_CYCLE * 0.18
@@ -109,12 +123,18 @@ var _butterflies: Array = []   # Array of {node, state, perched_cell, tween}
 const FIREFLY_COUNT := 11
 const INSECT_SPAWN_MARGIN := 150.0
 const WEED_INTERVAL       := 45.0
+const HARVEST_ICON_Y_OFFSET := -18.0
+const HARVEST_ICON_LIFETIME := 12.0
 
 # ── rain ─────────────────────────────────────────────────────────────────────
 const RAIN_CHECK_INTERVAL := 180.0   # seconds between roll attempts
 const RAIN_CHANCE         := 0.25    # probability per check
 const RAIN_DURATION_MIN   := 60.0
 const RAIN_DURATION_MAX   := 120.0
+const RAIN_STREAK_COUNT   := 74
+const RAIN_GROUND_COUNT   := 34
+const RAIN_AREA_SIZE      := Vector2(540.0, 814.0)
+const RAIN_FALL_VECTOR    := Vector2(380.0, 690.0)
 
 # ── UI refs ──────────────────────────────────────────────────────────────────
 @onready var _coins_label:    Label   = $TopBar/CoinsLabel
@@ -131,11 +151,17 @@ const RAIN_DURATION_MAX   := 120.0
 const TM_TERRAIN_SET  := 0
 const TM_SOIL         := 0   # 47-tile autotile terrain
 const TM_GRASS        := 1   # single grass tile terrain
+const TM_WATER        := 2
 # DecorMapLayer — terrain set 0
+const DM_SOURCE       := 1
 const DM_TERRAIN_SET  := 0
 const DM_DECOR        := 0   # 16 random decor items
 # Atlas coords of rock tiles — these go on the static layer (no sway)
 const ROCK_ATLAS_COORDS := [Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5)]
+const WATER_WEED_ATLAS_COORDS := [
+	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5),
+	Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5),
+]
 # PlantMapLayer — source id 0 (objects.png)
 # atlas coords: col = crop_id (0-4), row = stage row
 const PM_SOURCE       := 1
@@ -143,10 +169,17 @@ const PM_SEED_ROW     := 2   # stage 0 — seed (1-tall)
 const PM_SPROUT_ROW   := 3   # stage 1 — sprout (1-tall)
 const PM_GROWING_ROW  := 4   # stage 2 — growing (2-tall)
 const PM_MATURE_ROW   := 6   # stage 3 — mature (2-tall)
+const PM_PACK_ROW     := 0   # seed packet icons for the seed menu
+const PM_BLOSSOM_ROW  := 1   # harvested blossom icons for inventory counts
+const PM_TILE_SIZE    := 64
+const SEED_BUTTON_ICON_TEXT_GAP := -4
+const SEED_BUTTON_FONT_SIZE := 34
 @onready var _seed_panel:     Control = $SeedPanel
 @onready var _inv_label:      Label   = $SeedPanel/InvLabel
 @onready var _upgrade_panel:  Control = $UpgradePanel
 @onready var _can_upgrade_btn: Button = $UpgradePanel/CanUpgradeBtn
+@onready var _grass_toggle_btn: Button = $UpgradePanel/GrassToggleBtn
+@onready var _water_toggle_btn: Button = $UpgradePanel/WaterToggleBtn
 @onready var _back_btn:       Button  = $BottomBar/BackButton
 @onready var _seeds_btn:      Button  = $BottomBar/SeedsButton
 @onready var _shop_btn:       Button  = $BottomBar/ShopButton
@@ -159,6 +192,7 @@ const PM_MATURE_ROW   := 6   # stage 3 — mature (2-tall)
 @onready var _well_panel:         Control          = $WellPanel
 @onready var _well_label:         Label            = $WellPanel/WellLabel
 @onready var _tip_panel:          Control          = $TipPanel
+@onready var _rain_template:      AnimatedSprite2D = $FarmScroll/Rain
 
 
 # ── SFX nodes ────────────────────────────────────────────────────────────────
@@ -172,6 +206,8 @@ const PM_MATURE_ROW   := 6   # stage 3 — mature (2-tall)
 @onready var _sfx_upgrade:  AudioStreamPlayer = $SfxUpgrade
 @onready var _sfx_crop_tap: AudioStreamPlayer = $SfxCropTap
 @onready var _sfx_noaction: AudioStreamPlayer = $SfxNoAction
+var _sfx_soil_toggle: AudioStreamPlayer = null
+var _sfx_water_plop: AudioStreamPlayer = null
 
 
 func _ready() -> void:
@@ -179,12 +215,15 @@ func _ready() -> void:
 	_seeds_btn.pressed.connect(_on_seeds_btn_pressed)
 	_shop_btn.pressed.connect(_on_shop_btn_pressed)
 	_sell_btn.pressed.connect(_on_sell_pressed)
+	_grass_toggle_btn.pressed.connect(_on_grass_toggle_upgrade_pressed)
+	_water_toggle_btn.pressed.connect(_on_water_toggle_upgrade_pressed)
 	$SeedPanel/LavenderBtn.pressed.connect(func(): _select_seed(CropData.LAVENDER))
 	$SeedPanel/RoseBtn.pressed.connect(func():  _select_seed(CropData.ROSE))
 	$SeedPanel/DaisyBtn.pressed.connect(func():  _select_seed(CropData.DAISY))
 	$SeedPanel/SunflowerBtn.pressed.connect(func():  _select_seed(CropData.SUNFLOWER))
 	$SeedPanel/HydrangeaBtn.pressed.connect(func(): _select_seed(CropData.HYDRANGEA))
 	$SeedPanel/TulipBtn.pressed.connect(func(): _select_seed(CropData.TULIP))
+	$SeedPanel/LotusBtn.pressed.connect(func(): _select_seed(CropData.LOTUS))
 	_can_upgrade_btn.pressed.connect(_on_can_upgrade_pressed)
 	_status_timer.timeout.connect(func(): _status_label.text = "")
 
@@ -193,7 +232,15 @@ func _ready() -> void:
 	_shears_btn.pressed.connect(_on_shears_btn_pressed)
 	_well_panel.gui_input.connect(_on_well_gui_input)
 	$TipPanel/Card/GotItBtn.pressed.connect(func(): _tip_panel.visible = false)
+	_sfx_soil_toggle = AudioStreamPlayer.new()
+	_sfx_soil_toggle.name = "SfxSoilToggle"
+	add_child(_sfx_soil_toggle)
+	_sfx_water_plop = AudioStreamPlayer.new()
+	_sfx_water_plop.name = "SfxWaterPlop"
+	add_child(_sfx_water_plop)
 	_load_sfx()
+	_objects_texture = load("res://games/zen_farm/assets/objects.png")
+	_setup_seed_panel_icons()
 	_setup_wilt_overlay()
 	_setup_day_night_overlay()
 	_icon_container = Node2D.new()
@@ -245,6 +292,7 @@ func _ready() -> void:
 	_rain_particles.position = Vector2(270.0, -5.0)
 	_rain_particles.z_index  = 10
 	$FarmScroll.add_child(_rain_particles)
+	_setup_rain_sprites()
 	_update_day_night(0.0)
 
 
@@ -261,13 +309,15 @@ func prepare_farm() -> void:
 		_upgrade_panel.visible = false
 		_shop_open = false
 	else:
-		_coins         = 10
+		_coins         = 10000
 		_can_water     = 0
 		_can_level     = 0
 		_active_tool   = Tool.HAND
 		_seeds_open    = false
 		_shop_open     = false
 		_selected_crop = -1
+		_grass_toggle_unlocked = false
+		_water_toggle_unlocked = false
 		_inventory.clear()
 		_weed_timer      = 0.0
 		_weed_tip_shown  = false
@@ -283,6 +333,7 @@ func prepare_farm() -> void:
 		_rain_overlay.color.a = 0.0
 	if _rain_particles:
 		_rain_particles.emitting = false
+	_set_rain_sprites_active(false, true)
 	rain_changed.emit(false)
 	_last_insect_mode = ""
 	_clear_fireflies()
@@ -322,6 +373,7 @@ func _clear_cells() -> void:
 			c.queue_free()
 	_cells.clear()
 	_decor_placed.clear()
+	_soil_placed.clear()
 	for icon in _harvest_icons.values():
 		if is_instance_valid(icon): icon.queue_free()
 	_harvest_icons.clear()
@@ -348,6 +400,7 @@ func _build_cells() -> void:
 func _apply_initial_layout() -> void:
 	for cell in _cells:
 		cell.state       = FarmCell.TileState.LOCKED
+		cell.reset_slots()
 		cell.unlock_cost = 2
 		cell.refresh_visual()
 
@@ -355,7 +408,7 @@ func _apply_initial_layout() -> void:
 # ── land unlock pricing ───────────────────────────────────────────────────
 func _has_active_crops() -> bool:
 	for cell in _cells:
-		if cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED:
+		if cell.has_active_crops():
 			return true
 	return false
 
@@ -406,18 +459,126 @@ func _cell_coords(cell: FarmCell) -> Array[Vector2i]:
 	return [Vector2i(bx, by), Vector2i(bx+1, by), Vector2i(bx, by+1), Vector2i(bx+1, by+1)]
 
 
+func _slot_coord(cell: FarmCell, slot: int) -> Vector2i:
+	var bx := cell.grid_col * 2
+	var by := cell.grid_row * 2
+	return Vector2i(bx + slot % 2, by + (slot >> 1))
+
+
+func _slot_key(cell: FarmCell, slot: int) -> Vector3i:
+	return Vector3i(cell.grid_col, cell.grid_row, slot)
+
+
+func _sync_legacy_cell_fields(cell: FarmCell) -> void:
+	cell.crop_id = -1
+	cell.growth_stage = 0
+	cell.time_in_stage = 0.0
+	cell.watered = false
+	cell.wilt_timer = 0.0
+	for slot in range(FarmCell.SLOT_COUNT):
+		if cell.slot_states[slot] == FarmCell.SlotState.CROP or cell.slot_states[slot] == FarmCell.SlotState.WILTED:
+			cell.crop_id = cell.slot_crop_ids[slot]
+			cell.growth_stage = cell.slot_growth_stages[slot]
+			cell.time_in_stage = cell.slot_time_in_stage[slot]
+			cell.watered = cell.slot_watered[slot]
+			cell.wilt_timer = cell.slot_wilt_timers[slot]
+			break
+
+
+func _capture_tile(layer: TileMapLayer, coord: Vector2i) -> Array:
+	if not layer:
+		return []
+	var source_id := layer.get_cell_source_id(coord)
+	if source_id == -1:
+		return []
+	return [layer, source_id, layer.get_cell_atlas_coords(coord), layer.get_cell_alternative_tile(coord)]
+
+
 func _refresh_cell_tilemap(cell: FarmCell) -> void:
 	if not _terrain_map or not _decor_map or not _plant_map:
 		return
-	var bx := cell.grid_col * 2
-	var by := cell.grid_row * 2
-	var all: Array[Vector2i] = [Vector2i(bx,by), Vector2i(bx+1,by), Vector2i(bx,by+1), Vector2i(bx+1,by+1)]
+	cell.refresh_summary_state()
+	_sync_legacy_cell_fields(cell)
+	var all := _cell_coords(cell)
 
-	# always clear plant layer first
+	# Always clear crop-related layers first. Locked cells keep their decor until bought.
 	for c in all:
 		_plant_map.erase_cell(c)
+		if _wilt_map:
+			_wilt_map.erase_cell(c)
+		if _moisture_map:
+			_moisture_map.erase_cell(c)
 
 	var key := Vector2i(cell.grid_col, cell.grid_row)
+
+	if cell.state == FarmCell.TileState.LOCKED or cell.state == FarmCell.TileState.GRASS:
+		_soil_placed.erase(key)
+		_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_GRASS)
+		if not _decor_placed.has(key):
+			if randf() > 0.3:
+				_decor_map.set_cells_terrain_connect(all, DM_TERRAIN_SET, DM_DECOR)
+				_move_rocks_from_decor(all)
+			_decor_placed[key] = true
+		for slot in range(FarmCell.SLOT_COUNT):
+			_hide_slot_harvest_icon(cell, slot)
+		return
+
+	if not _soil_placed.has(key):
+		var terrain := TM_WATER if cell.is_water_plot else TM_SOIL
+		_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, terrain)
+		_soil_placed[key] = true
+	_decor_placed.erase(key)
+	var existing_weed_tiles := {}
+	for slot in range(FarmCell.SLOT_COUNT):
+		if cell.slot_states[slot] != FarmCell.SlotState.WEED:
+			continue
+		var coord := _slot_coord(cell, slot)
+		var existing := _capture_tile(_decor_map, coord)
+		if existing.is_empty():
+			existing = _capture_tile(_rock_decor_map, coord)
+		if not existing.is_empty():
+			existing_weed_tiles[coord] = existing
+
+	for c in all:
+		_decor_map.erase_cell(c)
+		if _rock_decor_map:
+			_rock_decor_map.erase_cell(c)
+
+	for slot in range(FarmCell.SLOT_COUNT):
+		var coord := _slot_coord(cell, slot)
+		match cell.slot_states[slot]:
+			FarmCell.SlotState.WEED:
+				if existing_weed_tiles.has(coord):
+					var preserved: Array = existing_weed_tiles[coord]
+					var layer: TileMapLayer = preserved[0]
+					layer.set_cell(coord, int(preserved[1]), preserved[2], int(preserved[3]))
+				elif cell.is_water_plot:
+					_decor_map.set_cell(coord, DM_SOURCE, WATER_WEED_ATLAS_COORDS[randi() % WATER_WEED_ATLAS_COORDS.size()])
+				else:
+					var one: Array[Vector2i] = [coord]
+					_decor_map.set_cells_terrain_connect(one, DM_TERRAIN_SET, DM_DECOR)
+					_move_rocks_from_decor(one)
+			FarmCell.SlotState.CROP, FarmCell.SlotState.WILTED:
+				var row: int
+				match cell.slot_growth_stages[slot]:
+					CropData.STAGE_SEED: row = PM_SEED_ROW
+					CropData.STAGE_SPROUT: row = PM_SPROUT_ROW
+					CropData.STAGE_GROWING: row = PM_GROWING_ROW
+					_: row = PM_MATURE_ROW
+				_plant_map.set_cell(coord, PM_SOURCE, Vector2i(cell.slot_crop_ids[slot], row))
+				if cell.slot_states[slot] == FarmCell.SlotState.WILTED and _wilt_map:
+					_wilt_map.set_cell(coord, 0, Vector2i(0, 0))
+				if cell.slot_watered[slot] and _moisture_map and not CropData.is_water_crop(cell.slot_crop_ids[slot]):
+					_moisture_map.set_cell(coord, 0, Vector2i(0, 0))
+			_:
+				pass
+
+		if cell.slot_states[slot] == FarmCell.SlotState.CROP \
+				and cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
+			_show_slot_harvest_icon(cell, slot)
+		else:
+			_hide_slot_harvest_icon(cell, slot)
+	return
 
 	match cell.state:
 		FarmCell.TileState.LOCKED:
@@ -483,6 +644,63 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 		_show_harvest_icon(cell)
 	else:
 		_hide_harvest_icon(key)
+
+
+func _show_slot_harvest_icon(cell: FarmCell, slot: int) -> void:
+	if not _icon_container:
+		return
+
+	var key := _slot_key(cell, slot)
+	if _harvest_icon_shown_once.get(key, false) or _harvest_icons.has(key):
+		return
+
+	var tex_path := "res://games/zen_farm/assets/harvest_ready.png"
+	if not ResourceLoader.exists(tex_path):
+		return
+
+	var icon := Sprite2D.new()
+	icon.texture = load(tex_path)
+	var slot_col := slot % 2
+	var slot_row := slot >> 1
+	icon.position = Vector2(
+		cell.grid_col * TILE_SIZE + slot_col * 64.0 + 32.0,
+		cell.grid_row * TILE_SIZE + slot_row * 64.0 + HARVEST_ICON_Y_OFFSET
+	)
+	_icon_container.add_child(icon)
+	_harvest_icons[key] = icon
+
+	var base_y := icon.position.y
+	var tw := create_tween().set_loops()
+	tw.tween_property(icon, "position:y", base_y - 8.0, 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(icon, "position:y", base_y, 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	icon.set_meta("tween", tw)
+
+	get_tree().create_timer(HARVEST_ICON_LIFETIME).timeout.connect(func():
+		if not is_instance_valid(icon):
+			return
+		tw.kill()
+		var fade := create_tween()
+		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
+		fade.tween_callback(func():
+			if is_instance_valid(icon):
+				_harvest_icons.erase(key)
+				_harvest_icon_shown_once[key] = true
+				icon.queue_free()
+		)
+	)
+
+
+func _hide_slot_harvest_icon(cell: FarmCell, slot: int) -> void:
+	var key := _slot_key(cell, slot)
+	if not _harvest_icons.has(key):
+		return
+	var icon: Sprite2D = _harvest_icons[key]
+	if icon.has_meta("tween"):
+		(icon.get_meta("tween") as Tween).kill()
+	icon.queue_free()
+	_harvest_icons.erase(key)
 
 
 func _show_harvest_icon(cell: FarmCell) -> void:
@@ -578,6 +796,7 @@ func _add_column() -> void:
 		cell.grid_col    = col
 		cell.visual_changed.connect(_refresh_cell_tilemap.bind(cell))
 		cell.state       = FarmCell.TileState.LOCKED
+		cell.reset_slots()
 		cell.unlock_cost = _next_unlock_cost()
 		cell.refresh_visual()
 		_cells.append(cell)
@@ -801,14 +1020,14 @@ func _day_night_params(phase: float) -> Dictionary:
 func _sync_day_night_insects() -> void:
 	if not _game_active:
 		return
-	var target := _last_insect_mode
+	var target := "none"
 	if _is_raining:
 		target = "none"
-	elif _night_amount >= 0.30:
+	elif _should_show_fireflies():
 		target = "night"
 	elif _night_amount <= 0.12:
 		target = "day"
-	elif target == "":
+	elif _last_insect_mode == "day" and _night_amount < 0.30:
 		target = "day"
 
 	if target == _last_insect_mode:
@@ -825,6 +1044,11 @@ func _sync_day_night_insects() -> void:
 		_setup_fireflies()
 
 	_last_insect_mode = target
+
+
+func _should_show_fireflies() -> bool:
+	var phase := _day_seconds / DAY_NIGHT_CYCLE
+	return _night_amount >= 0.30 and phase >= FIREFLY_PHASE_START and phase < FIREFLY_PHASE_END
 
 
 func _jump_day_night_to(phase: float) -> void:
@@ -853,9 +1077,10 @@ func _input(event: InputEvent) -> void:
 			_touch_start     = event.position
 			_touch_drag_dist = 0.0
 			_touch_cell      = _cell_at(event.position)
+			_touch_slot      = _cell_slot_at(_touch_cell, event.position)
 		else:
 			if _touch_drag_dist < 12.0 and _touch_cell != null:
-				_on_cell_tapped(_touch_cell)
+				_on_cell_tapped(_touch_cell, _touch_slot)
 			_touch_cell = null
 	elif event is InputEventScreenDrag:
 		_touch_drag_dist += abs(event.relative.x)
@@ -865,9 +1090,10 @@ func _input(event: InputEvent) -> void:
 			_touch_start     = event.position
 			_touch_drag_dist = 0.0
 			_touch_cell      = _cell_at(event.position)
+			_touch_slot      = _cell_slot_at(_touch_cell, event.position)
 		elif not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			if _touch_drag_dist < 8.0 and _touch_cell != null:
-				_on_cell_tapped(_touch_cell)
+				_on_cell_tapped(_touch_cell, _touch_slot)
 			_touch_cell = null
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_apply_scroll(-60)
@@ -886,32 +1112,52 @@ func _cell_at(pos: Vector2) -> FarmCell:
 	return null
 
 
+func _cell_slot_at(cell: FarmCell, pos: Vector2) -> int:
+	if cell == null:
+		return 0
+	var rect := cell.get_global_rect()
+	var local := pos - rect.position
+	var col := 0 if local.x < TILE_SIZE * 0.5 else 1
+	var row := 0 if local.y < TILE_SIZE * 0.5 else 1
+	return row * 2 + col
+
+
 func _tick_crops(delta: float) -> void:
 	for cell in _cells:
-		if cell.state != FarmCell.TileState.CROP:
+		if not cell.has_active_crops():
 			continue
-		if cell.growth_stage == CropData.STAGE_MATURE:
-			continue
-		# rain keeps crops watered each tick (catches stage advances and new plantings)
-		if _is_raining and not cell.watered:
-			cell.watered = true
-			cell.wilt_timer = 0.0
+		var changed := false
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] != FarmCell.SlotState.CROP:
+				continue
+			if cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
+				continue
+			var is_water_crop := CropData.is_water_crop(cell.slot_crop_ids[slot])
+			if is_water_crop and not cell.slot_watered[slot]:
+				cell.slot_watered[slot] = true
+				cell.slot_wilt_timers[slot] = 0.0
+				changed = true
+			if _is_raining and not cell.slot_watered[slot]:
+				cell.slot_watered[slot] = true
+				cell.slot_wilt_timers[slot] = 0.0
+				changed = true
+			var dur: float = CropData.get_stage_durations(cell.slot_crop_ids[slot])[cell.slot_growth_stages[slot]]
+			if not cell.slot_watered[slot]:
+				cell.slot_wilt_timers[slot] += delta
+				if cell.slot_wilt_timers[slot] >= dur * 2.0:
+					cell.slot_states[slot] = FarmCell.SlotState.WILTED
+					changed = true
+			else:
+				cell.slot_time_in_stage[slot] += delta
+				if cell.slot_time_in_stage[slot] >= dur:
+					cell.slot_time_in_stage[slot] -= dur
+					cell.slot_growth_stages[slot] += 1
+					cell.slot_wilt_timers[slot] = 0.0
+					if cell.slot_growth_stages[slot] < CropData.STAGE_MATURE and not is_water_crop:
+						cell.slot_watered[slot] = false
+					changed = true
+		if changed:
 			cell.refresh_visual()
-		var dur: float = CropData.get_stage_durations(cell.crop_id)[cell.growth_stage]
-		if not cell.watered:
-			cell.wilt_timer += delta
-			if cell.wilt_timer >= dur * 2.0:
-				cell.state = FarmCell.TileState.WILTED
-				cell.refresh_visual()
-		else:
-			cell.time_in_stage += delta
-			if cell.time_in_stage >= dur:
-				cell.time_in_stage -= dur
-				cell.growth_stage  += 1
-				cell.wilt_timer     = 0.0
-				if cell.growth_stage < CropData.STAGE_MATURE:
-					cell.watered = false
-				cell.refresh_visual()
 
 
 func _tick_weeds(delta: float) -> void:
@@ -920,25 +1166,31 @@ func _tick_weeds(delta: float) -> void:
 		return
 	_weed_timer = 0.0
 
-	var soil_indices: Array = []
+	var soil_slots: Array = []
 	for i in range(_cells.size()):
-		if _cells[i].state == FarmCell.TileState.SOIL:
-			soil_indices.append(i)
-	if soil_indices.is_empty():
+		var cell: FarmCell = _cells[i]
+		if cell.state == FarmCell.TileState.LOCKED or cell.state == FarmCell.TileState.GRASS:
+			continue
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] == FarmCell.SlotState.EMPTY:
+				soil_slots.append(Vector2i(i, slot))
+	if soil_slots.is_empty():
 		return
 
 	var weed_count := 0
 	for c in _cells:
-		if c.state == FarmCell.TileState.WEED:
-			weed_count += 1
-	var max_weeds: int = max(1, int(soil_indices.size() * 0.3))
+		for slot in range(FarmCell.SLOT_COUNT):
+			if (c as FarmCell).slot_states[slot] == FarmCell.SlotState.WEED:
+				weed_count += 1
+	var max_weeds: int = max(1, int(soil_slots.size() * 0.3))
 	if weed_count >= max_weeds:
 		return
 
 	if randf() < 0.4:
-		var idx: int = soil_indices[randi() % soil_indices.size()]
-		_cells[idx].state = FarmCell.TileState.WEED
-		_cells[idx].refresh_visual()
+		var pick: Vector2i = soil_slots[randi() % soil_slots.size()]
+		var cell: FarmCell = _cells[pick.x]
+		cell.slot_states[pick.y] = FarmCell.SlotState.WEED
+		cell.refresh_visual()
 		if not _weed_tip_shown:
 			_weed_tip_shown = true
 			_show_status("A weed appeared! Use SHEARS to cut it.")
@@ -949,6 +1201,7 @@ func _tick_rain(delta: float) -> void:
 	if not _game_active:
 		return
 	if _is_raining:
+		_tick_rain_sprites(delta)
 		_rain_duration -= delta
 		if _rain_duration <= 0.0:
 			_stop_rain()
@@ -960,23 +1213,153 @@ func _tick_rain(delta: float) -> void:
 				_start_rain()
 
 
+func _setup_rain_sprites() -> void:
+	if not _rain_template:
+		return
+	_rain_template.visible = false
+	_rain_visual_layer = Node2D.new()
+	_rain_visual_layer.name = "RainVisualLayer"
+	_rain_visual_layer.z_index = 12
+	_rain_visual_layer.visible = false
+	_rain_visual_layer.modulate.a = 0.0
+	$FarmScroll.add_child(_rain_visual_layer)
+
+	# Puddle layer sits just below the decor and plant tilemaps (z=1, z=6) but
+	# above the terrain/moisture tilemaps (z=0). Same z=0, inserted before
+	# DecorMapLayer so tree order puts it below decor/plants/GridContainer.
+	_rain_ground_layer = Node2D.new()
+	_rain_ground_layer.name = "RainGroundLayer"
+	_rain_ground_layer.z_index = 0
+	_rain_ground_layer.visible = false
+	$FarmScroll.add_child(_rain_ground_layer)
+	$FarmScroll.move_child(_rain_ground_layer, _decor_map.get_index())
+
+	for i in range(RAIN_STREAK_COUNT):
+		var sprite := _rain_template.duplicate() as AnimatedSprite2D
+		sprite.visible = true
+		sprite.animation = &"rain"
+		sprite.frame = randi() % maxi(1, sprite.sprite_frames.get_frame_count(&"rain"))
+		sprite.stop()
+		sprite.scale = Vector2.ONE * randf_range(1.1, 1.8)
+		sprite.modulate.a = randf_range(0.45, 0.85)
+		sprite.position = Vector2(randf_range(-80.0, RAIN_AREA_SIZE.x + 40.0), randf_range(-80.0, RAIN_AREA_SIZE.y + 20.0))
+		_rain_visual_layer.add_child(sprite)
+		_rain_streaks.append({"node": sprite, "speed": randf_range(0.75, 1.35)})
+
+	var ground_frame_count := _rain_template.sprite_frames.get_frame_count(&"rain_on_ground")
+	for i in range(RAIN_GROUND_COUNT):
+		var sprite := _rain_template.duplicate() as AnimatedSprite2D
+		sprite.visible = false
+		sprite.z_index = 0
+		sprite.animation = &"rain_on_ground"
+		sprite.frame = randi() % maxi(1, ground_frame_count)
+		sprite.stop()
+		sprite.scale = Vector2.ONE * randf_range(1.0, 1.7)
+		sprite.modulate.a = randf_range(0.25, 0.55)
+		sprite.position = Vector2(randf_range(8.0, RAIN_AREA_SIZE.x - 8.0), randf_range(64.0, RAIN_AREA_SIZE.y - 12.0))
+		_rain_ground_layer.add_child(sprite)
+		# hidden_timer: delay before first appearance; visible_timer: how long to show
+		_rain_ground.append({"node": sprite, "hidden_timer": randf_range(0.0, 1.8), "visible_timer": 0.0, "showing": false})
+
+
+func _hide_rain_ground_sprites() -> void:
+	for g in _rain_ground:
+		(g["node"] as AnimatedSprite2D).visible = false
+		g["showing"] = false
+		g["hidden_timer"] = randf_range(0.0, 1.8)
+		g["visible_timer"] = 0.0
+	if _rain_ground_layer:
+		_rain_ground_layer.visible = false
+
+
+func _set_rain_sprites_active(active: bool, instant: bool = false) -> void:
+	if not _rain_visual_layer:
+		return
+	_rain_visual_layer.visible = true
+	if active:
+		if _rain_ground_layer:
+			_rain_ground_layer.visible = true
+		for fly in _rain_streaks:
+			var sprite := fly["node"] as AnimatedSprite2D
+			sprite.position = Vector2(randf_range(-80.0, RAIN_AREA_SIZE.x + 40.0), randf_range(-80.0, RAIN_AREA_SIZE.y + 20.0))
+			sprite.frame = randi() % maxi(1, sprite.sprite_frames.get_frame_count(&"rain"))
+			sprite.stop()
+		for g in _rain_ground:
+			(g["node"] as AnimatedSprite2D).visible = false
+			g["showing"] = false
+			g["hidden_timer"] = randf_range(0.0, 1.2)
+			g["visible_timer"] = 0.0
+		if instant:
+			_rain_visual_layer.modulate.a = 1.0
+		else:
+			create_tween().tween_property(_rain_visual_layer, "modulate:a", 1.0, 0.8)
+	else:
+		_hide_rain_ground_sprites()
+		if instant:
+			_rain_visual_layer.modulate.a = 0.0
+			_rain_visual_layer.visible = false
+		else:
+			var tw := create_tween()
+			tw.tween_property(_rain_visual_layer, "modulate:a", 0.0, 1.3)
+			tw.tween_callback(func():
+				if _rain_visual_layer and not _is_raining:
+					_rain_visual_layer.visible = false
+			)
+
+
+func _tick_rain_sprites(delta: float) -> void:
+	for fly in _rain_streaks:
+		var sprite := fly["node"] as AnimatedSprite2D
+		sprite.position += RAIN_FALL_VECTOR * float(fly["speed"]) * delta
+		if sprite.position.y > RAIN_AREA_SIZE.y + 36.0 or sprite.position.x > RAIN_AREA_SIZE.x + 44.0:
+			sprite.frame = randi() % maxi(1, sprite.sprite_frames.get_frame_count(&"rain"))
+			if randf() < 0.38:
+				# Enter from the left edge — covers the bottom-left corner that
+				# top-only spawns never reach with a rightward fall vector.
+				sprite.position = Vector2(randf_range(-40.0, 0.0), randf_range(-20.0, RAIN_AREA_SIZE.y + 10.0))
+			else:
+				sprite.position = Vector2(randf_range(-30.0, RAIN_AREA_SIZE.x + 10.0), randf_range(-120.0, -10.0))
+
+	var gfc := (_rain_template.sprite_frames.get_frame_count(&"rain_on_ground") if _rain_template else 3)
+	for g in _rain_ground:
+		if g["showing"]:
+			g["visible_timer"] -= delta
+			if g["visible_timer"] <= 0.0:
+				(g["node"] as AnimatedSprite2D).visible = false
+				g["showing"] = false
+				g["hidden_timer"] = randf_range(0.25, 1.8)
+		else:
+			g["hidden_timer"] -= delta
+			if g["hidden_timer"] <= 0.0:
+				var sp := g["node"] as AnimatedSprite2D
+				sp.frame = randi() % maxi(1, gfc)
+				sp.visible = true
+				g["showing"] = true
+				g["visible_timer"] = randf_range(0.28, 0.48)
+
+
 func _start_rain() -> void:
 	_is_raining = true
 	_rain_duration = randf_range(RAIN_DURATION_MIN, RAIN_DURATION_MAX)
 	# water all crops and revive wilted immediately
 	for cell in _cells:
-		if cell.state == FarmCell.TileState.CROP \
-				and not cell.watered \
-				and cell.growth_stage < CropData.STAGE_MATURE:
-			cell.watered = true
-			cell.wilt_timer = 0.0
+		var changed := false
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] == FarmCell.SlotState.CROP \
+					and not cell.slot_watered[slot] \
+					and cell.slot_growth_stages[slot] < CropData.STAGE_MATURE:
+				cell.slot_watered[slot] = true
+				cell.slot_wilt_timers[slot] = 0.0
+				changed = true
+			elif cell.slot_states[slot] == FarmCell.SlotState.WILTED:
+				cell.slot_states[slot] = FarmCell.SlotState.CROP
+				cell.slot_watered[slot] = true
+				cell.slot_wilt_timers[slot] = 0.0
+				changed = true
+		if changed:
 			cell.refresh_visual()
-		elif cell.state == FarmCell.TileState.WILTED:
-			cell.state = FarmCell.TileState.CROP
-			cell.watered = true
-			cell.wilt_timer = 0.0
-			cell.refresh_visual()
-	_rain_particles.emitting = true
+	_rain_particles.emitting = false
+	_set_rain_sprites_active(true)
 	var tw := create_tween()
 	tw.tween_property(_rain_overlay, "color:a", 0.18, 1.5)
 	_show_status("It's raining! Crops are being watered.")
@@ -988,6 +1371,7 @@ func _start_rain() -> void:
 func _stop_rain() -> void:
 	_is_raining = false
 	_rain_particles.emitting = false
+	_set_rain_sprites_active(false)
 	var tw := create_tween()
 	tw.tween_property(_rain_overlay, "color:a", 0.0, 2.0)
 	_show_status("The rain has stopped.")
@@ -1008,33 +1392,40 @@ func _apply_offline_catchup() -> void:
 		return
 
 	for cell in _cells:
-		if cell.state != FarmCell.TileState.CROP:
+		if not cell.has_active_crops():
 			continue
-		if cell.growth_stage == CropData.STAGE_MATURE:
-			continue
-		var t := elapsed
-		while t > 0.0 and cell.growth_stage < CropData.STAGE_MATURE:
-			if not cell.watered:
-				var dur: float = CropData.get_stage_durations(cell.crop_id)[cell.growth_stage]
-				var can_wilt := minf(t, dur * 2.0 - cell.wilt_timer)
-				cell.wilt_timer += can_wilt
-				t -= can_wilt
-				if cell.wilt_timer >= dur * 2.0:
-					cell.state = FarmCell.TileState.WILTED
-				break
-			else:
-				var dur: float = CropData.get_stage_durations(cell.crop_id)[cell.growth_stage]
-				var left: float = dur - cell.time_in_stage
-				if t >= left:
-					t -= left
-					cell.time_in_stage = 0.0
-					cell.growth_stage  += 1
-					cell.wilt_timer     = 0.0
-					if cell.growth_stage < CropData.STAGE_MATURE:
-						cell.watered = false
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] != FarmCell.SlotState.CROP:
+				continue
+			if cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
+				continue
+			var is_water_crop := CropData.is_water_crop(cell.slot_crop_ids[slot])
+			if is_water_crop:
+				cell.slot_watered[slot] = true
+				cell.slot_wilt_timers[slot] = 0.0
+			var t := elapsed
+			while t > 0.0 and cell.slot_growth_stages[slot] < CropData.STAGE_MATURE:
+				if not cell.slot_watered[slot]:
+					var dur: float = CropData.get_stage_durations(cell.slot_crop_ids[slot])[cell.slot_growth_stages[slot]]
+					var can_wilt := minf(t, dur * 2.0 - cell.slot_wilt_timers[slot])
+					cell.slot_wilt_timers[slot] += can_wilt
+					t -= can_wilt
+					if cell.slot_wilt_timers[slot] >= dur * 2.0:
+						cell.slot_states[slot] = FarmCell.SlotState.WILTED
+					break
 				else:
-					cell.time_in_stage += t
-					t = 0.0
+					var dur: float = CropData.get_stage_durations(cell.slot_crop_ids[slot])[cell.slot_growth_stages[slot]]
+					var left: float = dur - cell.slot_time_in_stage[slot]
+					if t >= left:
+						t -= left
+						cell.slot_time_in_stage[slot] = 0.0
+						cell.slot_growth_stages[slot] += 1
+						cell.slot_wilt_timers[slot] = 0.0
+						if cell.slot_growth_stages[slot] < CropData.STAGE_MATURE and not is_water_crop:
+							cell.slot_watered[slot] = false
+					else:
+						cell.slot_time_in_stage[slot] += t
+						t = 0.0
 		cell.refresh_visual()
 
 
@@ -1076,8 +1467,13 @@ func _on_well_gui_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 	if _active_tool != Tool.WATERING_CAN:
-		_play(_sfx_noaction)
-		_show_status("Equip the Watering Can first.")
+		_active_tool = Tool.WATERING_CAN
+		_seeds_open = false
+		_shop_open = false
+		_seed_panel.visible = false
+		_upgrade_panel.visible = false
+		_refresh_ui()
+		_show_status("Watering Can selected.")
 		return
 	var cmax := _can_max()
 	if _can_water == cmax:
@@ -1092,22 +1488,22 @@ func _on_well_gui_input(event: InputEvent) -> void:
 
 
 # ── cell tap handler ──────────────────────────────────────────────────────
-func _on_cell_tapped(cell: FarmCell) -> void:
+func _on_cell_tapped(cell: FarmCell, slot: int) -> void:
 	_scatter_butterfly_from(cell)
-	if cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED:
+	if cell.has_active_crops():
 		_poke_plants(cell)
 
 	if _seeds_open:
-		if cell.state == FarmCell.TileState.SOIL:
-			_try_plant(cell)
+		if cell.state != FarmCell.TileState.LOCKED and cell.slot_states[slot] == FarmCell.SlotState.EMPTY:
+			_try_plant(cell, slot)
 		else:
 			_show_status("Choose an empty soil patch.")
 		return
 
 	match _active_tool:
-		Tool.HAND:          _try_hand(cell)
+		Tool.HAND:          _try_hand(cell, slot)
 		Tool.WATERING_CAN:  _try_water_cell(cell)
-		Tool.SHEARS:        _try_shear(cell)
+		Tool.SHEARS:        _try_shear(cell, slot)
 
 
 func _poke_plants(cell: FarmCell) -> void:
@@ -1125,26 +1521,83 @@ func _poke_plants(cell: FarmCell) -> void:
 	tw.tween_method(func(v: float): mat.set_shader_parameter("poke_age", v), 0.0, 1.0, 0.6)
 
 
+func _toggle_empty_plot_surface(cell: FarmCell) -> void:
+	if cell.empty_slot_count() != FarmCell.SLOT_COUNT:
+		_play(_sfx_noaction)
+		_show_status("Clear the plot first.")
+		return
+	var key := Vector2i(cell.grid_col, cell.grid_row)
+	_decor_placed.erase(key)
+	_soil_placed.erase(key)
+	if cell.is_water_plot or cell.state == FarmCell.TileState.WATER:
+		cell.is_water_plot = false
+		cell.state = FarmCell.TileState.SOIL
+		_show_status("Tilled.")
+		_play(_sfx_soil_toggle)
+	elif cell.state == FarmCell.TileState.GRASS:
+		if _water_toggle_unlocked:
+			cell.is_water_plot = true
+			cell.state = FarmCell.TileState.WATER
+			_show_status("Made water.")
+			_play(_sfx_water_plop)
+		else:
+			cell.state = FarmCell.TileState.SOIL
+			_show_status("Tilled.")
+			_play(_sfx_soil_toggle)
+	else:
+		cell.is_water_plot = false
+		cell.state = FarmCell.TileState.GRASS
+		_show_status("Made grassy.")
+		_play(_sfx_soil_toggle)
+	cell.refresh_visual()
+	SaveManager.save_game(self)
+
+
 # HAND tool: unlock tiles; guide player toward the right tool otherwise
-func _try_hand(cell: FarmCell) -> void:
+func _try_hand(cell: FarmCell, slot: int) -> void:
 	match cell.state:
 		FarmCell.TileState.SOIL:
-			_play(_sfx_noaction)
-			_show_status("Tap SEEDS to plant.")
+			if (_grass_toggle_unlocked or _water_toggle_unlocked) and cell.empty_slot_count() == FarmCell.SLOT_COUNT:
+				_toggle_empty_plot_surface(cell)
+			else:
+				_play(_sfx_noaction)
+				_show_status("Tap SEEDS to plant.")
+		FarmCell.TileState.GRASS:
+			if _grass_toggle_unlocked or _water_toggle_unlocked:
+				_toggle_empty_plot_surface(cell)
+			else:
+				_play(_sfx_noaction)
+				_show_status("Buy the grass tool in SHOP.")
+		FarmCell.TileState.WATER:
+			if _grass_toggle_unlocked or _water_toggle_unlocked:
+				_toggle_empty_plot_surface(cell)
+			else:
+				_play(_sfx_noaction)
+				_show_status("Buy the water tool in SHOP.")
 		FarmCell.TileState.WEED:
 			_play(_sfx_noaction)
-			_show_status("Use Shears to cut weeds.")
+			if cell.slot_states[slot] == FarmCell.SlotState.WEED:
+				_show_status("Use Shears to cut this weed.")
+			else:
+				_show_status("Tap SEEDS to plant.")
 		FarmCell.TileState.CROP:
 			_play(_sfx_crop_tap)
-			if cell.growth_stage == CropData.STAGE_MATURE:
+			if cell.slot_states[slot] == FarmCell.SlotState.EMPTY:
+				_show_status("Tap SEEDS to plant.")
+			elif cell.slot_states[slot] == FarmCell.SlotState.WEED:
+				_show_status("Use Shears to cut this weed.")
+			elif cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
 				_show_status("Ready! Use Shears to harvest.")
-			elif not cell.watered:
+			elif not cell.slot_watered[slot]:
 				_show_status("Thirsty! Use Watering Can.")
 			else:
 				_show_status("Growing steadily.")
 		FarmCell.TileState.WILTED:
 			_play(_sfx_crop_tap)
-			_show_status("Wilted! Use Watering Can.")
+			if cell.slot_states[slot] == FarmCell.SlotState.WILTED:
+				_show_status("Wilted! Use Watering Can.")
+			else:
+				_show_status("Watering Can can help this plot.")
 		FarmCell.TileState.LOCKED:
 			if _tip_panel.visible:
 				return
@@ -1152,7 +1605,7 @@ func _try_hand(cell: FarmCell) -> void:
 			if _coins >= cost:
 				if _coins == cost and not _has_active_crops():
 					_play(_sfx_noaction)
-					_show_status("Keep 1c for seeds — can't spend your last coin!")
+					_show_status("Keep 1c for seeds - can't spend your last coin!")
 					return
 				var tiles_before := _tiles_owned()
 				_coins -= cost
@@ -1178,9 +1631,36 @@ func _try_hand(cell: FarmCell) -> void:
 func _try_water_cell(cell: FarmCell) -> void:
 	if _can_water <= 0:
 		_play(_sfx_noaction)
-		_show_status("Can is empty — fill at the Well.")
+		_show_status("Can is empty - fill at the Well.")
 		return
 	var cmax := _can_max()
+	var watered_any := false
+	var revived_any := false
+	for slot in range(FarmCell.SLOT_COUNT):
+		if cell.slot_states[slot] == FarmCell.SlotState.WILTED:
+			cell.slot_states[slot] = FarmCell.SlotState.CROP
+			cell.slot_watered[slot] = true
+			cell.slot_wilt_timers[slot] = 0.0
+			watered_any = true
+			revived_any = true
+		elif cell.slot_states[slot] == FarmCell.SlotState.CROP \
+				and cell.slot_growth_stages[slot] < CropData.STAGE_MATURE \
+				and not cell.slot_watered[slot]:
+			cell.slot_watered[slot] = true
+			cell.slot_wilt_timers[slot] = 0.0
+			watered_any = true
+	if watered_any:
+		cell.refresh_visual()
+		_can_water -= 1
+		_refresh_ui()
+		_play(_sfx_water)
+		var verb := "Revived" if revived_any else "Watered"
+		_show_status(verb + "! (" + str(_can_water) + "/" + str(cmax) + " left)")
+		SaveManager.save_game(self)
+	else:
+		_play(_sfx_noaction)
+		_show_status("Nothing needs water here.")
+	return
 	match cell.state:
 		FarmCell.TileState.CROP:
 			if cell.growth_stage == CropData.STAGE_MATURE:
@@ -1227,8 +1707,62 @@ func _clear_harvest_icon_state(cell: FarmCell) -> void:
 			icon.queue_free()
 
 
+func _clear_slot_harvest_icon_state(cell: FarmCell, slot: int) -> void:
+	var key := _slot_key(cell, slot)
+	_harvest_icon_shown_once.erase(key)
+	_hide_slot_harvest_icon(cell, slot)
+
+
 # SHEARS tool: harvest mature crops and cut weeds
-func _try_shear(cell: FarmCell) -> void:
+func _try_shear(cell: FarmCell, slot: int) -> void:
+	match cell.slot_states[slot]:
+		FarmCell.SlotState.CROP:
+			if cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
+				var value := CropData.get_sell_value(cell.slot_crop_ids[slot])
+				_coins += value
+				_inventory[cell.slot_crop_ids[slot]] = _inventory.get(cell.slot_crop_ids[slot], 0) + 1
+				cell.clear_slot(slot)
+				_clear_slot_harvest_icon_state(cell, slot)
+				cell.refresh_visual()
+				_play(_sfx_harvest)
+				_spawn_coin_float(cell, value)
+				_show_status("Harvested! +" + str(value) + "c")
+				_refresh_ui()
+				SaveManager.save_game(self)
+			elif cell.slot_growth_stages[slot] == CropData.STAGE_SEED:
+				var refund: int = maxi(1, CropData.get_seed_cost(cell.slot_crop_ids[slot]) >> 1)
+				_coins += refund
+				cell.clear_slot(slot)
+				_clear_slot_harvest_icon_state(cell, slot)
+				cell.refresh_visual()
+				_play(_sfx_weedcut)
+				_spawn_coin_float(cell, refund)
+				_show_status("Seed uprooted. +" + str(refund) + "c back.")
+				_refresh_ui()
+				SaveManager.save_game(self)
+			else:
+				_play(_sfx_noaction)
+				if CropData.is_water_crop(cell.slot_crop_ids[slot]):
+					_show_status("Not ready yet.")
+				else:
+					_show_status("Not ready yet - keep watering.")
+		FarmCell.SlotState.WILTED:
+			_play(_sfx_noaction)
+			_show_status("Wilted! Use Watering Can.")
+		FarmCell.SlotState.WEED:
+			cell.clear_slot(slot)
+			_clear_slot_harvest_icon_state(cell, slot)
+			cell.refresh_visual()
+			_coins += 1
+			_play(_sfx_weedcut)
+			_spawn_coin_float(cell, 1)
+			_show_status("Weed cut! +1c")
+			_refresh_ui()
+			SaveManager.save_game(self)
+		_:
+			_play(_sfx_noaction)
+			_show_status("Nothing to cut here.")
+	return
 	match cell.state:
 		FarmCell.TileState.CROP:
 			if cell.growth_stage == CropData.STAGE_MATURE:
@@ -1269,7 +1803,7 @@ func _try_shear(cell: FarmCell) -> void:
 
 			else:
 				_play(_sfx_noaction)
-				_show_status("Not ready yet — keep watering.")
+				_show_status("Not ready yet - keep watering.")
 
 		FarmCell.TileState.WEED:
 			cell.state = FarmCell.TileState.SOIL
@@ -1287,10 +1821,31 @@ func _try_shear(cell: FarmCell) -> void:
 			_show_status("Nothing to cut here.")
 
 # SEEDS panel: plant on soil
-func _try_plant(cell: FarmCell) -> void:
+func _try_plant(cell: FarmCell, slot: int) -> void:
 	if _selected_crop == -1:
 		_play(_sfx_noaction)
 		_show_status("Pick a seed first!")
+		return
+	if cell.state == FarmCell.TileState.LOCKED or cell.slot_states[slot] != FarmCell.SlotState.EMPTY:
+		_play(_sfx_noaction)
+		_show_status("Choose an empty soil patch.")
+		return
+	var selected_is_water_crop := CropData.is_water_crop(_selected_crop)
+	if selected_is_water_crop and not _water_toggle_unlocked:
+		_play(_sfx_noaction)
+		_show_status("Unlock water in SHOP first.")
+		return
+	if cell.state == FarmCell.TileState.GRASS:
+		_play(_sfx_noaction)
+		_show_status("Till this plot first.")
+		return
+	if selected_is_water_crop and not cell.is_water_plot:
+		_play(_sfx_noaction)
+		_show_status("Plant lotus in water.")
+		return
+	if not selected_is_water_crop and cell.is_water_plot:
+		_play(_sfx_noaction)
+		_show_status("Choose soil for this seed.")
 		return
 	# Guard: can't plant an as-yet-locked crop (shouldn't happen since buttons
 	# are disabled, but defensive check for save-load edge cases)
@@ -1301,15 +1856,15 @@ func _try_plant(cell: FarmCell) -> void:
 	var cost := CropData.get_seed_cost(_selected_crop)
 	if _coins < cost:
 		_play(_sfx_noaction)
-		_show_status("Need " + str(cost) + "c — not enough coins.")
+		_show_status("Need " + str(cost) + "c - not enough coins.")
 		return
 	_coins -= cost
-	cell.state         = FarmCell.TileState.CROP
-	cell.crop_id       = _selected_crop
-	cell.growth_stage  = CropData.STAGE_SEED
-	cell.time_in_stage = 0.0
-	cell.watered       = _is_raining   # rain auto-waters fresh plantings
-	cell.wilt_timer    = 0.0
+	cell.slot_states[slot] = FarmCell.SlotState.CROP
+	cell.slot_crop_ids[slot] = _selected_crop
+	cell.slot_growth_stages[slot] = CropData.STAGE_SEED
+	cell.slot_time_in_stage[slot] = 0.0
+	cell.slot_watered[slot] = _is_raining or selected_is_water_crop
+	cell.slot_wilt_timers[slot] = 0.0
 	cell.refresh_visual()
 	_play(_sfx_plant)
 	_refresh_ui()
@@ -1334,6 +1889,8 @@ func _select_seed(crop_id: int) -> void:
 	# Ignore taps on disabled (locked) buttons — GDScript can fire these
 	# if the button was rapidly tapped; double-check unlock state
 	if CropData.get_unlock_tile_count(crop_id) > _tiles_owned():
+		return
+	if CropData.is_water_crop(crop_id) and not _water_toggle_unlocked:
 		return
 	_selected_crop = crop_id
 	_refresh_ui()
@@ -1368,6 +1925,40 @@ func _on_can_upgrade_pressed() -> void:
 	_refresh_ui()
 	_play(_sfx_upgrade)
 	_show_status("Can upgraded! Now " + str(_can_max()) + " charges.")
+	SaveManager.save_game(self)
+
+
+func _on_grass_toggle_upgrade_pressed() -> void:
+	if _grass_toggle_unlocked:
+		_play(_sfx_noaction)
+		_show_status("Grass toggle already unlocked.")
+		return
+	if _coins < GRASS_TOGGLE_COST:
+		_play(_sfx_noaction)
+		_show_status("Need " + str(GRASS_TOGGLE_COST) + "c to unlock grass.")
+		return
+	_coins -= GRASS_TOGGLE_COST
+	_grass_toggle_unlocked = true
+	_refresh_ui()
+	_play(_sfx_upgrade)
+	_show_status("Grass toggle unlocked!")
+	SaveManager.save_game(self)
+
+
+func _on_water_toggle_upgrade_pressed() -> void:
+	if _water_toggle_unlocked:
+		_play(_sfx_noaction)
+		_show_status("Water toggle already unlocked.")
+		return
+	if _coins < WATER_TOGGLE_COST:
+		_play(_sfx_noaction)
+		_show_status("Need " + str(WATER_TOGGLE_COST) + "c to unlock water.")
+		return
+	_coins -= WATER_TOGGLE_COST
+	_water_toggle_unlocked = true
+	_refresh_ui()
+	_play(_sfx_upgrade)
+	_show_status("Water toggle unlocked! Lotus seeds available.")
 	SaveManager.save_game(self)
 
 
@@ -1409,6 +2000,8 @@ func _load_sfx() -> void:
 		[_sfx_upgrade,  "upgrade.mp3"],
 		[_sfx_crop_tap, "crop_tap.mp3"],
 		[_sfx_noaction, "no_action.mp3"],
+		[_sfx_soil_toggle, "soil_stuff2.mp3"],
+		[_sfx_water_plop, "water_plop.mp3"],
 	]
 	for e in entries:
 		var path: String = _SFX_DIR + e[1]
@@ -1419,6 +2012,87 @@ func _load_sfx() -> void:
 func _play(sfx: AudioStreamPlayer) -> void:
 	if sfx and sfx.stream:
 		sfx.play()
+
+
+func _crop_icon(crop_id: int, atlas_row: int, tall: bool = false) -> AtlasTexture:
+	var tex := AtlasTexture.new()
+	tex.atlas = _objects_texture
+	var height := PM_TILE_SIZE * (2 if tall else 1)
+	tex.region = Rect2(crop_id * PM_TILE_SIZE, atlas_row * PM_TILE_SIZE, PM_TILE_SIZE, height)
+	return tex
+
+
+func _seed_buttons() -> Array[Button]:
+	return [
+		$SeedPanel/LavenderBtn,
+		$SeedPanel/RoseBtn,
+		$SeedPanel/DaisyBtn,
+		$SeedPanel/SunflowerBtn,
+		$SeedPanel/HydrangeaBtn,
+		$SeedPanel/TulipBtn,
+		$SeedPanel/LotusBtn,
+	]
+
+
+func _seed_crop_ids() -> Array[int]:
+	return [
+		CropData.LAVENDER,
+		CropData.ROSE,
+		CropData.DAISY,
+		CropData.SUNFLOWER,
+		CropData.HYDRANGEA,
+		CropData.TULIP,
+		CropData.LOTUS,
+	]
+
+
+func _setup_seed_panel_icons() -> void:
+	for btn in _seed_buttons():
+		btn.expand_icon = false
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.clip_text = true
+		btn.add_theme_constant_override("h_separation", SEED_BUTTON_ICON_TEXT_GAP)
+		btn.add_theme_font_size_override("font_size", SEED_BUTTON_FONT_SIZE)
+
+	_inv_label.visible = false
+	_inventory_icon_row = HBoxContainer.new()
+	_inventory_icon_row.name = "InventoryIconRow"
+	_inventory_icon_row.position = _inv_label.position + Vector2(-5.0, -9.0)
+	_inventory_icon_row.size = Vector2(292.0, 52.0)
+	_inventory_icon_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_inventory_icon_row.add_theme_constant_override("separation", 8)
+	_inventory_icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_seed_panel.add_child(_inventory_icon_row)
+
+
+func _make_inventory_icon_count(crop_id: int, count: int) -> HBoxContainer:
+	var item := HBoxContainer.new()
+	item.custom_minimum_size = Vector2(46.0, 48.0)
+	item.alignment = BoxContainer.ALIGNMENT_CENTER
+	item.add_theme_constant_override("separation", -3)
+	item.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var icon := TextureRect.new()
+	icon.texture = _crop_icon(crop_id, PM_BLOSSOM_ROW)
+	icon.custom_minimum_size = Vector2(24.0, 46.0)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.add_child(icon)
+
+	var label := Label.new()
+	label.text = "x" + str(count)
+	label.custom_minimum_size = Vector2(24.0, 44.0)
+	label.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
+	label.add_theme_font_size_override("font_size", 26)
+	label.add_theme_color_override("font_color", Color(0.572549, 0.215686, 0.0627451, 1))
+	label.add_theme_color_override("font_outline_color", Color(0.05, 0.1, 0.04, 1))
+	label.add_theme_constant_override("outline_size", 2)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item.add_child(label)
+	return item
 
 
 # ── UI refresh ────────────────────────────────────────────────────────────
@@ -1452,31 +2126,23 @@ func _refresh_ui() -> void:
 
 	# ── seed panel ────────────────────────────────────────────────────────
 	var owned := _tiles_owned()
-	var crop_ids   := [CropData.LAVENDER, CropData.ROSE, CropData.DAISY,
-					   CropData.SUNFLOWER,  CropData.HYDRANGEA, CropData.TULIP]
-	var crop_btns: Array[Button] = [
-		$SeedPanel/LavenderBtn,
-		$SeedPanel/RoseBtn,
-		$SeedPanel/DaisyBtn,
-		$SeedPanel/SunflowerBtn,
-		$SeedPanel/HydrangeaBtn,
-		$SeedPanel/TulipBtn,
-	]
+	var crop_ids := _seed_crop_ids()
+	var crop_btns := _seed_buttons()
 	for i in range(crop_ids.size()):
 		var cid: int    = crop_ids[i]
 		var btn: Button = crop_btns[i]
 		var threshold: int = CropData.get_unlock_tile_count(cid)
-		var unlocked: bool = owned >= threshold
+		var unlocked: bool = owned >= threshold and (not CropData.is_water_crop(cid) or _water_toggle_unlocked)
+		btn.icon = _crop_icon(cid, PM_PACK_ROW)
+		btn.tooltip_text = CropData.crop_name(cid)
 		if unlocked:
 			btn.disabled = false
-			btn.modulate = Color.WHITE
-			var mark := "> " if (_selected_crop != -1 and _selected_crop == cid) else ""
-			btn.text = mark + CropData.crop_name(cid) \
-				+ "  " + str(CropData.get_seed_cost(cid)) + "c"
+			btn.modulate = Color(1.25, 1.18, 0.76, 1.0) if _selected_crop == cid else Color.WHITE
+			btn.text = str(CropData.get_seed_cost(cid)) + "c"
 		else:
 			btn.disabled = true
 			btn.modulate = Color(1, 1, 1, 0.38)
-			btn.text = CropData.crop_name(cid) + " (" + str(threshold) + " tiles)"
+			btn.text = "W" if CropData.is_water_crop(cid) else str(threshold)
 
 	# inventory label in seed panel
 	var parts: Array = []
@@ -1487,6 +2153,14 @@ func _refresh_ui() -> void:
 	_inv_label.text = ("Harvested: " + ", ".join(parts)) if not parts.is_empty() else ""
 
 	# ── upgrade panel ─────────────────────────────────────────────────────
+	if _inventory_icon_row:
+		for child in _inventory_icon_row.get_children():
+			child.queue_free()
+		for cid in crop_ids:
+			var cnt: int = _inventory.get(cid, 0)
+			if cnt > 0:
+				_inventory_icon_row.add_child(_make_inventory_icon_count(cid, cnt))
+
 	var upgrade_cost := _can_upgrade_cost()
 	if upgrade_cost < 0:
 		_can_upgrade_btn.text     = "Watering Can  MAX  (" + str(cmax) + " charges)"
@@ -1498,6 +2172,24 @@ func _refresh_ui() -> void:
 			+ str(upgrade_cost) + "c"
 		_can_upgrade_btn.disabled = false
 		_can_upgrade_btn.modulate = Color.WHITE
+
+	if _grass_toggle_unlocked:
+		_grass_toggle_btn.text = "Grass Toggle  OWNED"
+		_grass_toggle_btn.disabled = true
+		_grass_toggle_btn.modulate = Color(1, 1, 1, 0.45)
+	else:
+		_grass_toggle_btn.text = "Grass Toggle  " + str(GRASS_TOGGLE_COST) + "c"
+		_grass_toggle_btn.disabled = false
+		_grass_toggle_btn.modulate = Color.WHITE
+
+	if _water_toggle_unlocked:
+		_water_toggle_btn.text = "Water Toggle  OWNED"
+		_water_toggle_btn.disabled = true
+		_water_toggle_btn.modulate = Color(1, 1, 1, 0.45)
+	else:
+		_water_toggle_btn.text = "Water Toggle  " + str(WATER_TOGGLE_COST) + "c"
+		_water_toggle_btn.disabled = false
+		_water_toggle_btn.modulate = Color.WHITE
 
 
 # ── animations ───────────────────────────────────────────────────────────────
@@ -1588,7 +2280,7 @@ func _setup_butterflies() -> void:
 		var bfly := {"node": sprite, "state": "flying", "perched_cell": null, "tween": null}
 		_butterflies.append(bfly)
 		get_tree().create_timer(randf_range(0.5, 4.0) * i).timeout.connect(func():
-			if is_instance_valid(bfly["node"]):
+			if _butterflies.has(bfly) and is_instance_valid(bfly["node"]):
 				_butterfly_wander(bfly)
 		)
 
@@ -1701,7 +2393,7 @@ func _firefly_wander(fly: Dictionary) -> void:
 	tw.tween_property(node, "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
 	tw.tween_interval(pause)
 	tw.tween_callback(func():
-		if _fireflies.has(fly) and not _is_raining and _night_amount >= 0.20:
+		if _fireflies.has(fly) and not _is_raining and _should_show_fireflies():
 			_firefly_wander(fly)
 	)
 
@@ -1751,7 +2443,7 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 		bfly["tween"] = exit_tw
 		exit_tw.tween_property(bfly["node"], "position", exit_pos, exit_dur).set_trans(Tween.TRANS_SINE)
 		exit_tw.tween_callback(func():
-			if bfly["state"] != "flying":
+			if not _butterflies.has(bfly) or not is_instance_valid(bfly["node"]) or bfly["state"] != "flying":
 				return
 			# re-enter from a random opposite edge
 			var entry: Vector2
@@ -1774,10 +2466,13 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 	bfly["tween"] = tw
 	tw.tween_property(bfly["node"], "position", mid,    dur * 0.5).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(bfly["node"], "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
-	tw.tween_callback(func(): (bfly["node"] as AnimatedSprite2D).stop())
+	tw.tween_callback(func():
+		if _butterflies.has(bfly) and is_instance_valid(bfly["node"]):
+			(bfly["node"] as AnimatedSprite2D).stop()
+	)
 	tw.tween_interval(pause)
 	tw.tween_callback(func():
-		if bfly["state"] == "flying":
+		if _butterflies.has(bfly) and is_instance_valid(bfly["node"]) and bfly["state"] == "flying":
 			(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
 			_butterfly_wander(bfly)
 	)
@@ -1798,12 +2493,12 @@ func _butterfly_perch(bfly: Dictionary, cell: FarmCell) -> void:
 	bfly["tween"] = tw
 	tw.tween_property(bfly["node"], "position", dest, dur).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(func():
-		if bfly["state"] != "perching":
+		if not _butterflies.has(bfly) or not is_instance_valid(bfly["node"]) or bfly["state"] != "perching":
 			return
 		bfly["state"] = "perched"
 		(bfly["node"] as AnimatedSprite2D).stop()
 		get_tree().create_timer(randf_range(4.0, 12.0)).timeout.connect(func():
-			if bfly["state"] == "perched" and is_instance_valid(bfly["node"]):
+			if _butterflies.has(bfly) and bfly["state"] == "perched" and is_instance_valid(bfly["node"]):
 				(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
 				_butterfly_wander(bfly)
 		)
