@@ -48,3 +48,7 @@ $RECYCLE.BIN/
 .mono/
 data_*/
 mono_crash.*.json
+
+#random MD
+*.md
+!README.md
