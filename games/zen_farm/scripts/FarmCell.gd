@@ -5,6 +5,10 @@ class_name FarmCell
 extends Control
 
 const TILE_SIZE := 128   # 2 × 64 px tilemap tiles per game cell
+const LOCK_SIGN_TEXTURE := "res://games/zen_farm/assets/sign.png"
+const LOCK_SIGN_POSITION := Vector2(32.0, 18.0)
+const LOCK_PRICE_TEXT_Y_OFFSET := 7.0 # Tweak this if the price needs to sit higher/lower on the sign.
+const LOCK_PRICE_TEXT_HEIGHT := 34.0
 
 enum TileState { SOIL, CROP, WILTED, WEED, LOCKED, GRASS, WATER }
 enum SlotState { EMPTY, CROP, WILTED, WEED }
@@ -29,6 +33,7 @@ var slot_growth_stages: Array[int] = []
 var slot_time_in_stage: Array[float] = []
 var slot_watered: Array[bool] = []
 var slot_wilt_timers: Array[float] = []
+var slot_weed_atlas_coords: Array[Vector2i] = []
 
 # LOCKED
 var unlock_cost: int = 0
@@ -40,6 +45,7 @@ var grid_col: int = 0
 # ── internal nodes ─────────────────────────────────────────────────────────
 var _label: Label   # price or READY hint
 var _sub:   Label   # water! / wilted! / Weed!
+var _lock_sign: TextureRect
 
 static var _font: FontFile
 
@@ -55,6 +61,7 @@ func reset_slots() -> void:
 	slot_time_in_stage = []
 	slot_watered = []
 	slot_wilt_timers = []
+	slot_weed_atlas_coords = []
 	for i in range(SLOT_COUNT):
 		slot_states.append(SlotState.EMPTY)
 		slot_crop_ids.append(-1)
@@ -62,6 +69,7 @@ func reset_slots() -> void:
 		slot_time_in_stage.append(0.0)
 		slot_watered.append(false)
 		slot_wilt_timers.append(0.0)
+		slot_weed_atlas_coords.append(Vector2i(-1, -1))
 
 
 func clear_slot(slot: int) -> void:
@@ -73,6 +81,7 @@ func clear_slot(slot: int) -> void:
 	slot_time_in_stage[slot] = 0.0
 	slot_watered[slot] = false
 	slot_wilt_timers[slot] = 0.0
+	slot_weed_atlas_coords[slot] = Vector2i(-1, -1)
 	refresh_summary_state()
 
 
@@ -149,9 +158,24 @@ func _ready() -> void:
 	size               = Vector2(TILE_SIZE, TILE_SIZE)
 	mouse_filter       = MOUSE_FILTER_IGNORE
 
-	_label = _make_label(8, 4, TILE_SIZE - 4, 68)
+	_lock_sign = TextureRect.new()
+	_lock_sign.texture = load(LOCK_SIGN_TEXTURE)
+	_lock_sign.position = LOCK_SIGN_POSITION
+	_lock_sign.size = Vector2(64.0, 64.0)
+	_lock_sign.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_lock_sign.stretch_mode = TextureRect.STRETCH_KEEP
+	_lock_sign.mouse_filter = MOUSE_FILTER_IGNORE
+	_lock_sign.z_index = 5
+	add_child(_lock_sign)
+
+	_label = _make_label(
+		LOCK_SIGN_POSITION.y + LOCK_PRICE_TEXT_Y_OFFSET,
+		LOCK_SIGN_POSITION.x,
+		LOCK_SIGN_POSITION.x + 64.0,
+		LOCK_SIGN_POSITION.y + LOCK_PRICE_TEXT_Y_OFFSET + LOCK_PRICE_TEXT_HEIGHT
+	)
 	_label.add_theme_font_size_override("font_size", 36)
-	_label.z_index = 10
+	_label.z_index = 6
 	add_child(_label)
 
 	_sub = _make_label(6, 4, TILE_SIZE - 4, TILE_SIZE - 4)
@@ -173,9 +197,9 @@ func _make_label(top: float, left: float, right: float, bot: float) -> Label:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_override("font", _font)
-	lbl.add_theme_color_override("font_color",         Color.WHITE)
-	lbl.add_theme_color_override("font_outline_color", Color.BLACK)
-	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.add_theme_color_override("font_color",         Color("#ececd5"))
+	lbl.add_theme_color_override("font_outline_color", Color("#8a3524"))
+	lbl.add_theme_constant_override("outline_size", 6)
 	lbl.mouse_filter = MOUSE_FILTER_IGNORE
 	return lbl
 
@@ -187,6 +211,8 @@ func refresh_visual() -> void:
 	refresh_summary_state()
 	_label.text = ""
 	_sub.text   = ""
+	_lock_sign.visible = state == TileState.LOCKED
+	_label.visible = state == TileState.LOCKED
 
 	match state:
 		TileState.LOCKED:
