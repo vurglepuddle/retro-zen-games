@@ -23,10 +23,13 @@ var _max_scroll_x: int = 0
 var _touch_start     := Vector2.ZERO
 var _touch_drag_dist := 0.0
 var _touch_start_msec: int = 0
+var _touch_can_scroll := false
 var _touch_cell: FarmCell = null
 var _touch_slot: int = 0
 var _poke_active: bool = false
 var _poke_tween: Tween = null
+var _water_poke_active: bool = false
+var _water_poke_tween: Tween = null
 
 # ── tools ───────────────────────────────────────────────────────────────────
 enum Tool { HAND, WATERING_CAN, SHEARS }
@@ -71,9 +74,16 @@ var _decor_placed: Dictionary = {}   # Vector2i(col,row) → true; prevents re-R
 var _static_decor_coverage: Dictionary = {} # Vector2i tile coord → true; saved no-decor cells too
 var _static_decor_tiles: Dictionary = {}    # Vector2i tile coord → [layer, source, atlas, alt]
 var _soil_placed: Dictionary = {}    # Vector2i(col,row) → true; prevents soil re-RNG on crop refresh
+var _water_highlight_layer: Node2D = null
+var _water_shade_layer: Node2D = null
+var _water_highlight_rects: Dictionary = {}
+var _water_shade_rects: Dictionary = {}
+var _water_highlight_material: ShaderMaterial = null
+var _water_shade_material: ShaderMaterial = null
 var _wilt_map: TileMapLayer = null        # brown overlay on wilted tiles; built in _ready()
 var _rock_decor_map: TileMapLayer = null  # static decor layer for rocks (no sway shader)
 var _locked_sign_front_map: TileMapLayer = null  # bottom locked decor tiles drawn over price signs
+var _locked_sign_front_rock_map: TileMapLayer = null  # sign-front rocks stay static
 var _icon_container: Node2D = null        # parent for harvest-ready bounce icons
 var _insect_container: Node2D = null      # parent for live butterflies/fireflies; scrolls with the field
 var _inventory_icon_row: HBoxContainer = null
@@ -130,13 +140,16 @@ const FIREFLY_COUNT := 11
 const INSECT_SPAWN_MARGIN := 150.0
 const POKE_RADIUS := 80.0
 const POKE_STRENGTH := 8.0
+const WATER_POKE_STRENGTH := 4.0
 const POKE_RELEASE_FADE := 0.28
 const TAP_MAX_DURATION_MSEC := 320
 const TOUCH_GRASS_VOLUME_DB := -8.0
-const TOUCH_GRASS_SILENT_DB := -42.0
-const TOUCH_GRASS_FADE_IN := 0.22
-const TOUCH_GRASS_FADE_OUT := 0.65
-const WEED_INTERVAL       := 45.0
+const TOUCH_WATER_VOLUME_DB := -6.0
+const TOUCH_SOIL_VOLUME_DB := -2.0
+const TOUCH_LOOP_SILENT_DB := -42.0
+const TOUCH_LOOP_FADE_IN := 0.22
+const TOUCH_LOOP_FADE_OUT := 0.65
+const WEED_INTERVAL       := 2.0
 const HARVEST_ICON_Y_OFFSET := -18.0
 const HARVEST_ICON_LIFETIME := 12.0
 
@@ -175,6 +188,7 @@ const ROCK_ATLAS_COORDS := [Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5)]
 const WATER_WEED_ATLAS_COORDS := [
 	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5),
 	Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5),
+	Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4), Vector2i(18, 4),
 ]
 # PlantMapLayer — source id 0 (objects.png)
 # atlas coords: col = crop_id (0-4), row = stage row
@@ -262,15 +276,15 @@ func _ready() -> void:
 	add_child(_sfx_water_plop)
 	_sfx_touch_grass = AudioStreamPlayer.new()
 	_sfx_touch_grass.name = "SfxTouchGrass"
-	_sfx_touch_grass.volume_db = TOUCH_GRASS_SILENT_DB
+	_sfx_touch_grass.volume_db = TOUCH_LOOP_SILENT_DB
 	add_child(_sfx_touch_grass)
 	_sfx_touch_water = AudioStreamPlayer.new()
 	_sfx_touch_water.name = "SfxTouchWater"
-	_sfx_touch_water.volume_db = TOUCH_GRASS_SILENT_DB
+	_sfx_touch_water.volume_db = TOUCH_LOOP_SILENT_DB
 	add_child(_sfx_touch_water)
 	_sfx_touch_soil = AudioStreamPlayer.new()
 	_sfx_touch_soil.name = "SfxTouchSoil"
-	_sfx_touch_soil.volume_db = TOUCH_GRASS_SILENT_DB
+	_sfx_touch_soil.volume_db = TOUCH_LOOP_SILENT_DB
 	add_child(_sfx_touch_soil)
 	_load_sfx()
 	_objects_texture = load("res://games/zen_farm/assets/objects.png")
@@ -304,11 +318,19 @@ func _ready() -> void:
 	_rock_decor_map.tile_set  = _decor_map.tile_set
 	$FarmScroll.add_child(_rock_decor_map)
 
+	_setup_water_overlay_layers()
+
 	_locked_sign_front_map = TileMapLayer.new()
 	_locked_sign_front_map.name = "LockedSignFrontMap"
 	_locked_sign_front_map.z_index = 7
 	_locked_sign_front_map.tile_set = _decor_map.tile_set
+	_locked_sign_front_map.material = decor_mat
 	$FarmScroll.add_child(_locked_sign_front_map)
+	_locked_sign_front_rock_map = TileMapLayer.new()
+	_locked_sign_front_rock_map.name = "LockedSignFrontRockMap"
+	_locked_sign_front_rock_map.z_index = 7
+	_locked_sign_front_rock_map.tile_set = _decor_map.tile_set
+	$FarmScroll.add_child(_locked_sign_front_rock_map)
 
 	_rain_overlay = ColorRect.new()
 	_rain_overlay.color = Color(0.35, 0.50, 0.75, 0.0)
@@ -407,9 +429,16 @@ func _clear_cells() -> void:
 	_clear_fireflies()
 	# clear all tilemap layers so border decor from prior session doesn't linger
 	if _terrain_map:    _terrain_map.clear()
+	for rect in _water_shade_rects.values():
+		if is_instance_valid(rect): rect.queue_free()
+	for rect in _water_highlight_rects.values():
+		if is_instance_valid(rect): rect.queue_free()
+	_water_shade_rects.clear()
+	_water_highlight_rects.clear()
 	if _decor_map:      _decor_map.clear()
 	if _rock_decor_map: _rock_decor_map.clear()
 	if _locked_sign_front_map: _locked_sign_front_map.clear()
+	if _locked_sign_front_rock_map: _locked_sign_front_rock_map.clear()
 	if _plant_map:      _plant_map.clear()
 	if _wilt_map:       _wilt_map.clear()
 	if _moisture_map:   _moisture_map.clear()
@@ -473,9 +502,13 @@ func _update_grid_size() -> void:
 	var pos := Vector2(left_x - _scroll_x, GRID_Y)
 	_grid_container.position = pos
 	_terrain_map.position    = pos
+	if _water_shade_layer: _water_shade_layer.position = pos
+	if _water_highlight_layer: _water_highlight_layer.position = pos
+	_update_water_overlay_origin(pos)
 	_decor_map.position      = pos
 	if _rock_decor_map:     _rock_decor_map.position     = pos
 	if _locked_sign_front_map: _locked_sign_front_map.position = pos
+	if _locked_sign_front_rock_map: _locked_sign_front_rock_map.position = pos
 	_plant_map.position      = pos
 	if _wilt_map:           _wilt_map.position           = pos
 	if _icon_container:     _icon_container.position     = pos
@@ -491,9 +524,13 @@ func _apply_scroll(delta: int) -> void:
 	var pos := Vector2(left_x - _scroll_x, GRID_Y)
 	_grid_container.position = pos
 	_terrain_map.position    = pos
+	if _water_shade_layer: _water_shade_layer.position = pos
+	if _water_highlight_layer: _water_highlight_layer.position = pos
+	_update_water_overlay_origin(pos)
 	_decor_map.position      = pos
 	if _rock_decor_map:     _rock_decor_map.position     = pos
 	if _locked_sign_front_map: _locked_sign_front_map.position = pos
+	if _locked_sign_front_rock_map: _locked_sign_front_rock_map.position = pos
 	_plant_map.position      = pos
 	if _wilt_map:           _wilt_map.position           = pos
 	if _icon_container:     _icon_container.position     = pos
@@ -549,16 +586,99 @@ func _capture_tile(layer: TileMapLayer, coord: Vector2i) -> Array:
 	return [layer, source_id, layer.get_cell_atlas_coords(coord), layer.get_cell_alternative_tile(coord)]
 
 
+func _make_water_overlay_material(texture_path: String, scroll_speed_px: Vector2, wobble_strength_px: float, opacity: float, vertex_offset: Vector2) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://games/zen_farm/assets/water_overlay.gdshader")
+	mat.set_shader_parameter("pattern_texture", load(texture_path))
+	mat.set_shader_parameter("scroll_speed_px", scroll_speed_px)
+	mat.set_shader_parameter("wobble_strength_px", wobble_strength_px)
+	mat.set_shader_parameter("opacity", opacity)
+	mat.set_shader_parameter("vertex_offset", vertex_offset)
+	mat.set_shader_parameter("poke_pos", Vector2(-9999.0, -9999.0))
+	mat.set_shader_parameter("poke_amount", 0.0)
+	mat.set_shader_parameter("poke_radius", POKE_RADIUS)
+	mat.set_shader_parameter("poke_strength_px", WATER_POKE_STRENGTH)
+	return mat
+
+
+func _update_water_overlay_origin(pos: Vector2) -> void:
+	for mat in [_water_shade_material, _water_highlight_material]:
+		if mat:
+			mat.set_shader_parameter("pattern_origin", pos)
+
+
+func _setup_water_overlay_layers() -> void:
+	_water_shade_material = _make_water_overlay_material(
+		"res://games/zen_farm/assets/tileset_water_shade.png",
+		Vector2(2.0, -1.3),
+		0.8,
+		0.85,
+		Vector2(12.0, 12.0)
+	)
+	_water_highlight_material = _make_water_overlay_material(
+		"res://games/zen_farm/assets/tileset_water_highlight.png",
+		Vector2(3.0, -2.0),
+		1.4,
+		1.0,
+		Vector2.ZERO
+	)
+	_water_shade_layer = Node2D.new()
+	_water_shade_layer.name = "WaterShadeLayer"
+	_water_shade_layer.z_index = -2
+	$FarmScroll.add_child(_water_shade_layer)
+	_water_highlight_layer = Node2D.new()
+	_water_highlight_layer.name = "WaterHighlightLayer"
+	_water_highlight_layer.z_index = -1
+	$FarmScroll.add_child(_water_highlight_layer)
+
+
+func _set_water_overlay_cells(coords: Array[Vector2i], enabled: bool) -> void:
+	for coord in coords:
+		if enabled:
+			_ensure_water_overlay_rect(_water_shade_layer, _water_shade_rects, _water_shade_material, coord)
+			_ensure_water_overlay_rect(_water_highlight_layer, _water_highlight_rects, _water_highlight_material, coord)
+		else:
+			_remove_water_overlay_rect(_water_shade_rects, coord)
+			_remove_water_overlay_rect(_water_highlight_rects, coord)
+
+
+func _ensure_water_overlay_rect(layer: Node2D, rects: Dictionary, mat: ShaderMaterial, coord: Vector2i) -> void:
+	if not layer or not mat:
+		return
+	if rects.has(coord) and is_instance_valid(rects[coord]):
+		return
+	var rect := ColorRect.new()
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.color = Color.WHITE
+	rect.position = Vector2(coord.x * 64.0, coord.y * 64.0)
+	rect.size = Vector2(64.0, 64.0)
+	rect.material = mat
+	layer.add_child(rect)
+	rects[coord] = rect
+
+
+func _remove_water_overlay_rect(rects: Dictionary, coord: Vector2i) -> void:
+	if not rects.has(coord):
+		return
+	var rect: ColorRect = rects[coord]
+	rects.erase(coord)
+	if rect and is_instance_valid(rect):
+		rect.queue_free()
+
+
 func _clear_decor_at(coord: Vector2i) -> void:
 	_decor_map.erase_cell(coord)
 	if _rock_decor_map:
 		_rock_decor_map.erase_cell(coord)
 	if _locked_sign_front_map:
 		_locked_sign_front_map.erase_cell(coord)
+	if _locked_sign_front_rock_map:
+		_locked_sign_front_rock_map.erase_cell(coord)
 
 
 func _capture_static_decor_at(coord: Vector2i) -> Array:
 	var layers := [
+		["sign_front_rock", _locked_sign_front_rock_map],
 		["sign_front", _locked_sign_front_map],
 		["rock", _rock_decor_map],
 		["decor", _decor_map],
@@ -577,9 +697,14 @@ func _set_static_decor_at(coord: Vector2i, snapshot: Array) -> void:
 	if snapshot.size() < 4:
 		return
 	var layer_name := String(snapshot[0])
+	var atlas_coord: Vector2i = snapshot[2]
 	var layer := _decor_map
 	if layer_name == "rock" and _rock_decor_map:
 		layer = _rock_decor_map
+	elif layer_name == "sign_front" and atlas_coord in ROCK_ATLAS_COORDS and _locked_sign_front_rock_map:
+		layer = _locked_sign_front_rock_map
+	elif layer_name == "sign_front_rock" and _locked_sign_front_rock_map:
+		layer = _locked_sign_front_rock_map
 	elif layer_name == "sign_front" and _locked_sign_front_map:
 		layer = _locked_sign_front_map
 	layer.set_cell(coord, int(snapshot[1]), snapshot[2], int(snapshot[3]))
@@ -629,10 +754,11 @@ func _restore_static_decor_snapshot() -> void:
 
 
 func _clear_locked_sign_front(cell: FarmCell) -> void:
-	if not _locked_sign_front_map:
-		return
 	for coord in _locked_sign_front_coords(cell):
-		_locked_sign_front_map.erase_cell(coord)
+		if _locked_sign_front_map:
+			_locked_sign_front_map.erase_cell(coord)
+		if _locked_sign_front_rock_map:
+			_locked_sign_front_rock_map.erase_cell(coord)
 
 
 func _move_locked_sign_front(cell: FarmCell) -> void:
@@ -641,14 +767,19 @@ func _move_locked_sign_front(cell: FarmCell) -> void:
 	for coord in _locked_sign_front_coords(cell):
 		var source_id := _decor_map.get_cell_source_id(coord)
 		var source_layer := _decor_map
+		var target_layer := _locked_sign_front_map
 		if source_id == -1 and _rock_decor_map:
 			source_id = _rock_decor_map.get_cell_source_id(coord)
 			source_layer = _rock_decor_map
+			if _locked_sign_front_rock_map:
+				target_layer = _locked_sign_front_rock_map
 		if source_id == -1:
-			if _locked_sign_front_map.get_cell_source_id(coord) == -1:
+			if _locked_sign_front_map and _locked_sign_front_map.get_cell_source_id(coord) == -1:
 				_locked_sign_front_map.erase_cell(coord)
+			if _locked_sign_front_rock_map and _locked_sign_front_rock_map.get_cell_source_id(coord) == -1:
+				_locked_sign_front_rock_map.erase_cell(coord)
 			continue
-		_locked_sign_front_map.set_cell(
+		target_layer.set_cell(
 			coord,
 			source_id,
 			source_layer.get_cell_atlas_coords(coord),
@@ -701,6 +832,7 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 
 	if cell.state == FarmCell.TileState.LOCKED or cell.state == FarmCell.TileState.GRASS:
 		_soil_placed.erase(key)
+		_set_water_overlay_cells(all, false)
 		_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, TM_GRASS)
 		if not _decor_placed.has(key):
 			if _has_static_decor_coords(all):
@@ -720,6 +852,7 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 		var terrain := TM_WATER if cell.is_water_plot else TM_SOIL
 		_terrain_map.set_cells_terrain_connect(all, TM_TERRAIN_SET, terrain)
 		_soil_placed[key] = true
+	_set_water_overlay_cells(all, cell.is_water_plot)
 	_decor_placed.erase(key)
 	_invalidate_static_decor_for_cell(cell)
 	var existing_weed_tiles := {}
@@ -1263,6 +1396,14 @@ func _farm_point_can_poke(pos: Vector2) -> bool:
 	return _terrain_map.get_used_rect().has_point(coord)
 
 
+func _farm_point_can_scroll(pos: Vector2) -> bool:
+	var farm_scroll := $FarmScroll as Control
+	var farm_rect: Rect2 = farm_scroll.get_global_rect()
+	if not farm_rect.has_point(pos):
+		return false
+	return pos.y >= farm_rect.position.y + GRID_Y + ROWS * TILE_SIZE
+
+
 func _farm_point_can_poke_visuals(pos: Vector2) -> bool:
 	if not _farm_point_can_poke(pos):
 		return false
@@ -1275,6 +1416,11 @@ func _farm_point_can_poke_visuals(pos: Vector2) -> bool:
 		or cell.slot_states[slot] == FarmCell.SlotState.WEED
 
 
+func _farm_point_is_water(pos: Vector2) -> bool:
+	var cell := _cell_at(pos)
+	return cell != null and cell.is_water_plot
+
+
 func _configure_poke_material(mat: ShaderMaterial) -> void:
 	if not mat:
 		return
@@ -1285,7 +1431,7 @@ func _configure_poke_material(mat: ShaderMaterial) -> void:
 
 
 func _set_poke_shader_param(param: StringName, value: Variant) -> void:
-	for layer in [_plant_map, _decor_map]:
+	for layer in [_plant_map, _decor_map, _locked_sign_front_map]:
 		if not layer:
 			continue
 		var mat := layer.material as ShaderMaterial
@@ -1294,12 +1440,43 @@ func _set_poke_shader_param(param: StringName, value: Variant) -> void:
 
 
 func _set_poke_pos(pos: Vector2) -> void:
-	for layer in [_plant_map, _decor_map]:
+	for layer in [_plant_map, _decor_map, _locked_sign_front_map]:
 		if not layer:
 			continue
 		var mat := layer.material as ShaderMaterial
 		if mat:
 			mat.set_shader_parameter(&"poke_pos", pos)
+			mat.set_shader_parameter(&"poke_radius", POKE_RADIUS)
+
+
+func _set_water_poke_shader_param(param: StringName, value: Variant) -> void:
+	for mat in [_water_shade_material, _water_highlight_material]:
+		if mat:
+			mat.set_shader_parameter(param, value)
+
+
+func _start_water_poke(pos: Vector2) -> void:
+	if _water_poke_tween and is_instance_valid(_water_poke_tween):
+		_water_poke_tween.kill()
+		_water_poke_tween = null
+	_water_poke_active = true
+	_set_water_poke_shader_param(&"poke_pos", pos)
+	_set_water_poke_shader_param(&"poke_amount", 1.0)
+
+
+func _fade_out_water_poke() -> void:
+	if not _water_poke_active:
+		return
+	_water_poke_active = false
+	if _water_poke_tween and is_instance_valid(_water_poke_tween):
+		_water_poke_tween.kill()
+	_water_poke_tween = create_tween()
+	_water_poke_tween.tween_method(
+		func(v: float): _set_water_poke_shader_param(&"poke_amount", v),
+		1.0,
+		0.0,
+		POKE_RELEASE_FADE
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _touch_loop_for_pos(pos: Vector2) -> AudioStreamPlayer:
@@ -1331,16 +1508,24 @@ func _kill_touch_loop_tween(player: AudioStreamPlayer) -> void:
 		player.remove_meta("touch_tween")
 
 
+func _touch_loop_volume_db(player: AudioStreamPlayer) -> float:
+	if player == _sfx_touch_water:
+		return TOUCH_WATER_VOLUME_DB
+	if player == _sfx_touch_soil:
+		return TOUCH_SOIL_VOLUME_DB
+	return TOUCH_GRASS_VOLUME_DB
+
+
 func _fade_in_touch_loop(player: AudioStreamPlayer) -> void:
 	if not player or not player.stream:
 		return
 	_kill_touch_loop_tween(player)
 	if not player.playing:
-		player.volume_db = TOUCH_GRASS_SILENT_DB
+		player.volume_db = TOUCH_LOOP_SILENT_DB
 		player.play()
 	var tw := create_tween()
 	player.set_meta("touch_tween", tw)
-	tw.tween_property(player, "volume_db", TOUCH_GRASS_VOLUME_DB, TOUCH_GRASS_FADE_IN) \
+	tw.tween_property(player, "volume_db", _touch_loop_volume_db(player), TOUCH_LOOP_FADE_IN) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
@@ -1350,7 +1535,7 @@ func _fade_out_touch_loop(player: AudioStreamPlayer) -> void:
 	_kill_touch_loop_tween(player)
 	var tw := create_tween()
 	player.set_meta("touch_tween", tw)
-	tw.tween_property(player, "volume_db", TOUCH_GRASS_SILENT_DB, TOUCH_GRASS_FADE_OUT) \
+	tw.tween_property(player, "volume_db", TOUCH_LOOP_SILENT_DB, TOUCH_LOOP_FADE_OUT) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func():
 		if player and player != _active_touch_loop:
@@ -1397,6 +1582,10 @@ func _update_poke(pos: Vector2) -> void:
 		_end_poke()
 		return
 	_start_touch_loop(pos)
+	if _farm_point_is_water(pos):
+		_start_water_poke(pos)
+	else:
+		_fade_out_water_poke()
 	if not _farm_point_can_poke_visuals(pos):
 		_fade_out_poke_visuals()
 		return
@@ -1411,6 +1600,7 @@ func _update_poke(pos: Vector2) -> void:
 func _end_poke() -> void:
 	_fade_out_active_touch_loop()
 	_fade_out_poke_visuals()
+	_fade_out_water_poke()
 
 
 func _input(event: InputEvent) -> void:
@@ -1430,7 +1620,9 @@ func _input(event: InputEvent) -> void:
 				_jump_day_night_to(NIGHT_PHASE)
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			_update_poke(event.position)
+			_touch_can_scroll = _farm_point_can_scroll(event.position)
+			if not _touch_can_scroll:
+				_update_poke(event.position)
 			_touch_start     = event.position
 			_touch_start_msec = Time.get_ticks_msec()
 			_touch_drag_dist = 0.0
@@ -1441,13 +1633,18 @@ func _input(event: InputEvent) -> void:
 			if _touch_is_tap(12.0) and _touch_cell != null:
 				_on_cell_tapped(_touch_cell, _touch_slot)
 			_touch_cell = null
+			_touch_can_scroll = false
 	elif event is InputEventScreenDrag:
 		_touch_drag_dist += abs(event.relative.x)
-		_apply_scroll(int(-event.relative.x))
-		_update_poke(event.position)
+		if _touch_can_scroll:
+			_apply_scroll(int(-event.relative.x))
+		else:
+			_update_poke(event.position)
 	elif event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			_update_poke(event.position)
+			_touch_can_scroll = _farm_point_can_scroll(event.position)
+			if not _touch_can_scroll:
+				_update_poke(event.position)
 			_touch_start     = event.position
 			_touch_start_msec = Time.get_ticks_msec()
 			_touch_drag_dist = 0.0
@@ -1458,6 +1655,7 @@ func _input(event: InputEvent) -> void:
 			if _touch_is_tap(8.0) and _touch_cell != null:
 				_on_cell_tapped(_touch_cell, _touch_slot)
 			_touch_cell = null
+			_touch_can_scroll = false
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_apply_scroll(-60)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -1465,8 +1663,10 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 			_touch_drag_dist += abs(event.relative.x)
-			_apply_scroll(int(-event.relative.x))
-			_update_poke(event.position)
+			if _touch_can_scroll:
+				_apply_scroll(int(-event.relative.x))
+			else:
+				_update_poke(event.position)
 
 
 func _cell_at(pos: Vector2) -> FarmCell:
@@ -2367,7 +2567,7 @@ func _load_sfx() -> void:
 		if loop_sfx and loop_sfx.stream:
 			if loop_sfx.stream is AudioStreamMP3:
 				(loop_sfx.stream as AudioStreamMP3).loop = true
-			loop_sfx.volume_db = TOUCH_GRASS_SILENT_DB
+			loop_sfx.volume_db = TOUCH_LOOP_SILENT_DB
 
 
 func _play(sfx: AudioStreamPlayer) -> void:
@@ -2619,7 +2819,7 @@ func _setup_butterflies() -> void:
 	if _is_raining or _night_amount >= 0.30:
 		return
 	var templates: Array = []
-	for tname in ["Butterfly1", "Butterfly2", "Butterfly3"]:
+	for tname in ["Butterfly1", "Butterfly2", "Butterfly3", "Butterfly4"]:
 		var t := get_node_or_null("FarmScroll/" + tname) as AnimatedSprite2D
 		if t:
 			templates.append(t)
@@ -2635,7 +2835,7 @@ func _setup_butterflies() -> void:
 		sprite.visible  = true
 		sprite.scale    = Vector2(1.0, 1.0)
 		sprite.play("default", randf_range(0.8, 1.3))
-		sprite.frame          = randi() % 4
+		sprite.frame          = randi() % max(1, sprite.sprite_frames.get_frame_count(&"default"))
 		sprite.frame_progress = randf()
 		_insect_parent().add_child(sprite)
 		var bfly := {"node": sprite, "state": "flying", "perched_cell": null, "perched_slot": -1, "tween": null}
@@ -2703,7 +2903,7 @@ func _flee_fireflies() -> void:
 		var node := fly["node"] as Sprite2D
 		var rect := _visible_content_rect()
 		var target := Vector2(randf_range(rect.position.x, rect.end.x), rect.position.y - INSECT_SPAWN_MARGIN)
-		var tw := create_tween()
+		var tw := node.create_tween()
 		fly["tween"] = tw
 		tw.tween_property(node, "position", target, randf_range(1.8, 3.8)).set_trans(Tween.TRANS_SINE)
 		tw.parallel().tween_property(node, "modulate:a", 0.0, 1.2)
@@ -2748,7 +2948,7 @@ func _firefly_wander(fly: Dictionary) -> void:
 	var mid := (start + target) * 0.5 + Vector2(randf_range(-38.0, 38.0), randf_range(-48.0, 36.0))
 	var dur := clampf(start.distance_to(target) / 48.0, 2.4, 6.4)
 	var pause := randf_range(0.3, 1.8)
-	var tw := create_tween()
+	var tw := node.create_tween()
 	fly["tween"] = tw
 	tw.tween_property(node, "position", mid, dur * 0.5).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(node, "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
@@ -2821,6 +3021,14 @@ func _butterfly_slot_is_taken(cell: FarmCell, slot: int) -> bool:
 	return false
 
 
+func _set_butterfly_facing(sprite: AnimatedSprite2D, target: Vector2) -> void:
+	if not sprite:
+		return
+	var dx := target.x - sprite.position.x
+	if absf(dx) > 0.5:
+		sprite.flip_h = dx < 0.0
+
+
 func _butterfly_wander(bfly: Dictionary) -> void:
 	if not is_instance_valid(bfly["node"]):
 		return
@@ -2848,7 +3056,8 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 		var exit_dir := randi() % 3   # 0=left, 1=right, 2=up
 		var exit_pos := _offscreen_content_pos(exit_dir)
 		var exit_dur := clampf(node_pos.distance_to(exit_pos) / 110.0, 1.2, 4.0)
-		var exit_tw := create_tween()
+		_set_butterfly_facing(bfly["node"] as AnimatedSprite2D, exit_pos)
+		var exit_tw := (bfly["node"] as AnimatedSprite2D).create_tween()
 		bfly["tween"] = exit_tw
 		exit_tw.tween_property(bfly["node"], "position", exit_pos, exit_dur).set_trans(Tween.TRANS_SINE)
 		exit_tw.tween_callback(func():
@@ -2871,9 +3080,14 @@ func _butterfly_wander(bfly: Dictionary) -> void:
 	var dur := clampf(node_pos.distance_to(target) / 110.0, 2.0, 5.5)
 	var pause := randf_range(1.5, 4.0)   # linger at destination before next move
 
-	var tw := create_tween()
+	var tw := (bfly["node"] as AnimatedSprite2D).create_tween()
 	bfly["tween"] = tw
+	_set_butterfly_facing(bfly["node"] as AnimatedSprite2D, mid)
 	tw.tween_property(bfly["node"], "position", mid,    dur * 0.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func():
+		if _butterflies.has(bfly) and is_instance_valid(bfly["node"]):
+			_set_butterfly_facing(bfly["node"] as AnimatedSprite2D, target)
+	)
 	tw.tween_property(bfly["node"], "position", target, dur * 0.5).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(func():
 		if _butterflies.has(bfly) and is_instance_valid(bfly["node"]) and _butterfly_can_rest_at(target):
@@ -2901,8 +3115,9 @@ func _butterfly_perch(bfly: Dictionary, cell: FarmCell, slot: int) -> void:
 	var dist: float = bfly_pos.distance_to(dest)
 	var dur   := clampf(dist / 60.0, 1.5, 5.0)
 
-	var tw := create_tween()
+	var tw := (bfly["node"] as AnimatedSprite2D).create_tween()
 	bfly["tween"] = tw
+	_set_butterfly_facing(bfly["node"] as AnimatedSprite2D, dest)
 	tw.tween_property(bfly["node"], "position", dest, dur).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(func():
 		if not _butterflies.has(bfly) or not is_instance_valid(bfly["node"]) or bfly["state"] != "perching":
@@ -2944,7 +3159,8 @@ func _butterfly_flee_one(bfly: Dictionary) -> void:
 	(bfly["node"] as AnimatedSprite2D).play("default", randf_range(0.8, 1.3))
 	var flee_x := randf_range(0.0, float(_cols) * TILE_SIZE)
 	var flee_y := -TILE_SIZE * 2.5
-	var tw := create_tween()
+	_set_butterfly_facing(bfly["node"] as AnimatedSprite2D, Vector2(flee_x, flee_y))
+	var tw := (bfly["node"] as AnimatedSprite2D).create_tween()
 	bfly["tween"] = tw
 	tw.tween_property(bfly["node"], "position", Vector2(flee_x, flee_y), 4) \
 		.set_trans(Tween.TRANS_SINE)
