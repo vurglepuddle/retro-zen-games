@@ -57,8 +57,8 @@ void vertex() {
 	float wind_offset = (wave1 * 0.7 + wave2 * 0.3) * wind_strength * amp_jitter;
 	VERTEX.x += wind_offset * bend_mask;
 
-	vec2 flower_center_viewport = (CANVAS_MATRIX * MODEL_MATRIX * vec4(flower_center, 0.0, 1.0)).xy;
-	vec2 plant_from_finger = flower_center_viewport - poke_pos;
+	vec2 flower_center_world = (MODEL_MATRIX * vec4(flower_center, 0.0, 1.0)).xy;
+	vec2 plant_from_finger = flower_center_world - poke_pos;
 	float dist = length(plant_from_finger);
 	float t = clamp(1.0 - dist / poke_radius, 0.0, 1.0);
 	float reaction = smoothstep(0.0, 1.0, t) * poke_amount;
