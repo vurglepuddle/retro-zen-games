@@ -1,4 +1,4 @@
-[gd_scene load_steps=62 format=4 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=79 format=4 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -20,6 +20,7 @@
 [ext_resource type="Theme" path="res://assets/theme.tres" id="11_4d5gv"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="11_s25m7"]
 [ext_resource type="Texture2D" uid="uid://daqmp3dgqi87a" path="res://games/zen_farm/assets/tileset2.png" id="12_7icwt"]
+[ext_resource type="Texture2D" uid="uid://d2by3mdethkdl" path="res://games/zen_farm/assets/froggo-Sheet.png" id="13_2mr4p"]
 [ext_resource type="Texture2D" uid="uid://d0d1seqpoivv2" path="res://games/zen_farm/assets/objects.png" id="13_65i8m"]
 [ext_resource type="Texture2D" uid="uid://cvou6eb6dtd6t" path="res://games/zen_farm/assets/tileset.png" id="13_yv806"]
 [ext_resource type="Texture2D" uid="uid://dlju0dj5h8d1s" path="res://games/zen_farm/assets/butterfly.png" id="18_14l61"]
@@ -1226,10 +1227,20 @@ texture_region_size = Vector2i(64, 64)
 12:4/0 = 0
 13:4/0 = 0
 14:4/0 = 0
+14:4/0/terrain_set = 0
+14:4/0/terrain = 0
 15:4/0 = 0
+15:4/0/terrain_set = 0
+15:4/0/terrain = 0
 16:4/0 = 0
+16:4/0/terrain_set = 0
+16:4/0/terrain = 0
 17:4/0 = 0
+17:4/0/terrain_set = 0
+17:4/0/terrain = 0
 18:4/0 = 0
+18:4/0/terrain_set = 0
+18:4/0/terrain = 0
 0:5/0 = 0
 0:5/0/terrain_set = 0
 0:5/0/terrain = 0
@@ -1280,6 +1291,8 @@ texture_region_size = Vector2i(64, 64)
 15:5/0/terrain = 0
 16:5/0 = 0
 17:5/0 = 0
+17:5/0/terrain_set = 0
+17:5/0/terrain = 0
 18:5/0 = 0
 
 [sub_resource type="TileSet" id="TileSet_6eamb"]
@@ -1540,6 +1553,129 @@ terrain_set_0/terrain_3/name = "blossom"
 terrain_set_0/terrain_3/color = Color(0.693006, 0.341515, 0.131175, 1)
 sources/1 = SubResource("TileSetAtlasSource_vsuop")
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_hbtf0"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(0, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lm6fd"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(504, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4euwh"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(588, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0kg3h"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(672, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1fb8v"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(756, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ror7b"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(840, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7776v"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(924, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_87nh8"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(1008, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7xk53"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(1092, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rrujm"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(1176, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_mp582"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(168, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_8l5y6"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(252, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_pmo00"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(336, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_uxkjt"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(0, 0, 84, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_aju8h"]
+atlas = ExtResource("13_2mr4p")
+region = Rect2(84, 0, 84, 56)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_s1kjy"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hbtf0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lm6fd")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4euwh")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0kg3h")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_1fb8v")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ror7b")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7776v")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_87nh8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7xk53")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rrujm")
+}],
+"loop": true,
+"name": &"catching_flies",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_mp582")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_8l5y6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_pmo00")
+}],
+"loop": true,
+"name": &"croak",
+"speed": 3.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_uxkjt")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_aju8h")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 2.0
+}]
+
 [node name="Game" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -1626,6 +1762,13 @@ tile_set = SubResource("TileSet_khsm7")
 [node name="GridContainer" type="Control" parent="FarmScroll"]
 anchors_preset = 0
 mouse_filter = 2
+
+[node name="froggo" type="AnimatedSprite2D" parent="FarmScroll"]
+visible = false
+z_index = 10
+position = Vector2(322, 317)
+sprite_frames = SubResource("SpriteFrames_s1kjy")
+animation = &"catching_flies"
 
 [node name="TopBar" type="Control" parent="."]
 anchors_preset = 0

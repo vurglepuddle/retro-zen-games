@@ -17,6 +17,8 @@ const _SILENT_DB := -80.0
 var _rain_player: AudioStreamPlayer
 var _night_mix: float = 0.0
 var _rain_duck_db: float = 0.0
+var _rain_tween: Tween = null
+var _rain_duck_tween: Tween = null
 
 
 func _ready() -> void:
@@ -50,30 +52,42 @@ func _start_ambients() -> void:
 
 
 func _stop_ambients() -> void:
+	if _rain_tween and is_instance_valid(_rain_tween):
+		_rain_tween.kill()
+	if _rain_duck_tween and is_instance_valid(_rain_duck_tween):
+		_rain_duck_tween.kill()
 	_ambient_player.stop()
 	_ambient2_player.stop()
 	_rain_player.stop()
 
 
 func _on_rain_changed(is_raining: bool) -> void:
+	if _rain_tween and is_instance_valid(_rain_tween):
+		_rain_tween.kill()
+	if _rain_duck_tween and is_instance_valid(_rain_duck_tween):
+		_rain_duck_tween.kill()
 	if is_raining:
 		if ResourceLoader.exists(_RAIN_PATH):
 			var s := load(_RAIN_PATH) as AudioStreamMP3
 			if s:
 				s.loop = true
 				_rain_player.stream = s
-				_rain_player.volume_db = _SILENT_DB
-				_rain_player.play()
-				var tw := create_tween()
-				tw.tween_property(_rain_player, "volume_db", 0.0, 2.0)
-		var tw2 := create_tween()
-		tw2.tween_method(_set_rain_duck, _rain_duck_db, -18.0, 2.0)
+				if not _rain_player.playing:
+					_rain_player.volume_db = _SILENT_DB
+					_rain_player.play()
+				_rain_tween = create_tween()
+				_rain_tween.tween_property(_rain_player, "volume_db", 0.0, 2.0)
+		_rain_duck_tween = create_tween()
+		_rain_duck_tween.tween_method(_set_rain_duck, _rain_duck_db, -18.0, 2.0)
 	else:
-		var tw := create_tween()
-		tw.tween_property(_rain_player, "volume_db", _SILENT_DB, 2.0)
-		tw.tween_callback(_rain_player.stop)
-		var tw2 := create_tween()
-		tw2.tween_method(_set_rain_duck, _rain_duck_db, 0.0, 2.0)
+		_rain_tween = create_tween()
+		_rain_tween.tween_property(_rain_player, "volume_db", _SILENT_DB, 2.0)
+		_rain_tween.tween_callback(func():
+			if _rain_player and _rain_player.volume_db <= _SILENT_DB + 0.1:
+				_rain_player.stop()
+		)
+		_rain_duck_tween = create_tween()
+		_rain_duck_tween.tween_method(_set_rain_duck, _rain_duck_db, 0.0, 2.0)
 
 
 func _on_day_night_changed(night_amount: float) -> void:
