@@ -104,6 +104,7 @@ var _rain_visual_layer: Node2D = null
 var _rain_ground_layer: Node2D = null
 var _rain_streaks: Array = []
 var _rain_ground: Array = []
+var _rain_water_amount: float = 0.0
 
 # day/night color grading
 const DAY_NIGHT_CYCLE := 180.0
@@ -128,16 +129,41 @@ var _day_night_overlay: ColorRect = null
 var _day_night_material: ShaderMaterial = null
 var _firefly_texture: Texture2D = null
 var _fireflies: Array = []
+var _frogs: Array = []
+var _frog_spawn_timer: float = 0.0
+var _rock_hit_counts: Dictionary = {}
+var _grass_decor_timer: float = 0.0
 var _last_insect_mode: String = ""
 var _night_amount: float = 0.0
 var _lamp_amount: float = 0.0
 var _last_audio_night_amount: float = -1.0
 
 # ── butterflies ───────────────────────────────────────────────────────────────
-const BUTTERFLY_COUNT := 3
+const BUTTERFLY_COUNT := 5
 var _butterflies: Array = []   # Array of {node, state, perched_cell, tween}
 const FIREFLY_COUNT := 11
 const INSECT_SPAWN_MARGIN := 150.0
+const FROGGO_MAX_COUNT := 2
+const FROGGO_SPAWN_ROLL_INTERVAL := 2.0
+const FROGGO_SPAWN_CHANCE := 0.75
+const FROGGO_TOUCH_RADIUS := 30.0
+const FROGGO_BODY_CENTER := Vector2(22.0, 24.0)
+const FROGGO_IDLE_SPEED_MIN := 0.55
+const FROGGO_IDLE_SPEED_MAX := 0.95
+const FROGGO_CATCH_FLIES_FPS := 5.0
+const FROGGO_APPEAR_VOLUME_DB := -8.0
+const FROGGO_CROAK_VOLUME_DB := -12.0
+const FROGGO_ELIGIBLE_ATLAS_COORDS := [Vector2i(14, 4), Vector2i(18, 4), Vector2i(17, 3)]
+const FROGGO_TOP_LEFT_OFFSETS := {
+	Vector2i(14, 4): Vector2(6.0, -22.0),
+	Vector2i(18, 4): Vector2(12.0, -22.0),
+	Vector2i(17, 3): Vector2(16.0, -26.0),
+}
+const FROGGO_FLIPPED_EXTRA_OFFSETS := {
+	Vector2i(14, 4): Vector2(8.0, 0.0),
+	Vector2i(18, 4): Vector2(8.0, 0.0),
+	Vector2i(17, 3): Vector2(4.0, 0.0),
+}
 const POKE_RADIUS := 80.0
 const POKE_STRENGTH := 8.0
 const WATER_POKE_STRENGTH := 4.0
@@ -149,7 +175,13 @@ const TOUCH_SOIL_VOLUME_DB := -2.0
 const TOUCH_LOOP_SILENT_DB := -42.0
 const TOUCH_LOOP_FADE_IN := 0.22
 const TOUCH_LOOP_FADE_OUT := 0.65
-const WEED_INTERVAL       := 2.0
+const WEED_INTERVAL       := 1.0
+const ROCK_WEED_HITS_TO_CLEAR := 3
+const ROCK_SHAKE_DISTANCE := 4.0
+const ROCK_SHAKE_DURATION := 0.18
+const ROCK_HIT_VOLUME_DB := -4.0
+const GRASS_DECOR_REGROW_INTERVAL := 3.0
+const GRASS_DECOR_REGROW_CHANCE := 0.70
 const HARVEST_ICON_Y_OFFSET := -18.0
 const HARVEST_ICON_LIFETIME := 12.0
 
@@ -162,6 +194,7 @@ const RAIN_STREAK_COUNT   := 74
 const RAIN_GROUND_COUNT   := 34
 const RAIN_AREA_SIZE      := Vector2(540.0, 814.0)
 const RAIN_FALL_VECTOR    := Vector2(380.0, 690.0)
+const RAIN_WATER_WOBBLE_FADE_SPEED := 4.4
 
 # ── UI refs ──────────────────────────────────────────────────────────────────
 @onready var _coins_label:    Label   = $TopBar/CoinsLabel
@@ -185,10 +218,17 @@ const DM_TERRAIN_SET  := 0
 const DM_DECOR        := 0   # 16 random decor items
 # Atlas coords of rock tiles — these go on the static layer (no sway)
 const ROCK_ATLAS_COORDS := [Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5)]
-const WATER_WEED_ATLAS_COORDS := [
-	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5), Vector2i(3, 5),
-	Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5),
+const WATER_ROCK_ATLAS_COORDS := [Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3)]
+const WATER_ONLY_DECOR_ATLAS_COORDS := [
+	Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3),
 	Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4), Vector2i(18, 4),
+	Vector2i(17, 5),
+]
+const WATER_WEED_ATLAS_COORDS := [
+	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5),
+	Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3),
+	Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4), Vector2i(18, 4),
+	Vector2i(17, 5),
 ]
 # PlantMapLayer — source id 0 (objects.png)
 # atlas coords: col = crop_id (0-4), row = stage row
@@ -221,6 +261,7 @@ const SEED_BUTTON_FONT_SIZE := 34
 @onready var _well_label:         Label            = $WellPanel/WellLabel
 @onready var _tip_panel:          Control          = $TipPanel
 @onready var _rain_template:      AnimatedSprite2D = $FarmScroll/Rain
+@onready var _frog_template:      AnimatedSprite2D = $FarmScroll/froggo
 
 
 # ── SFX nodes ────────────────────────────────────────────────────────────────
@@ -240,6 +281,14 @@ var _sfx_water_plop: AudioStreamPlayer = null
 var _sfx_touch_grass: AudioStreamPlayer = null
 var _sfx_touch_water: AudioStreamPlayer = null
 var _sfx_touch_soil: AudioStreamPlayer = null
+var _sfx_frog_appear: AudioStreamPlayer = null
+var _sfx_frog_disappear: AudioStreamPlayer = null
+var _sfx_frog_croak_1: AudioStreamPlayer = null
+var _sfx_frog_croak_2: AudioStreamPlayer = null
+var _sfx_rock_hit_1: AudioStreamPlayer = null
+var _sfx_rock_hit_2: AudioStreamPlayer = null
+var _sfx_rock_hit_3: AudioStreamPlayer = null
+var _sfx_rock_hit_3_water: AudioStreamPlayer = null
 var _active_touch_loop: AudioStreamPlayer = null
 
 
@@ -286,7 +335,41 @@ func _ready() -> void:
 	_sfx_touch_soil.name = "SfxTouchSoil"
 	_sfx_touch_soil.volume_db = TOUCH_LOOP_SILENT_DB
 	add_child(_sfx_touch_soil)
+	_sfx_frog_appear = AudioStreamPlayer.new()
+	_sfx_frog_appear.name = "SfxFrogAppear"
+	_sfx_frog_appear.volume_db = FROGGO_APPEAR_VOLUME_DB
+	add_child(_sfx_frog_appear)
+	_sfx_frog_disappear = AudioStreamPlayer.new()
+	_sfx_frog_disappear.name = "SfxFrogDisappear"
+	_sfx_frog_disappear.volume_db = FROGGO_APPEAR_VOLUME_DB
+	add_child(_sfx_frog_disappear)
+	_sfx_frog_croak_1 = AudioStreamPlayer.new()
+	_sfx_frog_croak_1.name = "SfxFrogCroak1"
+	_sfx_frog_croak_1.volume_db = FROGGO_CROAK_VOLUME_DB
+	add_child(_sfx_frog_croak_1)
+	_sfx_frog_croak_2 = AudioStreamPlayer.new()
+	_sfx_frog_croak_2.name = "SfxFrogCroak2"
+	_sfx_frog_croak_2.volume_db = FROGGO_CROAK_VOLUME_DB
+	add_child(_sfx_frog_croak_2)
+	_sfx_rock_hit_1 = AudioStreamPlayer.new()
+	_sfx_rock_hit_1.name = "SfxRockHit1"
+	_sfx_rock_hit_1.volume_db = ROCK_HIT_VOLUME_DB
+	add_child(_sfx_rock_hit_1)
+	_sfx_rock_hit_2 = AudioStreamPlayer.new()
+	_sfx_rock_hit_2.name = "SfxRockHit2"
+	_sfx_rock_hit_2.volume_db = ROCK_HIT_VOLUME_DB
+	add_child(_sfx_rock_hit_2)
+	_sfx_rock_hit_3 = AudioStreamPlayer.new()
+	_sfx_rock_hit_3.name = "SfxRockHit3"
+	_sfx_rock_hit_3.volume_db = ROCK_HIT_VOLUME_DB
+	add_child(_sfx_rock_hit_3)
+	_sfx_rock_hit_3_water = AudioStreamPlayer.new()
+	_sfx_rock_hit_3_water.name = "SfxRockHit3Water"
+	_sfx_rock_hit_3_water.volume_db = ROCK_HIT_VOLUME_DB
+	add_child(_sfx_rock_hit_3_water)
 	_load_sfx()
+	if _frog_template:
+		_frog_template.visible = false
 	_objects_texture = load("res://games/zen_farm/assets/objects.png")
 	_setup_seed_panel_icons()
 	_setup_wilt_overlay()
@@ -395,6 +478,8 @@ func prepare_farm() -> void:
 	_is_raining = false
 	_rain_check_timer = 0.0
 	_rain_duration = 0.0
+	_rain_water_amount = 0.0
+	_set_water_rain_amount(_rain_water_amount)
 	if _rain_overlay:
 		_rain_overlay.color.a = 0.0
 	if _rain_particles:
@@ -427,6 +512,7 @@ func start_game() -> void:
 func _clear_cells() -> void:
 	_clear_butterflies()
 	_clear_fireflies()
+	_clear_frogs()
 	# clear all tilemap layers so border decor from prior session doesn't linger
 	if _terrain_map:    _terrain_map.clear()
 	for rect in _water_shade_rects.values():
@@ -450,6 +536,8 @@ func _clear_cells() -> void:
 	_static_decor_coverage.clear()
 	_static_decor_tiles.clear()
 	_soil_placed.clear()
+	_rock_hit_counts.clear()
+	_grass_decor_timer = 0.0
 	for icon in _harvest_icons.values():
 		if is_instance_valid(icon): icon.queue_free()
 	_harvest_icons.clear()
@@ -598,6 +686,7 @@ func _make_water_overlay_material(texture_path: String, scroll_speed_px: Vector2
 	mat.set_shader_parameter("poke_amount", 0.0)
 	mat.set_shader_parameter("poke_radius", POKE_RADIUS)
 	mat.set_shader_parameter("poke_strength_px", WATER_POKE_STRENGTH)
+	mat.set_shader_parameter("rain_amount", _rain_water_amount)
 	return mat
 
 
@@ -605,6 +694,12 @@ func _update_water_overlay_origin(pos: Vector2) -> void:
 	for mat in [_water_shade_material, _water_highlight_material]:
 		if mat:
 			mat.set_shader_parameter("pattern_origin", pos)
+
+
+func _set_water_rain_amount(value: float) -> void:
+	for mat in [_water_shade_material, _water_highlight_material]:
+		if mat:
+			mat.set_shader_parameter("rain_amount", value)
 
 
 func _setup_water_overlay_layers() -> void:
@@ -698,6 +793,8 @@ func _set_static_decor_at(coord: Vector2i, snapshot: Array) -> void:
 		return
 	var layer_name := String(snapshot[0])
 	var atlas_coord: Vector2i = snapshot[2]
+	if atlas_coord in WATER_ONLY_DECOR_ATLAS_COORDS:
+		return
 	var layer := _decor_map
 	if layer_name == "rock" and _rock_decor_map:
 		layer = _rock_decor_map
@@ -805,7 +902,7 @@ func _water_weed_atlas_for_slot(cell: FarmCell, slot: int) -> Vector2i:
 
 
 func _set_water_weed_decor(coord: Vector2i, atlas_coord: Vector2i) -> void:
-	if atlas_coord in ROCK_ATLAS_COORDS and _rock_decor_map:
+	if (atlas_coord in ROCK_ATLAS_COORDS or atlas_coord in WATER_ROCK_ATLAS_COORDS) and _rock_decor_map:
 		_rock_decor_map.set_cell(coord, DM_SOURCE, atlas_coord)
 	else:
 		_decor_map.set_cell(coord, DM_SOURCE, atlas_coord)
@@ -1206,12 +1303,163 @@ func _move_rocks_from_decor(tiles: Array[Vector2i]) -> void:
 	if not _rock_decor_map:
 		return
 	for coord in tiles:
+		for attempt in range(6):
+			var rolled_atlas := _decor_map.get_cell_atlas_coords(coord)
+			if rolled_atlas not in WATER_ONLY_DECOR_ATLAS_COORDS:
+				break
+			_decor_map.erase_cell(coord)
+			if attempt < 5:
+				var one: Array[Vector2i] = [coord]
+				_decor_map.set_cells_terrain_connect(one, DM_TERRAIN_SET, DM_DECOR)
 		var atlas := _decor_map.get_cell_atlas_coords(coord)
+		if atlas in WATER_ONLY_DECOR_ATLAS_COORDS:
+			_decor_map.erase_cell(coord)
+			continue
 		if atlas in ROCK_ATLAS_COORDS:
 			var src := _decor_map.get_cell_source_id(coord)
 			var alt := _decor_map.get_cell_alternative_tile(coord)
 			_decor_map.erase_cell(coord)
 			_rock_decor_map.set_cell(coord, src, atlas, alt)
+
+
+func _snapshot_layer(snapshot: Array) -> TileMapLayer:
+	if snapshot.size() < 4:
+		return null
+	var layer_name := String(snapshot[0])
+	match layer_name:
+		"rock":
+			return _rock_decor_map
+		"sign_front":
+			return _locked_sign_front_map
+		"sign_front_rock":
+			return _locked_sign_front_rock_map
+		_:
+			return _decor_map
+
+
+func _tile_overlay_texture(snapshot: Array) -> AtlasTexture:
+	if snapshot.size() < 4:
+		return null
+	var layer := _snapshot_layer(snapshot)
+	if not layer or not layer.tile_set:
+		return null
+	var source := layer.tile_set.get_source(int(snapshot[1])) as TileSetAtlasSource
+	if not source or not source.texture:
+		return null
+	var tex := AtlasTexture.new()
+	tex.atlas = source.texture
+	tex.region = source.get_tile_texture_region(snapshot[2])
+	return tex
+
+
+func _shake_decor_tile(coord: Vector2i, snapshot: Array, z_index: int) -> void:
+	var tex := _tile_overlay_texture(snapshot)
+	if not tex:
+		return
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.centered = false
+	sprite.position = Vector2(coord.x * 64.0, coord.y * 64.0)
+	sprite.z_index = z_index
+	_insect_parent().add_child(sprite)
+	var base_x := sprite.position.x
+	var tw := sprite.create_tween()
+	tw.tween_property(sprite, "position:x", base_x - ROCK_SHAKE_DISTANCE, ROCK_SHAKE_DURATION * 0.22)
+	tw.tween_property(sprite, "position:x", base_x + ROCK_SHAKE_DISTANCE, ROCK_SHAKE_DURATION * 0.22)
+	tw.tween_property(sprite, "position:x", base_x - ROCK_SHAKE_DISTANCE * 0.55, ROCK_SHAKE_DURATION * 0.22)
+	tw.tween_property(sprite, "position:x", base_x, ROCK_SHAKE_DURATION * 0.22)
+	tw.tween_callback(func():
+		if is_instance_valid(sprite):
+			sprite.queue_free()
+	)
+
+
+func _play_rock_hit(hit_number: int, is_water: bool) -> void:
+	if hit_number >= ROCK_WEED_HITS_TO_CLEAR:
+		_play(_sfx_rock_hit_3_water if is_water else _sfx_rock_hit_3)
+	elif hit_number == 2:
+		_play(_sfx_rock_hit_2)
+	else:
+		_play(_sfx_rock_hit_1)
+
+
+func _bonk_rock_at(cell: FarmCell, slot: int, coord: Vector2i, snapshot: Array, is_water: bool, on_cleared: Callable) -> void:
+	var key := _slot_key(cell, slot)
+	var prior_hits: int = int(_rock_hit_counts.get(key, 0))
+	if prior_hits >= ROCK_WEED_HITS_TO_CLEAR:
+		return
+	var hits: int = prior_hits + 1
+	_rock_hit_counts[key] = hits
+	_play_rock_hit(hits, is_water)
+	_shake_decor_tile(coord, snapshot, _frog_z_for_slot(slot))
+	if hits < ROCK_WEED_HITS_TO_CLEAR:
+		_show_status("Bonk! " + str(ROCK_WEED_HITS_TO_CLEAR - hits) + " more.")
+		return
+	_show_status("Rock broken! +1c")
+	_rock_hit_counts[key] = ROCK_WEED_HITS_TO_CLEAR
+	var tw := cell.create_tween()
+	tw.tween_interval(ROCK_SHAKE_DURATION)
+	tw.tween_callback(func():
+		if is_instance_valid(cell):
+			on_cleared.call()
+	)
+
+
+func _clear_owned_grass_decor(cell: FarmCell, slot: int, coord: Vector2i) -> void:
+	_clear_decor_at(coord)
+	_static_decor_coverage[coord] = true
+	_static_decor_tiles.erase(coord)
+	_rock_hit_counts.erase(_slot_key(cell, slot))
+	_coins += 1
+	_spawn_coin_float(cell, 1)
+	_refresh_ui()
+	SaveManager.save_game(self)
+
+
+func _try_mow_grass_decor(cell: FarmCell, slot: int) -> bool:
+	if cell.state != FarmCell.TileState.GRASS:
+		return false
+	var coord := _slot_coord(cell, slot)
+	var snapshot := _capture_static_decor_at(coord)
+	if snapshot.is_empty():
+		return false
+	var atlas: Vector2i = snapshot[2]
+	if atlas in ROCK_ATLAS_COORDS:
+		_bonk_rock_at(cell, slot, coord, snapshot, false, func():
+			_clear_owned_grass_decor(cell, slot, coord)
+		)
+		return true
+	_clear_owned_grass_decor(cell, slot, coord)
+	_play(_sfx_weedcut)
+	_show_status("Mowed! +1c")
+	return true
+
+
+func _tick_grass_decor(delta: float) -> void:
+	if not _game_active:
+		return
+	_grass_decor_timer += delta
+	if _grass_decor_timer < GRASS_DECOR_REGROW_INTERVAL:
+		return
+	_grass_decor_timer = 0.0
+	if randf() > GRASS_DECOR_REGROW_CHANCE:
+		return
+	var candidates: Array[Vector2i] = []
+	for cell in _cells:
+		var farm_cell := cell as FarmCell
+		if farm_cell.state != FarmCell.TileState.GRASS:
+			continue
+		for slot in range(FarmCell.SLOT_COUNT):
+			var coord := _slot_coord(farm_cell, slot)
+			if _capture_static_decor_at(coord).is_empty():
+				candidates.append(coord)
+	if candidates.is_empty():
+		return
+	var coord: Vector2i = candidates[randi() % candidates.size()]
+	var one: Array[Vector2i] = [coord]
+	_decor_map.set_cells_terrain_connect(one, DM_TERRAIN_SET, DM_DECOR)
+	_move_rocks_from_decor(one)
+	_store_static_decor_coords(one)
 
 
 func _tiles_owned() -> int:
@@ -1255,6 +1503,8 @@ func _process(delta: float) -> void:
 	_update_day_night(delta)
 	_tick_crops(delta)
 	_tick_weeds(delta)
+	_tick_grass_decor(delta)
+	_tick_frogs(delta)
 	_tick_rain(delta)
 	_tick_fireflies()
 
@@ -1272,19 +1522,28 @@ func _setup_day_night_overlay() -> void:
 	_day_night_overlay.material = _day_night_material
 	$FarmScroll.add_child(_day_night_overlay)
 
-	_firefly_texture = _make_radial_texture(96, Color(1.0, 0.90, 0.38, 0.92))
+	_firefly_texture = _make_pixel_firefly_texture(96)
 
 
-func _make_radial_texture(size: int, color: Color) -> Texture2D:
+func _make_pixel_firefly_texture(size: int) -> Texture2D:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size * 0.5, size * 0.5)
-	var radius := size * 0.5
+	var core_half := 3.0
+	var inner_half := 9.0
+	var mid_half := 18.0
+	var outer_half := 34.0
 	for y in range(size):
 		for x in range(size):
-			var d := center.distance_to(Vector2(x, y)) / radius
-			var a := pow(clampf(1.0 - d, 0.0, 1.0), 2.55)
-			var px := color
-			px.a *= a
+			var box_dist: float = maxf(absf(float(x) - center.x), absf(float(y) - center.y))
+			var px := Color(1.0, 0.86, 0.30, 0.0)
+			if box_dist <= core_half:
+				px = Color(1.0, 0.96, 0.62, 1.0)
+			elif box_dist <= inner_half:
+				px = Color(1.0, 0.84, 0.24, 0.42)
+			elif box_dist <= mid_half:
+				px = Color(0.96, 0.66, 0.16, 0.16)
+			elif box_dist <= outer_half:
+				px = Color(0.86, 0.48, 0.12, 0.055)
 			img.set_pixel(x, y, px)
 	return ImageTexture.create_from_image(img)
 
@@ -1582,6 +1841,9 @@ func _update_poke(pos: Vector2) -> void:
 		_end_poke()
 		return
 	_start_touch_loop(pos)
+	var poked_frog := _frog_at_screen_pos(pos)
+	if not poked_frog.is_empty():
+		_despawn_frog(poked_frog, true)
 	if _farm_point_is_water(pos):
 		_start_water_poke(pos)
 	else:
@@ -1765,9 +2027,261 @@ func _tick_weeds(delta: float) -> void:
 
 
 # ── rain ─────────────────────────────────────────────────────────────────────
+func _clear_frogs() -> void:
+	for frog in _frogs:
+		if frog.get("tween") and is_instance_valid(frog["tween"]):
+			frog["tween"].kill()
+		if is_instance_valid(frog.get("node")):
+			frog["node"].queue_free()
+	_frogs.clear()
+	_frog_spawn_timer = 0.0
+
+
+func _frog_for_slot(cell: FarmCell, slot: int) -> Dictionary:
+	for frog in _frogs:
+		if frog.get("cell") == cell and int(frog.get("slot", -1)) == slot:
+			return frog
+	return {}
+
+
+func _frog_atlas_for_slot(cell: FarmCell, slot: int) -> Vector2i:
+	if cell.slot_states[slot] != FarmCell.SlotState.WEED:
+		return Vector2i(-1, -1)
+	if cell.is_water_plot:
+		return cell.slot_weed_atlas_coords[slot]
+	var coord := _slot_coord(cell, slot)
+	var tile := _capture_tile(_decor_map, coord)
+	if tile.is_empty():
+		tile = _capture_tile(_rock_decor_map, coord)
+	if tile.is_empty():
+		return Vector2i(-1, -1)
+	return tile[2]
+
+
+func _frog_host_still_valid(frog: Dictionary) -> bool:
+	var cell := frog.get("cell") as FarmCell
+	var slot := int(frog.get("slot", -1))
+	if not is_instance_valid(cell) or slot < 0 or slot >= FarmCell.SLOT_COUNT:
+		return false
+	if cell.slot_states[slot] != FarmCell.SlotState.WEED:
+		return false
+	return _frog_atlas_for_slot(cell, slot) == frog.get("atlas", Vector2i(-1, -1))
+
+
+func _frog_body_anchor_for_slot(cell: FarmCell, slot: int, atlas: Vector2i) -> Vector2:
+	var coord := _slot_coord(cell, slot)
+	var offset: Vector2 = FROGGO_TOP_LEFT_OFFSETS.get(atlas, Vector2(20.0, 8.0))
+	return Vector2(coord.x * 64.0, coord.y * 64.0) + offset + FROGGO_BODY_CENTER
+
+
+func _frog_frame_size(sprite: AnimatedSprite2D) -> Vector2:
+	if sprite and sprite.sprite_frames and sprite.sprite_frames.has_animation(sprite.animation):
+		var frame_count := sprite.sprite_frames.get_frame_count(sprite.animation)
+		if frame_count > 0:
+			var tex := sprite.sprite_frames.get_frame_texture(sprite.animation, clampi(sprite.frame, 0, frame_count - 1))
+			if tex:
+				return tex.get_size()
+	return Vector2(64.0, 64.0)
+
+
+func _frog_body_center_for_sprite(sprite: AnimatedSprite2D) -> Vector2:
+	if sprite and sprite.flip_h:
+		return Vector2(_frog_frame_size(sprite).x - FROGGO_BODY_CENTER.x, FROGGO_BODY_CENTER.y)
+	return FROGGO_BODY_CENTER
+
+
+func _frog_position_for_slot(cell: FarmCell, slot: int, atlas: Vector2i, sprite: AnimatedSprite2D) -> Vector2:
+	var extra_offset: Vector2 = FROGGO_FLIPPED_EXTRA_OFFSETS.get(atlas, Vector2.ZERO) if sprite.flip_h else Vector2.ZERO
+	return _frog_body_anchor_for_slot(cell, slot, atlas) + extra_offset - _frog_body_center_for_sprite(sprite)
+
+
+func _frog_z_for_slot(slot: int) -> int:
+	var slot_row := slot >> 1
+	return 5 if slot_row == 0 else 7
+
+
+func _spawn_frog(cell: FarmCell, slot: int, atlas: Vector2i) -> void:
+	if not _frog_template or _frogs.size() >= FROGGO_MAX_COUNT or not _frog_for_slot(cell, slot).is_empty():
+		return
+	var sprite := _frog_template.duplicate() as AnimatedSprite2D
+	if sprite == null:
+		return
+	sprite.visible = true
+	sprite.centered = false
+	sprite.animation = &"idle"
+	sprite.frame = 0
+	sprite.flip_h = randf() < 0.5
+	sprite.position = _frog_position_for_slot(cell, slot, atlas, sprite)
+	sprite.z_index = _frog_z_for_slot(slot)
+	sprite.play(&"idle", randf_range(FROGGO_IDLE_SPEED_MIN, FROGGO_IDLE_SPEED_MAX))
+	_insect_parent().add_child(sprite)
+	var frog := {
+		"node": sprite,
+		"cell": cell,
+		"slot": slot,
+		"atlas": atlas,
+		"body_anchor": _frog_body_anchor_for_slot(cell, slot, atlas),
+		"timer": randf_range(1.0, 3.5),
+		"busy": false,
+		"tween": null,
+	}
+	_frogs.append(frog)
+	_play(_sfx_frog_appear)
+
+
+func _try_spawn_random_frog() -> void:
+	if _frogs.size() >= FROGGO_MAX_COUNT:
+		return
+	var eligible: Array = []
+	for cell in _cells:
+		var farm_cell := cell as FarmCell
+		for slot in range(FarmCell.SLOT_COUNT):
+			if farm_cell.slot_states[slot] != FarmCell.SlotState.WEED:
+				continue
+			if not _frog_for_slot(farm_cell, slot).is_empty():
+				continue
+			var atlas := _frog_atlas_for_slot(farm_cell, slot)
+			if atlas in FROGGO_ELIGIBLE_ATLAS_COORDS:
+				eligible.append({"cell": farm_cell, "slot": slot, "atlas": atlas})
+	if eligible.is_empty():
+		return
+	var pick: Dictionary = eligible[randi() % eligible.size()]
+	_spawn_frog(pick["cell"], int(pick["slot"]), pick["atlas"])
+
+
+func _despawn_frog(frog: Dictionary, play_sound: bool = true) -> void:
+	if frog.is_empty():
+		return
+	if frog.get("tween") and is_instance_valid(frog["tween"]):
+		frog["tween"].kill()
+	_frogs.erase(frog)
+	if play_sound:
+		_play(_sfx_frog_disappear)
+	if is_instance_valid(frog.get("node")):
+		frog["node"].queue_free()
+
+
+func _despawn_frog_on_slot(cell: FarmCell, slot: int, play_sound: bool = true) -> void:
+	_despawn_frog(_frog_for_slot(cell, slot), play_sound)
+
+
+func _frog_at_screen_pos(pos: Vector2) -> Dictionary:
+	var content_pos := pos
+	if _insect_container:
+		content_pos -= _insect_container.position
+	for frog in _frogs:
+		if not is_instance_valid(frog.get("node")):
+			continue
+		var sprite := frog["node"] as AnimatedSprite2D
+		var body_anchor: Vector2 = frog.get("body_anchor", sprite.position + _frog_body_center_for_sprite(sprite))
+		if sprite.visible and body_anchor.distance_to(content_pos) <= FROGGO_TOUCH_RADIUS:
+			return frog
+	return {}
+
+
+func _frog_show_frame(frog: Dictionary, anim: StringName, frame: int) -> void:
+	if not _frogs.has(frog) or not is_instance_valid(frog.get("node")):
+		return
+	var sprite := frog["node"] as AnimatedSprite2D
+	if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(anim):
+		return
+	sprite.stop()
+	sprite.animation = anim
+	sprite.frame = clampi(frame, 0, max(0, sprite.sprite_frames.get_frame_count(anim) - 1))
+	sprite.frame_progress = 0.0
+
+
+func _frog_idle(frog: Dictionary) -> void:
+	if not _frogs.has(frog) or not is_instance_valid(frog.get("node")):
+		return
+	if frog.get("tween") and is_instance_valid(frog["tween"]):
+		frog["tween"].kill()
+	frog["busy"] = false
+	frog["timer"] = randf_range(2.5, 7.0)
+	var sprite := frog["node"] as AnimatedSprite2D
+	sprite.play(&"idle", randf_range(FROGGO_IDLE_SPEED_MIN, FROGGO_IDLE_SPEED_MAX))
+
+
+func _frog_croak(frog: Dictionary) -> void:
+	if not _frogs.has(frog) or not is_instance_valid(frog.get("node")):
+		return
+	if frog.get("tween") and is_instance_valid(frog["tween"]):
+		frog["tween"].kill()
+	frog["busy"] = true
+	var sprite := frog["node"] as AnimatedSprite2D
+	var tw := sprite.create_tween()
+	frog["tween"] = tw
+	tw.tween_callback(func(): _frog_show_frame(frog, &"croak", 0))
+	tw.tween_interval(0.14)
+	tw.tween_callback(func():
+		_frog_show_frame(frog, &"croak", 1)
+		_play(_sfx_frog_croak_1)
+	)
+	tw.tween_interval(0.36)
+	tw.tween_callback(func(): _frog_show_frame(frog, &"croak", 2))
+	tw.tween_interval(0.16)
+	tw.tween_callback(func(): _frog_show_frame(frog, &"croak", 0))
+	tw.tween_interval(0.14)
+	tw.tween_callback(func():
+		_frog_show_frame(frog, &"croak", 1)
+		_play(_sfx_frog_croak_2)
+	)
+	tw.tween_interval(0.36)
+	tw.tween_callback(func(): _frog_show_frame(frog, &"croak", 2))
+	tw.tween_interval(0.18)
+	tw.tween_callback(func(): _frog_idle(frog))
+
+
+func _frog_catch_flies(frog: Dictionary) -> void:
+	if not _frogs.has(frog) or not is_instance_valid(frog.get("node")):
+		return
+	if frog.get("tween") and is_instance_valid(frog["tween"]):
+		frog["tween"].kill()
+	frog["busy"] = true
+	var sprite := frog["node"] as AnimatedSprite2D
+	var base_speed := sprite.sprite_frames.get_animation_speed(&"catching_flies")
+	sprite.play(&"catching_flies", FROGGO_CATCH_FLIES_FPS / maxf(0.001, base_speed))
+	var tw := sprite.create_tween()
+	frog["tween"] = tw
+	tw.tween_interval(randf_range(1.4, 2.0))
+	tw.tween_callback(func(): _frog_idle(frog))
+
+
+func _tick_frogs(delta: float) -> void:
+	if not _game_active:
+		return
+	for frog in _frogs.duplicate():
+		if not is_instance_valid(frog.get("node")):
+			_frogs.erase(frog)
+			continue
+		if not _frog_host_still_valid(frog):
+			_despawn_frog(frog, false)
+			continue
+		if bool(frog.get("busy", false)):
+			continue
+		frog["timer"] = float(frog.get("timer", 0.0)) - delta
+		if float(frog["timer"]) <= 0.0:
+			var roll := randf()
+			if roll < 0.32:
+				_frog_croak(frog)
+			elif roll < 0.45:
+				_frog_catch_flies(frog)
+			else:
+				_frog_idle(frog)
+
+	_frog_spawn_timer -= delta
+	if _frog_spawn_timer <= 0.0:
+		_frog_spawn_timer = FROGGO_SPAWN_ROLL_INTERVAL
+		if randf() < FROGGO_SPAWN_CHANCE:
+			_try_spawn_random_frog()
+
+
 func _tick_rain(delta: float) -> void:
 	if not _game_active:
 		return
+	var target_water_amount := 1.0 if _is_raining else 0.0
+	_rain_water_amount = move_toward(_rain_water_amount, target_water_amount, delta * RAIN_WATER_WOBBLE_FADE_SPEED)
+	_set_water_rain_amount(_rain_water_amount)
 	if _is_raining:
 		_tick_rain_sprites(delta)
 		_rain_duration -= delta
@@ -2265,8 +2779,25 @@ func _clear_slot_harvest_icon_state(cell: FarmCell, slot: int) -> void:
 	_hide_slot_harvest_icon(cell, slot)
 
 
-# SHEARS tool: harvest mature crops and cut weeds
+func _clear_weed_slot(cell: FarmCell, slot: int, play_cut_sfx: bool = true, status_text: String = "Weed cut! +1c") -> void:
+	_despawn_frog_on_slot(cell, slot, true)
+	cell.clear_slot(slot)
+	_clear_slot_harvest_icon_state(cell, slot)
+	cell.refresh_visual()
+	_coins += 1
+	_rock_hit_counts.erase(_slot_key(cell, slot))
+	if play_cut_sfx:
+		_play(_sfx_weedcut)
+	_spawn_coin_float(cell, 1)
+	_show_status(status_text)
+	_refresh_ui()
+	SaveManager.save_game(self)
+
+
+# SHEARS tool: harvest mature crops, cut weeds, and mow owned grass decor
 func _try_shear(cell: FarmCell, slot: int) -> void:
+	if _try_mow_grass_decor(cell, slot):
+		return
 	match cell.slot_states[slot]:
 		FarmCell.SlotState.CROP:
 			if cell.slot_growth_stages[slot] == CropData.STAGE_MATURE:
@@ -2302,15 +2833,15 @@ func _try_shear(cell: FarmCell, slot: int) -> void:
 			_play(_sfx_noaction)
 			_show_status("Wilted! Use Watering Can.")
 		FarmCell.SlotState.WEED:
-			cell.clear_slot(slot)
-			_clear_slot_harvest_icon_state(cell, slot)
-			cell.refresh_visual()
-			_coins += 1
-			_play(_sfx_weedcut)
-			_spawn_coin_float(cell, 1)
-			_show_status("Weed cut! +1c")
-			_refresh_ui()
-			SaveManager.save_game(self)
+			var coord := _slot_coord(cell, slot)
+			var snapshot := _capture_static_decor_at(coord)
+			var atlas := _frog_atlas_for_slot(cell, slot)
+			if (atlas in ROCK_ATLAS_COORDS or atlas in WATER_ROCK_ATLAS_COORDS) and not snapshot.is_empty():
+				_bonk_rock_at(cell, slot, coord, snapshot, cell.is_water_plot, func():
+					_clear_weed_slot(cell, slot, false, "Rock broken! +1c")
+				)
+			else:
+				_clear_weed_slot(cell, slot)
 		_:
 			_play(_sfx_noaction)
 			_show_status("Nothing to cut here.")
@@ -2558,6 +3089,14 @@ func _load_sfx() -> void:
 		[_sfx_touch_grass, "touch_grass.mp3"],
 		[_sfx_touch_water, "touch_water.mp3"],
 		[_sfx_touch_soil, "touching_soil.mp3"],
+		[_sfx_frog_appear, "appear.mp3"],
+		[_sfx_frog_disappear, "disappear.mp3"],
+		[_sfx_frog_croak_1, "froggo_croak_1.mp3"],
+		[_sfx_frog_croak_2, "froggo_croak_2.mp3"],
+		[_sfx_rock_hit_1, "rock_hit_1.mp3"],
+		[_sfx_rock_hit_2, "rock_hit_2.mp3"],
+		[_sfx_rock_hit_3, "rock_hit_3.mp3"],
+		[_sfx_rock_hit_3_water, "rock_hit_3_water.mp3"],
 	]
 	for e in entries:
 		var path: String = _SFX_DIR + e[1]

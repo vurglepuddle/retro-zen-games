@@ -1381,9 +1381,15 @@ func _flash_rect_in_board(rect: Rect2, color: Color) -> void:
 	if not is_instance_valid(board_container):
 		return
 	var p := Polygon2D.new()
-	var tl: Vector2 = rect.position
-	var br: Vector2 = rect.position + rect.size
-	p.polygon = PackedVector2Array([tl, Vector2(br.x, tl.y), br, Vector2(tl.x, br.y)])
+	var center: Vector2 = rect.position + rect.size * 0.5
+	var outer_radius: float = min(rect.size.x, rect.size.y) * 0.48
+	var inner_radius: float = outer_radius * 0.42
+	var points := PackedVector2Array()
+	for i in range(8):
+		var angle := -PI * 0.5 + float(i) * TAU / 8.0
+		var radius := outer_radius if i % 2 == 0 else inner_radius
+		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	p.polygon = points
 	p.color    = color
 	p.modulate = Color(1, 1, 1, 0)
 	p.z_index  = 10
