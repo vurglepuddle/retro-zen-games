@@ -122,7 +122,7 @@ func _on_back_to_menu() -> void:
 	_game.visible = false
 	_menu.visible = true
 	# Refresh continue button visibility
-	_menu._ready()
+	_menu.refresh_state()
 	await _fade_from_black()
 
 
