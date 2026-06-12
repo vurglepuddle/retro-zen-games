@@ -156,22 +156,33 @@ func _hash01(p: Vector2) -> float:
 	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
 
 
+# Void aura: breathing violet glow, a slowly counter-rotating constellation
+# of arcane motes with faint trails, and sparkle pixels drifting upward.
 func _draw_color_bomb_indicator() -> void:
-	var pulse := sin(_effect_phase * TAU) * 0.5 + 0.5
-	var void_color := Color(0.22, 0.02, 0.34, 0.38 + pulse * 0.10)
-	var rim := Color(0.78, 0.34, 1.0, 0.72)
-	var spark := Color(1.0, 0.86, 1.0, 0.72)
+	var t := _effect_phase
+	var pulse := sin(t * TAU * 0.55) * 0.5 + 0.5
 
-	_draw_starburst(Vector2.ZERO, 43.0, 24.0 + pulse * 4.0, void_color)
-	_draw_diamond_outline(Vector2.ZERO, 39.0, rim, 3.0)
-	_draw_diamond_outline(Vector2.ZERO, 27.0 + pulse * 3.0, spark, 2.0)
+	var void_outer := Color(0.45, 0.10, 0.70, 0.16 + pulse * 0.10)
+	var void_inner := Color(0.72, 0.30, 1.00, 0.20 + pulse * 0.10)
+	_draw_diamond(Vector2.ZERO, 44.0 + pulse * 3.0, void_outer, true)
+	_draw_diamond(Vector2.ZERO, 32.0 + pulse * 4.0, void_inner, true)
+	_draw_diamond_outline(Vector2.ZERO, 46.0, Color(0.55, 0.18, 0.85, 0.5), 2.0)
 
-	for p in [
-		Vector2(-38, -4), Vector2(38, 4),
-		Vector2(-4, -38), Vector2(4, 38),
-		Vector2(-28, 28), Vector2(28, -28)
-	]:
-		_draw_pixel_rect(p, Vector2(6, 6), spark)
+	# Orbits opposite to the bomb's sparks, with a gentle radius wobble.
+	for s in range(4):
+		var ang := -t * TAU * 0.22 + float(s) * TAU / 4.0
+		var radius := 40.0 + sin(t * TAU * 0.4 + float(s) * 1.3) * 4.0
+		var p := Vector2(cos(ang), sin(ang)) * radius
+		_draw_diamond(p, 4.0 + pulse * 1.5, Color(0.95, 0.7, 1.0, 0.8), true)
+		var trail := Vector2(cos(ang + 0.3), sin(ang + 0.3)) * radius
+		_draw_pixel_rect(trail, Vector2(3, 3), Color(0.8, 0.45, 1.0, 0.45))
+
+	for e in range(4):
+		var cycle := fmod(t * 0.7 + float(e) * 0.25, 1.0)
+		var ex := sin(t * 0.9 + float(e) * 2.3) * 26.0
+		var ey := 24.0 - cycle * 48.0
+		_draw_pixel_rect(Vector2(ex, ey), Vector2(3, 3),
+			Color(0.9, 0.6, 1.0, (1.0 - cycle) * 0.6))
 
 
 func _draw_diamond(center: Vector2, radius: float, color: Color, filled: bool) -> void:
@@ -194,15 +205,6 @@ func _draw_diamond_outline(center: Vector2, radius: float, color: Color, width: 
 		center + Vector2(0, radius),
 		center + Vector2(-radius, 0)
 	]), color, width)
-
-
-func _draw_starburst(center: Vector2, outer_radius: float, inner_radius: float, color: Color) -> void:
-	var points := PackedVector2Array()
-	for i in range(8):
-		var angle := -PI * 0.5 + float(i) * TAU / 8.0
-		var radius := outer_radius if i % 2 == 0 else inner_radius
-		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-	draw_colored_polygon(points, color)
 
 
 func _draw_closed_lines(points: PackedVector2Array, color: Color, width: float) -> void:
