@@ -4,6 +4,12 @@ uniform float wind_strength : hint_range(0.0, 12.0) = 4.0;
 uniform float wind_speed    : hint_range(0.0, 4.0) = 1.2;
 uniform float wind_spread   : hint_range(0.0, 0.12) = 0.038;
 
+// Gust bands: slow waves of wind intensity rolling diagonally across the
+// field — the whole meadow breathes instead of shimmering uniformly.
+// NOTE: mirrored in Game.gd _frog_sway_offset(); keep the math in sync.
+uniform float gust_strength : hint_range(0.0, 1.0) = 0.45;
+uniform float gust_speed    : hint_range(0.0, 2.0) = 0.35;
+
 uniform vec2  poke_pos = vec2(-9999.0, -9999.0);
 uniform float poke_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float poke_radius : hint_range(1.0, 300.0) = 90.0;
@@ -73,7 +79,11 @@ void vertex() {
 		phase_jitter * 1.37
 	);
 
-	float wind_offset = (wave1 * 0.7 + wave2 * 0.3) * wind_strength * amp_jitter;
+	float gust = 0.5 + 0.5 * sin(TIME * gust_speed * 2.0
+		- base_vertex.x * 0.006 - base_vertex.y * 0.003);
+	gust = mix(1.0 - gust_strength, 1.0 + gust_strength * 0.6, gust);
+
+	float wind_offset = (wave1 * 0.7 + wave2 * 0.3) * wind_strength * amp_jitter * gust;
 	VERTEX.x += wind_offset * bend_mask;
 
 	// --- Rooted-stalk poke ---------------------------------------------------

@@ -78,6 +78,10 @@ func set_special(type: int) -> void:
 
 # Draw pixel-art special markers behind the gem sprite.
 func _draw() -> void:
+	# Stars ARE bombs by nature — no aura marker on them; they still
+	# detonate with the full BOOM when matched.
+	if level == 7 and special_type == SPECIAL_BOMB:
+		return
 	match special_type:
 		SPECIAL_BOMB:
 			_draw_bomb_indicator()
@@ -87,55 +91,69 @@ func _draw() -> void:
 			_draw_color_bomb_indicator()
 
 
+# Smoldering ember: breathing core, three orbiting sparks with fading
+# tails, and embers drifting up off the gem.
 func _draw_bomb_indicator() -> void:
-	var pulse := sin(_effect_phase * TAU * 1.25) * 0.5 + 0.5
-	var ember := Color(1.0, 0.42, 0.04, 0.30 + pulse * 0.10)
-	var hot := Color(1.0, 0.86, 0.18, 0.72)
-	var dark := Color(0.55, 0.10, 0.02, 0.72)
+	var t := _effect_phase
+	var pulse := sin(t * TAU * 1.1) * 0.5 + 0.5
 
-	_draw_diamond(Vector2.ZERO, 42.0, ember, true)
-	_draw_diamond_outline(Vector2.ZERO, 42.0, dark, 4.0)
-	_draw_diamond_outline(Vector2.ZERO, 34.0 + pulse * 3.0, hot, 2.0)
+	var ember := Color(1.0, 0.45, 0.06, 0.20 + pulse * 0.12)
+	_draw_diamond(Vector2.ZERO, 40.0 + pulse * 3.0, ember, true)
+	_draw_diamond_outline(Vector2.ZERO, 44.0, Color(0.62, 0.14, 0.02, 0.55), 3.0)
 
-	for p in [
-		Vector2(-35, -30), Vector2(35, -30),
-		Vector2(-35, 30), Vector2(35, 30),
-		Vector2(0, -42), Vector2(0, 42)
-	]:
-		_draw_pixel_rect(p, Vector2(7, 7), hot)
+	for s in range(3):
+		var ang := t * TAU * 0.35 + float(s) * TAU / 3.0
+		for k in range(3):
+			var trail_ang := ang - float(k) * 0.22
+			var p := Vector2(cos(trail_ang), sin(trail_ang)) * 40.0
+			var size := 6.0 - float(k) * 1.5
+			_draw_pixel_rect(p, Vector2(size, size),
+				Color(1.0, 0.8, 0.25, 0.85 - float(k) * 0.3))
 
-	var lick_color := Color(1.0, 0.58, 0.08, 0.64)
-	_draw_triangle(
-		Vector2(-22, 37),
-		Vector2(-12, 26 + pulse * 5.0),
-		Vector2(-4, 37),
-		lick_color
-	)
-	_draw_triangle(
-		Vector2(10, 38),
-		Vector2(22, 24 + (1.0 - pulse) * 5.0),
-		Vector2(30, 38),
-		lick_color
-	)
+	for e in range(3):
+		var cycle := fmod(t * 0.9 + float(e) * 0.33, 1.0)
+		var ex := sin((t + float(e) * 1.7) * 2.1) * 10.0 + (float(e) - 1.0) * 14.0
+		var ey := 30.0 - cycle * 52.0
+		_draw_pixel_rect(Vector2(ex, ey), Vector2(4, 4),
+			Color(1.0, 0.55, 0.1, (1.0 - cycle) * 0.7))
 
 
+# Charged lightning: jagged arcs along both axes that re-roll their shape
+# several times a second, with pulsing diamond caps at the four ends.
 func _draw_cross_indicator() -> void:
-	var pulse := sin(_effect_phase * TAU * 1.8) * 0.5 + 0.5
-	var glow := Color(0.06, 0.50, 1.0, 0.30 + pulse * 0.10)
-	var core := Color(0.78, 0.96, 1.0, 0.82)
-	var edge := Color(0.06, 0.18, 0.90, 0.68)
+	var t := _effect_phase
+	var pulse := sin(t * TAU * 1.8) * 0.5 + 0.5
+	var tick := floorf(t * 9.0)
 
-	draw_line(Vector2(-46, 0), Vector2(46, 0), glow, 10.0, false)
-	draw_line(Vector2(0, -46), Vector2(0, 46), glow, 10.0, false)
-	draw_line(Vector2(-46, 0), Vector2(46, 0), edge, 4.0, false)
-	draw_line(Vector2(0, -46), Vector2(0, 46), edge, 4.0, false)
-	draw_line(Vector2(-36, 0), Vector2(36, 0), core, 2.0, false)
-	draw_line(Vector2(0, -36), Vector2(0, 36), core, 2.0, false)
+	var glow := Color(0.10, 0.45, 1.0, 0.30 + pulse * 0.12)
+	var core := Color(0.85, 0.97, 1.0, 0.85)
 
-	for p in [Vector2(-42, 0), Vector2(42, 0), Vector2(0, -42), Vector2(0, 42)]:
-		_draw_diamond(p, 7.0 + pulse * 2.0, core, true)
-	for p in [Vector2(-28, -28), Vector2(28, -28), Vector2(-28, 28), Vector2(28, 28)]:
-		_draw_pixel_rect(p, Vector2(5, 5), Color(0.34, 0.74, 1.0, 0.68))
+	_draw_lightning(Vector2(-46, 0), Vector2(46, 0), tick, glow, core)
+	_draw_lightning(Vector2(0, -46), Vector2(0, 46), tick + 31.0, glow, core)
+
+	for p in [Vector2(-46, 0), Vector2(46, 0), Vector2(0, -46), Vector2(0, 46)]:
+		_draw_diamond(p, 5.0 + pulse * 3.0, Color(0.55, 0.85, 1.0, 0.8), true)
+
+
+# A jagged 5-segment bolt between two points; `seed_t` re-rolls the jitter.
+func _draw_lightning(a: Vector2, b: Vector2, seed_t: float, glow: Color, core: Color) -> void:
+	var points := PackedVector2Array()
+	points.append(a)
+	var dir := b - a
+	var norm := Vector2(-dir.y, dir.x).normalized()
+	for i in range(1, 5):
+		var f := float(i) / 5.0
+		var jitter := (_hash01(Vector2(seed_t, float(i))) - 0.5) * 14.0
+		points.append(a + dir * f + norm * jitter)
+	points.append(b)
+	for i in range(points.size() - 1):
+		draw_line(points[i], points[i + 1], glow, 5.0, false)
+	for i in range(points.size() - 1):
+		draw_line(points[i], points[i + 1], core, 2.0, false)
+
+
+func _hash01(p: Vector2) -> float:
+	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
 
 
 func _draw_color_bomb_indicator() -> void:
@@ -196,10 +214,6 @@ func _draw_pixel_rect(center: Vector2, size: Vector2, color: Color) -> void:
 	draw_rect(Rect2(center - size * 0.5, size), color, true)
 
 
-func _draw_triangle(a: Vector2, b: Vector2, c: Vector2, color: Color) -> void:
-	draw_colored_polygon(PackedVector2Array([a, b, c]), color)
-
-
 func _update_animation() -> void:
 	var anim: AnimatedSprite2D = _anim
 	if anim == null:
@@ -226,7 +240,10 @@ func stop_hint() -> void:
 
 func _process(delta: float) -> void:
 	if special_type != SPECIAL_NONE:
-		_effect_phase = fmod(_effect_phase + delta, 4.0)
+		# Unbounded on purpose: wrapping (the old fmod 4.0) snapped the
+		# orbiting sparks backward every 4 s because the orbit angle isn't
+		# periodic over that window.
+		_effect_phase += delta
 		queue_redraw()
 
 	if _hinting:
