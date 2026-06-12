@@ -168,6 +168,7 @@ const POKE_RADIUS := 80.0
 const POKE_STRENGTH := 8.0
 const WATER_POKE_STRENGTH := 4.0
 const POKE_RELEASE_FADE := 0.28
+const POKE_SPRINGBACK := 0.6  # plants wobble back upright (elastic) on release
 const TAP_MAX_DURATION_MSEC := 320
 const TOUCH_GRASS_VOLUME_DB := -8.0
 const TOUCH_WATER_VOLUME_DB := -6.0
@@ -386,6 +387,7 @@ func _ready() -> void:
 	mat.set_shader_parameter("use_tall_tiles", true)
 	_plant_map.material = mat
 	_configure_poke_material(mat)
+	_apply_atlas_layout_params(mat, _plant_map)
 
 	# Decor sway — same shader, much gentler; rocks go on a separate static layer
 	var decor_mat := ShaderMaterial.new()
@@ -394,6 +396,7 @@ func _ready() -> void:
 	decor_mat.set_shader_parameter("wind_speed",    1.0)
 	decor_mat.set_shader_parameter("wind_spread",   0.038)
 	_configure_poke_material(decor_mat)
+	_apply_atlas_layout_params(decor_mat, _decor_map)
 	_decor_map.material = decor_mat
 
 	_rock_decor_map = TileMapLayer.new()
@@ -1689,6 +1692,25 @@ func _configure_poke_material(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("poke_strength", POKE_STRENGTH)
 
 
+# The sway shader reconstructs each plant's tile from the runtime atlas.
+# With use_texture_padding (Godot default) tiles are inset 1 px in a
+# (tile_size + 2) px grid — that padding is what lets the vertex shader
+# tell a quad's top corners from its bottom corners, so plants can bend
+# from their roots instead of sliding rigidly.
+func _apply_atlas_layout_params(mat: ShaderMaterial, layer: TileMapLayer) -> void:
+	if not mat or not layer or not layer.tile_set:
+		return
+	if layer.tile_set.get_source_count() == 0:
+		return
+	var src := layer.tile_set.get_source(layer.tile_set.get_source_id(0)) as TileSetAtlasSource
+	if src == null:
+		return
+	var pad := 1.0 if src.use_texture_padding else 0.0
+	mat.set_shader_parameter("atlas_pitch",
+		float(src.texture_region_size.x + src.separation.x) + pad * 2.0)
+	mat.set_shader_parameter("atlas_margin", float(src.margins.x) + pad)
+
+
 func _set_poke_shader_param(param: StringName, value: Variant) -> void:
 	for layer in [_plant_map, _decor_map, _locked_sign_front_map]:
 		if not layer:
@@ -1828,12 +1850,14 @@ func _fade_out_poke_visuals() -> void:
 	if _poke_tween and is_instance_valid(_poke_tween):
 		_poke_tween.kill()
 	_poke_tween = create_tween()
+	# Elastic overshoot swings poke_amount below zero, so the stalk springs
+	# past upright and waggles before settling — like real released grass.
 	_poke_tween.tween_method(
 		func(v: float): _set_poke_shader_param(&"poke_amount", v),
 		1.0,
 		0.0,
-		POKE_RELEASE_FADE
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		POKE_SPRINGBACK
+	).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 
 func _update_poke(pos: Vector2) -> void:
