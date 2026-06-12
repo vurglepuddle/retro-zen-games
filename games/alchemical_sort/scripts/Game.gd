@@ -16,18 +16,23 @@ const VIAL_SPACING := 14  # pixels between vials
 ## X is always re-centred per difficulty so fewer vials stay centred on each shelf row.
 @export var shelf_origin_y: float = -1.0
 
-# Alchemical color palette — placeholder, replace with art-matched colours.
+# Alchemical color palette — sampled from liquid_colors_all.png (7x2 atlas),
+# one entry per color id so pour droplets match the hand-painted liquids.
 const PALETTE: Array[Color] = [
-	Color(0.90, 0.25, 0.25),   # 1 — crimson
-	Color(0.25, 0.70, 0.30),   # 2 — verdant
-	Color(0.25, 0.45, 0.90),   # 3 — azure
-	Color(0.90, 0.75, 0.15),   # 4 — gold
-	Color(0.70, 0.25, 0.85),   # 5 — violet
-	Color(0.20, 0.80, 0.80),   # 6 — teal
-	Color(0.95, 0.50, 0.15),   # 7 — ember
-	Color(0.90, 0.90, 0.90),   # 8 — silver
-	Color(0.40, 0.25, 0.10),   # 9 — umber
-	Color(0.10, 0.40, 0.10),   # 10 — moss
+	Color(0.329, 0.329, 0.412),   # 1 — slate
+	Color(0.929, 0.373, 0.027),   # 2 — ember
+	Color(0.400, 0.161, 0.094),   # 3 — umber
+	Color(0.886, 0.251, 0.388),   # 4 — rose
+	Color(0.000, 0.510, 0.475),   # 5 — teal
+	Color(0.467, 0.839, 0.161),   # 6 — verdant
+	Color(0.027, 0.341, 0.043),   # 7 — moss
+	Color(0.784, 0.745, 0.812),   # 8 — silver
+	Color(0.808, 0.573, 0.176),   # 9 — gold
+	Color(0.651, 0.051, 0.122),   # 10 — crimson
+	Color(0.702, 0.141, 0.741),   # 11 — orchid
+	Color(0.345, 0.129, 0.580),   # 12 — violet
+	Color(0.133, 0.243, 0.600),   # 13 — indigo
+	Color(0.055, 0.486, 0.890),   # 14 — azure
 ]
 
 # ---- difficulty state --------------------------------------------------------
@@ -50,6 +55,7 @@ var _queued_vial: Vial = null    # last tap during a pour; processed when animat
 var _undo_stack: Array = []      # stack of board snapshots (each = Array of vial snaps)
 var _max_undo_depth: int = 1     # -1 = unlimited (Zen); otherwise Easy=3, Medium=2, Hard=1
 var _droplet_mat: ShaderMaterial = null  # lazily built, shared across all pours
+var _droplet_spark_tex: ImageTexture = null  # tiny white square for trail/splash sparks
 
 @onready var _move_label:    Label   = $MoveLabel
 @onready var _best_label:    Label   = $BestLabel
@@ -224,7 +230,8 @@ func _build_vials() -> void:
 		origin_y = int(shelf_origin_y)
 	else:
 		origin_y = int(ui_top + (vp.y - ui_top - 80.0 - board_h) / 2.0)
-		print("[alch_sort] shelf_origin_y = %d  — set in Inspector to lock" % origin_y)
+		if OS.is_debug_build():
+			print("[alch_sort] shelf_origin_y = %d  — set in Inspector to lock" % origin_y)
 
 	for i in range(total):
 		var col := i % _vials_per_row
@@ -436,23 +443,10 @@ func _apply_reshuffle() -> void:
 # ---- droplet arc animation --------------------------------------------------
 
 func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
-	# Build the glow shader once and reuse it for every pour.
+	# Shared material: the shader animates via TIME, so all pours can reuse it.
 	if _droplet_mat == null:
-		var shader := Shader.new()
-		shader.code = """
-shader_type canvas_item;
-void fragment() {
-	vec2 c = UV - 0.5;
-	float d = length(c) * 2.0;
-	float core  = 1.0 - step(0.42, d);
-	float halo  = (1.0 - smoothstep(0.42, 1.0, d)) * 0.55;
-	float shine = 1.0 - step(0.18, length(c + vec2(0.13, 0.13)) * 2.0);
-	vec3  col   = COLOR.rgb + vec3(0.45) * shine * core;
-	COLOR = vec4(min(col, vec3(1.0)), COLOR.a * max(core, halo));
-}
-"""
 		_droplet_mat = ShaderMaterial.new()
-		_droplet_mat.shader = shader
+		_droplet_mat.shader = preload("res://games/alchemical_sort/assets/droplet.gdshader")
 
 	const HALF := 12.0  # half of the 24×24 dot
 	var dot := ColorRect.new()
@@ -465,6 +459,20 @@ void fragment() {
 	dot.position = from_pos - Vector2(HALF, HALF)
 	add_child(dot)
 
+	# Shimmer trail: emitter rides the droplet, sparkles linger on the arc.
+	var trail := _make_droplet_sparks(color)
+	trail.amount = 26
+	trail.lifetime = 0.38
+	trail.direction = Vector2.DOWN
+	trail.spread = 30.0
+	trail.gravity = Vector2(0, 140)
+	trail.initial_velocity_min = 8.0
+	trail.initial_velocity_max = 30.0
+	trail.local_coords = false
+	trail.position = from_pos
+	trail.z_index = 19
+	add_child(trail)
+
 	var ctrl := Vector2(
 		(from_pos.x + to_pos.x) * 0.5,
 		min(from_pos.y, to_pos.y) - 72.0
@@ -476,12 +484,57 @@ void fragment() {
 			return
 		var q := from_pos.lerp(ctrl, t)
 		var r := ctrl.lerp(to_pos, t)
-		dot.position = q.lerp(r, t) - Vector2(HALF, HALF)
+		var p := q.lerp(r, t)
+		dot.position = p - Vector2(HALF, HALF)
+		if is_instance_valid(trail):
+			trail.position = p
 	, 0.0, 1.0, 0.18)
 	await tw.finished
 
 	if is_instance_valid(dot):
 		dot.queue_free()
+	if is_instance_valid(trail):
+		trail.emitting = false
+		var cleanup := create_tween()
+		cleanup.tween_interval(trail.lifetime)
+		cleanup.tween_callback(trail.queue_free)
+
+	# Tiny splash where the droplet lands.
+	var splash := _make_droplet_sparks(color)
+	splash.one_shot = true
+	splash.explosiveness = 1.0
+	splash.amount = 9
+	splash.lifetime = 0.32
+	splash.direction = Vector2.UP
+	splash.spread = 55.0
+	splash.gravity = Vector2(0, 480)
+	splash.initial_velocity_min = 60.0
+	splash.initial_velocity_max = 150.0
+	splash.position = to_pos
+	splash.z_index = 20
+	add_child(splash)
+	splash.emitting = true
+	splash.finished.connect(splash.queue_free)
+
+
+# Base emitter for droplet trail/splash: tiny white squares tinted to the
+# pour color, fading out over their lifetime. Caller tunes the dynamics.
+func _make_droplet_sparks(color: Color) -> CPUParticles2D:
+	if _droplet_spark_tex == null:
+		var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_droplet_spark_tex = ImageTexture.create_from_image(img)
+	var fx := CPUParticles2D.new()
+	fx.texture = _droplet_spark_tex
+	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.scale_amount_min = 1.0
+	fx.scale_amount_max = 2.3
+	fx.color = color.lightened(0.35)
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.9))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
+	fx.color_ramp = ramp
+	return fx
 
 
 # ---- win condition ----------------------------------------------------------
