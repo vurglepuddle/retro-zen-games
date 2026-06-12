@@ -664,7 +664,7 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 		await _tween_two(tile, p2, other, p1, 0.15)
 		_swap_logic(tile, other)
 		await _tween_two(tile, p1, other, p2, 0.10)
-		await _fire_color_bomb(color_bomb, bomb_target.level)
+		await _fire_color_bomb(color_bomb, bomb_target)
 		if _level_mode:
 			await _check_level_up()
 		_busy = false
@@ -924,12 +924,16 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 # Returns every board tile in the detonation zone of a BOMB or CROSS gem.
 # The special tile itself is included so it gets freed along with the blast.
 func _collect_special_zone(sp: Tile) -> Array:
+	return _collect_special_zone_at(sp.row, sp.col, sp.special_type)
+
+
+func _collect_special_zone_at(origin_row: int, origin_col: int, special_type: int) -> Array:
 	var zone: Array = []
-	if sp.special_type == Tile.SPECIAL_BOMB:
+	if special_type == Tile.SPECIAL_BOMB:
 		for dr in range(-1, 2):
 			for dc in range(-1, 2):
-				var nr: int = sp.row + dr
-				var nc: int = sp.col + dc
+				var nr: int = origin_row + dr
+				var nc: int = origin_col + dc
 				if nr < 0 or nr >= board_rows or nc < 0 or nc >= board_cols:
 					continue
 				if SHAPE[nr][nc] == 0:
@@ -938,15 +942,15 @@ func _collect_special_zone(sp: Tile) -> Array:
 				if t != null:
 					zone.append(t)
 
-	elif sp.special_type == Tile.SPECIAL_CROSS:
+	elif special_type == Tile.SPECIAL_CROSS:
 		for c in range(board_cols):
-			if SHAPE[sp.row][c] == 1:
-				var t = board[sp.row][c]
+			if SHAPE[origin_row][c] == 1:
+				var t = board[origin_row][c]
 				if t != null:
 					zone.append(t)
 		for r in range(board_rows):
-			if SHAPE[r][sp.col] == 1:
-				var t = board[r][sp.col]
+			if SHAPE[r][origin_col] == 1:
+				var t = board[r][origin_col]
 				if t != null and not zone.has(t):
 					zone.append(t)
 
@@ -956,8 +960,31 @@ func _collect_special_zone(sp: Tile) -> Array:
 # ----- COLOR_BOMB activation ------------------------------------------------
 
 # Fired from _attempt_swap() when either swapped tile is a COLOR_BOMB.
+func _fire_color_bomb(bomb: Tile, target: Tile) -> void:
+	var target_level := 1
+	var target_special := Tile.SPECIAL_NONE
+	if is_instance_valid(target):
+		target_level = target.level
+		target_special = target.special_type
+
+	if target_special == Tile.SPECIAL_COLOR_BOMB:
+		await _fire_color_bomb_clear_board(bomb)
+		return
+
+	# Stars already explode as bombs when matched, so heart + star copies
+	# that same behavior to every star on the board.
+	if target_level == 7 and target_special == Tile.SPECIAL_NONE:
+		target_special = Tile.SPECIAL_BOMB
+
+	if target_special == Tile.SPECIAL_BOMB or target_special == Tile.SPECIAL_CROSS:
+		await _fire_color_bomb_special_copy(bomb, target_level, target_special)
+		return
+
+	await _fire_color_bomb_level_clear(bomb, target_level)
+
+
 # Destroys the bomb itself and every gem at target_level on the board.
-func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
+func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
 	var to_remove: Array = []
 	var removed_set       = {}
 
@@ -1005,6 +1032,153 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 			t.queue_free()
 
 	await _shake_board()
+	await _animate_collapse()
+	if not _game_active:
+		return
+	await _animate_fill()
+	if not _game_active:
+		return
+	update_score_display()
+
+	var matches := _find_matches()
+	if matches.size() > 0:
+		await _resolve_matches_animated(matches)
+	else:
+		await _check_for_shuffle()
+
+
+func _fire_color_bomb_clear_board(bomb: Tile) -> void:
+	var to_remove: Array = []
+	var removed_set       = {}
+
+	for r in range(board_rows):
+		for c in range(board_cols):
+			if SHAPE[r][c] == 1:
+				_mark_tile_for_removal(board[r][c], to_remove, removed_set)
+
+	for t: Tile in to_remove:
+		score += 10 * t.level
+	_play_sfx(sfx_color_bomb)
+	await _animate_color_bomb_removal(to_remove, bomb, 7.0)
+	await _finish_color_bomb_resolution()
+
+
+func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special: int) -> void:
+	var to_remove: Array = []
+	var removed_set       = {}
+	var origins: Array = []
+
+	_mark_tile_for_removal(bomb, to_remove, removed_set)
+
+	for r in range(board_rows):
+		for c in range(board_cols):
+			var t = board[r][c]
+			if t != null and t.level == target_level:
+				origins.append({r = r, c = c})
+
+	for origin in origins:
+		for t: Tile in _collect_special_zone_at(origin.r, origin.c, copied_special):
+			_mark_tile_for_removal(t, to_remove, removed_set)
+
+	for t: Tile in to_remove:
+		score += 10 * t.level
+	_play_sfx(sfx_color_bomb)
+	if copied_special == Tile.SPECIAL_BOMB:
+		_play_sfx(sfx_explosion)
+	elif copied_special == Tile.SPECIAL_CROSS:
+		_play_sfx(sfx_lightning)
+
+	await _animate_color_bomb_special_copy(to_remove, origins, copied_special, bomb)
+	await _finish_color_bomb_resolution()
+
+
+func _mark_tile_for_removal(t: Tile, to_remove: Array, removed_set: Dictionary) -> void:
+	if not is_instance_valid(t) or removed_set.has(t):
+		return
+	removed_set[t] = true
+	if t.row >= 0 and t.row < board_rows and t.col >= 0 and t.col < board_cols:
+		if board[t.row][t.col] == t:
+			board[t.row][t.col] = null
+	to_remove.append(t)
+
+
+func _animate_color_bomb_removal(to_remove: Array, bomb: Tile, radius_cells: float = 4.5) -> void:
+	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
+	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
+	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), radius_cells, 0.6)
+	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
+
+	var max_delay := 0.0
+	for t in to_remove:
+		if not is_instance_valid(t):
+			continue
+		var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.045
+		max_delay = maxf(max_delay, delay)
+		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
+		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
+		var seq := create_tween()
+		seq.tween_interval(delay)
+		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		seq.tween_property(t, "scale", Vector2.ZERO, 0.15) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await get_tree().create_timer(max_delay + 0.24).timeout
+	for t in to_remove:
+		if is_instance_valid(t):
+			t.queue_free()
+
+	await _shake_board()
+
+
+func _animate_color_bomb_special_copy(
+		to_remove: Array, origins: Array, copied_special: int, bomb: Tile) -> void:
+	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
+	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
+	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.45)
+	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
+
+	for origin in origins:
+		if copied_special == Tile.SPECIAL_BOMB:
+			_spawn_shockwave(origin.r, origin.c, Color(1.0, 0.62, 0.2, 0.9), 1.9)
+			_spawn_sparks(origin.r, origin.c, Color(1.0, 0.78, 0.3), 18, 320.0)
+			for dr in range(-1, 2):
+				for dc in range(-1, 2):
+					var nr: int = origin.r + dr
+					var nc: int = origin.c + dc
+					if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols \
+							and SHAPE[nr][nc] == 1:
+						_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.50),
+								maxi(absi(dr), absi(dc)) * 0.04)
+		elif copied_special == Tile.SPECIAL_CROSS:
+			_spawn_shockwave(origin.r, origin.c, Color(0.35, 0.65, 1.0, 0.85), 2.4, 0.4, true)
+			_spawn_sparks(origin.r, origin.c, Color(0.62, 0.86, 1.0), 12, 280.0)
+			for nc in range(board_cols):
+				if SHAPE[origin.r][nc] == 1:
+					_flash_cell_in_board(origin.r, nc, Color(0.25, 0.55, 1.0, 0.50),
+							absi(nc - origin.c) * 0.025)
+			for nr in range(board_rows):
+				if SHAPE[nr][origin.c] == 1:
+					_flash_cell_in_board(nr, origin.c, Color(0.25, 0.55, 1.0, 0.50),
+							absi(nr - origin.r) * 0.025)
+
+	var tw := create_tween()
+	tw.set_parallel(true)
+	for t in to_remove:
+		if is_instance_valid(t):
+			tw.tween_property(t, "scale", Vector2.ZERO, 0.18) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await tw.finished
+	for t in to_remove:
+		if is_instance_valid(t):
+			t.queue_free()
+
+	if copied_special == Tile.SPECIAL_BOMB:
+		await _shake_board()
+	elif copied_special == Tile.SPECIAL_CROSS:
+		await _shake_board_faint()
+
+
+func _finish_color_bomb_resolution() -> void:
 	await _animate_collapse()
 	if not _game_active:
 		return
@@ -1129,8 +1303,8 @@ func _cell_pos(r: int, c: int) -> Vector2:
 # ----- Match detection ------------------------------------------------------
 #
 # Returns Array of Dictionaries: { "tiles": Array[Tile], "shape": int }
-# shape mirrors Tile.SPECIAL_* — NONE for a plain 3-match, BOMB for a 4-5
-# straight run, CROSS for any T/L/+ merge, COLOR_BOMB for a 6+ straight run.
+# shape mirrors Tile.SPECIAL_* — NONE for a plain 3-match, BOMB for a 4
+# straight run, CROSS for any T/L/+ merge, COLOR_BOMB for a 5+ straight run.
 
 func _find_matches() -> Array:
 	var raw_runs: Array = []
@@ -1140,12 +1314,12 @@ func _find_matches() -> Array:
 		var c := 0
 		while c < board_cols:
 			var tile = board[r][c]
-			if tile != null:
+			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB:
 				var run: Array = [tile]
 				var cc := c + 1
 				while cc < board_cols:
 					var t = board[r][cc]
-					if t != null and t.level == tile.level:
+					if _tiles_match_for_run(tile, t):
 						run.append(t); cc += 1
 					else:
 						break
@@ -1160,12 +1334,12 @@ func _find_matches() -> Array:
 		var r := 0
 		while r < board_rows:
 			var tile = board[r][c]
-			if tile != null:
+			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB:
 				var run: Array = [tile]
 				var rr := r + 1
 				while rr < board_rows:
 					var t = board[rr][c]
-					if t != null and t.level == tile.level:
+					if _tiles_match_for_run(tile, t):
 						run.append(t); rr += 1
 					else:
 						break
@@ -1233,6 +1407,10 @@ func _find_matches() -> Array:
 		result.append({ "tiles": tiles, "shape": shape })
 
 	return result
+
+
+func _tiles_match_for_run(a: Tile, b: Tile) -> bool:
+	return b != null and b.special_type != Tile.SPECIAL_COLOR_BOMB and b.level == a.level
 
 
 # ----- Shuffle & move validation --------------------------------------------
