@@ -30,6 +30,7 @@ var _fog_reveal_from: int = 0
 var _layer_rects:    Array[TextureRect]   = []
 var _atlas_textures: Array[AtlasTexture]  = []   # one entry per color id (0-based)
 var _outline: Panel = null
+var _cell_h: float = 32.0   # liquid layer height; derived from the sheet in _build_visuals()
 
 # ---- magic visuals ------------------------------------------------------------
 var _select_motes:   CPUParticles2D = null  # essence pixels rising while selected
@@ -48,6 +49,11 @@ var is_cauldron: bool = false
 
 # Per-color-id modulate tints (alchemical batch variation); empty = no tint.
 var _tints: Array[Color] = []
+
+# Catalyst rune: rarely, a vial bears a faint glowing sigil; completing it
+# releases the catalyst (Game.gd handles the gift).
+var has_rune: bool = false
+var _rune: Control = null
 
 
 func _init() -> void:
@@ -137,6 +143,12 @@ func free_slots() -> int:
 	return count
 
 
+# Local Y of the current liquid surface — where a poured drop should land.
+# Empty vial → the glass bottom.
+func surface_y() -> float:
+	return BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - top_index()) * _cell_h
+
+
 # ---- fog of war -------------------------------------------------------------
 
 # Call after setup() to activate fog mode.  Only the current top color-run is
@@ -153,6 +165,14 @@ func reveal_top() -> void:
 	if not _fog_mode:
 		return
 	_fog_reveal_from = mini(_fog_reveal_from, _top_run_start())
+	_refresh_visuals()
+
+
+# Catalyst gift in Mystery mode: peel one extra fog layer.
+func reveal_one_more() -> void:
+	if not _fog_mode:
+		return
+	_fog_reveal_from = maxi(0, _fog_reveal_from - 1)
 	_refresh_visuals()
 
 
@@ -281,6 +301,11 @@ func celebrate() -> void:
 		_gleam_tween.tween_property(_gleam, "modulate:a", 0.0, 0.32) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
+	_spawn_burst(Color(1.0, 0.9, 0.55))
+
+
+# One-shot sparkle burst from the mouth (celebration / catalyst wave).
+func _spawn_burst(color: Color) -> void:
 	var burst := _make_motes()
 	burst.one_shot = true
 	burst.explosiveness = 1.0
@@ -289,10 +314,67 @@ func celebrate() -> void:
 	burst.spread = 40.0
 	burst.initial_velocity_min = 30.0
 	burst.initial_velocity_max = 85.0
-	burst.color = Color(1.0, 0.9, 0.55)
+	burst.color = color
 	add_child(burst)
 	burst.emitting = true
 	burst.finished.connect(burst.queue_free)
+
+
+# Delayed public burst — used by Game.gd to sweep a sparkle wave across vials.
+func sparkle_burst(color: Color, delay: float = 0.0) -> void:
+	var tw := create_tween()
+	tw.tween_interval(maxf(delay, 0.001))
+	tw.tween_callback(_spawn_burst.bind(color))
+
+
+# One-shot soft glass glint (catalyst wave). Skipped on completed vials,
+# whose gleam is owned by the set_completed() pulse loop.
+func gleam_flash(strength: float = 0.35, delay: float = 0.0) -> void:
+	if _gleam == null or _completed:
+		return
+	var tw := create_tween()
+	if delay > 0.0:
+		tw.tween_interval(delay)
+	tw.tween_property(_gleam, "modulate:a", strength, 0.12) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_gleam, "modulate:a", 0.0, 0.30) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+# ---- catalyst rune ------------------------------------------------------------
+
+func set_rune(enabled: bool) -> void:
+	has_rune = enabled
+	if not enabled:
+		if _rune:
+			_rune.visible = false
+		return
+	if _rune == null:
+		_rune = Control.new()
+		_rune.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		_rune.material = mat
+		_rune.position = Vector2(VIAL_W * 0.5, VIAL_H * 0.46)
+		_rune.draw.connect(_draw_rune)
+		add_child(_rune)
+		# Faint slow breathing — present but never loud.
+		_rune.modulate.a = 0.75
+		var tw := create_tween().set_loops()
+		tw.tween_property(_rune, "modulate:a", 0.30, 1.1) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(_rune, "modulate:a", 0.75, 1.1) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_rune.visible = true
+	_rune.queue_redraw()
+
+
+# Algiz — an angular protective sigil in chunky gold strokes.
+func _draw_rune() -> void:
+	var gold := Color(1.0, 0.85, 0.35, 0.9)
+	_rune.draw_line(Vector2(0, 10), Vector2(0, -10), gold, 2.0, false)
+	_rune.draw_line(Vector2(0, -2), Vector2(-7, -10), gold, 2.0, false)
+	_rune.draw_line(Vector2(0, -2), Vector2(7, -10), gold, 2.0, false)
 
 
 # Persistent "finished potion" state: sparse motes of the vial's own color
@@ -415,6 +497,7 @@ func _build_visuals() -> void:
 	# Liquid cell size from the sprite sheet.
 	var cell_w: int = sheet.get_width()  / SHEET_COLS   # 64
 	var cell_h: int = sheet.get_height() / SHEET_ROWS   # 32
+	_cell_h = float(cell_h)
 	# Horizontal offset to center the 64-wide liquid inside the 72-wide bottle.
 	var pad_x: int  = (VIAL_W - cell_w) / 2             # 4
 

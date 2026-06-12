@@ -66,6 +66,11 @@ var _tint_phases: Array[Vector3] = [] # per color: random sine phases for r/g/b
 var _tint_time: float = 0.0
 var _zen_drift: bool = false
 
+# ---- catalyst rune ------------------------------------------------------------
+const RUNE_CHANCE := 0.15
+var _rune_vial: Vial = null
+var _rune_fired: bool = false
+
 @onready var _move_label:    Label   = $MoveLabel
 @onready var _best_label:    Label   = $BestLabel
 @onready var _undo_button:   Button  = $UndoButton
@@ -328,6 +333,18 @@ func _build_vials() -> void:
 		add_child(cauldron)
 		_vials.append(cauldron)
 
+	# Catalyst rune: rarely, one starting vial bears a faint glowing sigil.
+	_rune_vial = null
+	_rune_fired = false
+	if randf() < RUNE_CHANCE:
+		var rune_candidates: Array = []
+		for v: Vial in _vials:
+			if not v.is_empty() and not v.is_cauldron:
+				rune_candidates.append(v)
+		if not rune_candidates.is_empty():
+			_rune_vial = rune_candidates.pick_random()
+			_rune_vial.set_rune(true)
+
 	# Start hidden — start_game() will slide them in.
 	for v: Vial in _vials:
 		v.modulate.a = 0.0
@@ -426,9 +443,12 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	await src.animate_pour_out(amount)
 	src.reveal_top()  # expose newly uncovered layer in fog mode (no-op otherwise)
 
-	var src_top := src.position + Vector2(src.VIAL_W * 0.5, 0.0)
-	var dst_top := dst.position + Vector2(dst.VIAL_W * 0.5, 0.0)
-	await _animate_droplet(src_top, dst_top, color)
+	# Take off from the source's mouth, arc to the destination's mouth, then
+	# fall through the neck onto the liquid surface — like real liquid.
+	var src_top := _vial_point(src, Vector2(src.VIAL_W * 0.5, 0.0))
+	var dst_mouth := _vial_point(dst, Vector2(dst.VIAL_W * 0.5, 0.0))
+	var dst_surface := _vial_point(dst, Vector2(dst.VIAL_W * 0.5, dst.surface_y()))
+	await _animate_droplet(src_top, dst_mouth, dst_surface, color)
 
 	await dst.animate_pour_in(color_id, amount)
 
@@ -438,6 +458,10 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	if dst.is_pure() and dst.is_full() and not dst.is_cauldron:
 		dst.celebrate()
 		dst.set_completed(true)
+		if dst == _rune_vial and not _rune_fired:
+			_rune_fired = true
+			dst.set_rune(false)
+			await _fire_catalyst(dst)
 		await get_tree().create_timer(0.13).timeout
 
 	_pouring = false
@@ -523,9 +547,88 @@ func _apply_reshuffle() -> void:
 	_refresh_completed_states()
 
 
+# ---- catalyst rune ------------------------------------------------------------
+
+# The catalyst releases: a golden glint + sparkle wave sweeps the board out
+# from the rune vial, then grants a gift — Mystery games peel one hidden fog
+# layer everywhere; otherwise a stray layer teleports home to its color family.
+func _fire_catalyst(origin: Vial) -> void:
+	for v: Vial in _vials:
+		var delay := absf(v.position.x - origin.position.x) * 0.0012 \
+			+ absf(v.position.y - origin.position.y) * 0.0008
+		v.gleam_flash(0.4, delay)
+		v.sparkle_burst(Color(1.0, 0.9, 0.55), delay)
+	if _fog_mode:
+		for v: Vial in _vials:
+			v.reveal_one_more()
+		return
+	await _catalyst_merge_stray()
+
+
+# Find the most satisfying stray layer (a color appearing exactly once in its
+# vial) and teleport it to the vial holding the most of that color. No-op if
+# nothing qualifies — the sparkle wave alone is the gift then.
+func _catalyst_merge_stray() -> void:
+	var best_src: Vial = null
+	var best_idx := -1
+	var best_dst: Vial = null
+	var best_count := 0
+	for src: Vial in _vials:
+		if src.is_cauldron or src.is_empty():
+			continue
+		var layers := src.get_layers()
+		var counts := {}
+		for l in layers:
+			if l != 0:
+				counts[l] = counts.get(l, 0) + 1
+		for i in range(layers.size()):
+			var cid: int = layers[i]
+			if cid == 0 or counts[cid] != 1:
+				continue
+			for dst: Vial in _vials:
+				if dst == src or dst.is_cauldron or dst.free_slots() == 0:
+					continue
+				var dcount := 0
+				for dl in dst.get_layers():
+					if dl == cid:
+						dcount += 1
+				if dcount > best_count:
+					best_count = dcount
+					best_src = src
+					best_idx = i
+					best_dst = dst
+	if best_src == null:
+		return
+
+	# Lift the stray out (layers above settle down), then pour it home.
+	var snap := best_src.get_layers()
+	var stray_cid: int = snap[best_idx]
+	snap.remove_at(best_idx)
+	snap.append(0)
+	best_src.restore(snap)
+	best_src.gleam_flash(0.3)
+	await _animate_droplet(
+		_vial_point(best_src, Vector2(best_src.VIAL_W * 0.5, 0.0)),
+		_vial_point(best_dst, Vector2(best_dst.VIAL_W * 0.5, 0.0)),
+		_vial_point(best_dst, Vector2(best_dst.VIAL_W * 0.5, best_dst.surface_y())),
+		_tinted_palette(stray_cid))
+	await best_dst.animate_pour_in(stray_cid, 1)
+	_refresh_completed_states()
+
+
+# A vial-local point in Game coordinates, honoring the vial's scale (the
+# cauldron is rendered at 0.62) — vials never rotate.
+func _vial_point(v: Vial, local: Vector2) -> Vector2:
+	return v.position + v.pivot_offset + (local - v.pivot_offset) * v.scale
+
+
 # ---- droplet arc animation --------------------------------------------------
 
-func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
+# The drop arcs from the source to the destination's MOUTH, then falls
+# straight down through the neck onto the liquid surface — it never passes
+# through the glass wall.
+func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector2,
+		color: Color) -> void:
 	# Shared material: the shader animates via TIME, so all pours can reuse it.
 	if _droplet_mat == null:
 		_droplet_mat = ShaderMaterial.new()
@@ -557,22 +660,38 @@ func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
 	add_child(trail)
 
 	var ctrl := Vector2(
-		(from_pos.x + to_pos.x) * 0.5,
-		min(from_pos.y, to_pos.y) - 72.0
+		(from_pos.x + mouth_pos.x) * 0.5,
+		min(from_pos.y, mouth_pos.y) - 72.0
 	)
 
+	# Segment 1: bezier arc to the destination's mouth.
 	var tw := create_tween()
 	tw.tween_method(func(t: float):
 		if not is_instance_valid(dot):
 			return
 		var q := from_pos.lerp(ctrl, t)
-		var r := ctrl.lerp(to_pos, t)
+		var r := ctrl.lerp(mouth_pos, t)
 		var p := q.lerp(r, t)
 		dot.position = p - Vector2(HALF, HALF)
 		if is_instance_valid(trail):
 			trail.position = p
 	, 0.0, 1.0, 0.18)
 	await tw.finished
+
+	# Segment 2: accelerating fall through the neck onto the liquid.
+	var drop_dist := surface_pos.y - mouth_pos.y
+	if drop_dist > 1.0:
+		var tw2 := create_tween()
+		tw2.tween_method(func(t: float):
+			if not is_instance_valid(dot):
+				return
+			var p := mouth_pos.lerp(surface_pos, t)
+			dot.position = p - Vector2(HALF, HALF)
+			if is_instance_valid(trail):
+				trail.position = p
+		, 0.0, 1.0, 0.06 + drop_dist * 0.0007) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await tw2.finished
 
 	if is_instance_valid(dot):
 		dot.queue_free()
@@ -593,7 +712,7 @@ func _animate_droplet(from_pos: Vector2, to_pos: Vector2, color: Color) -> void:
 	splash.gravity = Vector2(0, 480)
 	splash.initial_velocity_min = 60.0
 	splash.initial_velocity_max = 150.0
-	splash.position = to_pos
+	splash.position = surface_pos
 	splash.z_index = 20
 	add_child(splash)
 	splash.emitting = true
@@ -723,9 +842,12 @@ func _on_undo_pressed() -> void:
 	if src_vial != null and dst_vial != null and pour_amount > 0:
 		await dst_vial.animate_pour_out(pour_amount)
 		var color   := _tinted_palette(pour_color_id)
-		var dst_top := dst_vial.position + Vector2(dst_vial.VIAL_W * 0.5, 0.0)
-		var src_top := src_vial.position + Vector2(src_vial.VIAL_W * 0.5, 0.0)
-		await _animate_droplet(dst_top, src_top, color)   # arc runs dst → src (reversed)
+		# Reversed arc (dst → src): leave dst's mouth, drop into src.
+		var dst_top := _vial_point(dst_vial, Vector2(dst_vial.VIAL_W * 0.5, 0.0))
+		var src_mouth := _vial_point(src_vial, Vector2(src_vial.VIAL_W * 0.5, 0.0))
+		var src_surface := _vial_point(src_vial,
+			Vector2(src_vial.VIAL_W * 0.5, src_vial.surface_y()))
+		await _animate_droplet(dst_top, src_mouth, src_surface, color)
 
 	for i in range(_vials.size()):
 		(_vials[i] as Vial).restore(snap[i])

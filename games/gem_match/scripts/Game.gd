@@ -760,10 +760,15 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 						removed_set[t] = true
 						board[t.row][t.col] = null
 						to_remove.append(t)
-				detonate_queue.append(existing_special)
-				# Any other plain stars in the group also explode as BOMB (max tier).
+				# Queue EVERY special in the group — matching a bomb with a
+				# cross fires both (group tiles leave the board before chain
+				# detonation, so the blast-zone collector can't pick them up).
+				# Plain stars in the group also explode as BOMB (max tier).
 				for t in valid:
-					if t != existing_special and t.level == 7 and t.special_type == Tile.SPECIAL_NONE:
+					if t.special_type == Tile.SPECIAL_BOMB or \
+					   t.special_type == Tile.SPECIAL_CROSS:
+						detonate_queue.append(t)
+					elif t.level == 7 and t.special_type == Tile.SPECIAL_NONE:
 						t.special_type = Tile.SPECIAL_BOMB
 						detonate_queue.append(t)
 
@@ -827,6 +832,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		# Combo announcement from cascade 2 onward.
 		if any_match and cascade >= 2:
 			_show_combo(cascade)
+			_spawn_cascade_sparkle(cascade)
 			var note_idx: int = clamp(cascade - 2, 0, sfx_notes.size() - 1)
 			_play_sfx(sfx_notes[note_idx])
 
@@ -846,7 +852,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 							_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.55),
 									maxi(absi(dr), absi(dc)) * 0.05)
 			for center in cross_flash_centers:
-				_spawn_shockwave(center.r, center.c, Color(0.35, 0.65, 1.0, 0.85), 1.3, 0.35)
+				_spawn_shockwave(center.r, center.c, Color(0.35, 0.65, 1.0, 0.85), 2.4, 0.4, true)
 				_spawn_sparks(center.r, center.c, Color(0.62, 0.86, 1.0), 16, 300.0)
 				for nc in range(board_cols):
 					if SHAPE[center.r][nc] == 1:
@@ -977,18 +983,23 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
 	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.6)
 	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
+	# Ripple: each gem pops with a delay proportional to its distance from
+	# the heart — a wave of destruction rolling across the board.
+	var max_delay := 0.0
 	for t in to_remove:
-		if is_instance_valid(t):
-			var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.04
-			_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
-			_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
-
-	var tw := create_tween()
-	tw.set_parallel(true)
-	for t in to_remove:
-		tw.tween_property(t, "scale", Vector2.ZERO, 0.22) \
+		if not is_instance_valid(t):
+			continue
+		var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.045
+		max_delay = maxf(max_delay, delay)
+		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
+		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
+		var seq := create_tween()
+		seq.tween_interval(delay)
+		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		seq.tween_property(t, "scale", Vector2.ZERO, 0.15) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	await tw.finished
+	await get_tree().create_timer(max_delay + 0.24).timeout
 	for t in to_remove:
 		if is_instance_valid(t):
 			t.queue_free()
@@ -1403,24 +1414,33 @@ func _flash_screen() -> void:
 func _flash_rect_in_board(rect: Rect2, color: Color, delay: float = 0.0) -> void:
 	if not is_instance_valid(board_container):
 		return
+	# Chunky pixel sparkle: a blocky ✚ glint built around the node origin so
+	# it can pop-in with a scale tween. Matches the hand-drawn pixel art.
 	var p := Polygon2D.new()
-	var center: Vector2 = rect.position + rect.size * 0.5
-	var outer_radius: float = min(rect.size.x, rect.size.y) * 0.48
-	var inner_radius: float = outer_radius * 0.42
-	var points := PackedVector2Array()
-	for i in range(8):
-		var angle := -PI * 0.5 + float(i) * TAU / 8.0
-		var radius := outer_radius if i % 2 == 0 else inner_radius
-		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-	p.polygon = points
+	var arm: float = min(rect.size.x, rect.size.y) * 0.46
+	var thick: float = arm * 0.3
+	p.polygon = PackedVector2Array([
+		Vector2(-thick, -arm), Vector2(thick, -arm),
+		Vector2(thick, -thick), Vector2(arm, -thick),
+		Vector2(arm, thick), Vector2(thick, thick),
+		Vector2(thick, arm), Vector2(-thick, arm),
+		Vector2(-thick, thick), Vector2(-arm, thick),
+		Vector2(-arm, -thick), Vector2(-thick, -thick),
+	])
+	p.position = rect.position + rect.size * 0.5
 	p.color    = color
 	p.modulate = Color(1, 1, 1, 0)
+	p.scale    = Vector2(0.55, 0.55)
 	p.z_index  = 10
 	board_container.add_child(p)
 	var tw := create_tween()
 	if delay > 0.0:
 		tw.tween_interval(delay)
+	tw.set_parallel(true)
 	tw.tween_property(p, "modulate:a", 1.0, 0.07).set_ease(Tween.EASE_OUT)
+	tw.tween_property(p, "scale", Vector2.ONE, 0.10) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.set_parallel(false)
 	tw.tween_interval(0.10)
 	tw.tween_property(p, "modulate:a", 0.0, 0.28).set_ease(Tween.EASE_IN)
 	tw.tween_callback(p.queue_free)
@@ -1449,8 +1469,9 @@ func _fx_layer() -> Control:
 
 
 # Expanding pixel-block ring (shockwave.gdshader) centered on a board cell.
+# `cross` swaps the circle for a plus-shaped wavefront (CROSS gems).
 func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
-		duration: float = 0.45) -> void:
+		duration: float = 0.45, cross: bool = false) -> void:
 	if not is_instance_valid(board_container):
 		return
 	var rect := ColorRect.new()
@@ -1460,6 +1481,7 @@ func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
 	var mat := ShaderMaterial.new()
 	mat.shader = SHOCKWAVE_SHADER
 	mat.set_shader_parameter("ring_color", color)
+	mat.set_shader_parameter("cross_shape", cross)
 	# Must be set explicitly before tweening: an unset shader parameter reads
 	# back as null, which makes tween_property reject the property path.
 	mat.set_shader_parameter("progress", 0.0)
@@ -1469,6 +1491,23 @@ func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
 	tw.tween_property(mat, "shader_parameter/progress", 1.0, duration) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(rect.queue_free)
+
+
+# Board-wide glitter that grows with the cascade count: gentle gold sparkle
+# puffs at random board cells, scattered over a third of a second. Higher
+# cascades shift the sparkle cooler — gold toward white-blue.
+func _spawn_cascade_sparkle(cascade: int) -> void:
+	var count: int = clampi(3 + cascade * 2, 5, 14)
+	var cool := clampf((cascade - 2) * 0.12, 0.0, 0.7)
+	var color := Color(1.0, 0.93, 0.6).lerp(Color(0.75, 0.9, 1.0), cool)
+	for i in range(count):
+		var r := randi() % board_rows
+		var c := randi() % board_cols
+		if SHAPE[r][c] == 0:
+			continue
+		var tw := create_tween()
+		tw.tween_interval(randf() * 0.35)
+		tw.tween_callback(_spawn_sparks.bind(r, c, color, 5, 130.0))
 
 
 # Chunky square debris burst — pixel-art sparks, no texture asset needed.

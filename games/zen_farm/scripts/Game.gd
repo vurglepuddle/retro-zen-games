@@ -164,6 +164,10 @@ const FROGGO_FLIPPED_EXTRA_OFFSETS := {
 	Vector2i(18, 4): Vector2(8.0, 0.0),
 	Vector2i(17, 3): Vector2(4.0, 0.0),
 }
+# Decor tiles that sway in the wind — a frog perched on these rides along.
+# (17, 3) is a rock: rocks don't sway and neither should its frog.
+const FROGGO_SWAY_TILES := [Vector2i(14, 4), Vector2i(18, 4)]
+const FROGGO_SWAY_GENTLENESS := 1.0  # match the decor exactly — damping reads as sliding
 const POKE_RADIUS := 80.0
 const POKE_STRENGTH := 8.0
 const WATER_POKE_STRENGTH := 4.0
@@ -2145,6 +2149,7 @@ func _spawn_frog(cell: FarmCell, slot: int, atlas: Vector2i) -> void:
 		"slot": slot,
 		"atlas": atlas,
 		"body_anchor": _frog_body_anchor_for_slot(cell, slot, atlas),
+		"base_pos": sprite.position,
 		"timer": randf_range(1.0, 3.5),
 		"busy": false,
 		"tween": null,
@@ -2271,6 +2276,72 @@ func _frog_catch_flies(frog: Dictionary) -> void:
 	tw.tween_callback(func(): _frog_idle(frog))
 
 
+# GLSL hash from plant_sway.gdshader, bit-for-bit.
+func _shader_hash(p: Vector2) -> float:
+	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
+
+
+# Top-left of a decor tile's quad in map-local space — the same anchor the
+# sway shader reconstructs (texture_origin shifts the quad up).
+func _decor_quad_top_left(coord: Vector2i, atlas: Vector2i) -> Vector2:
+	var origin := Vector2i.ZERO
+	var ts := _decor_map.tile_set
+	if ts and ts.get_source_count() > 0:
+		var src := ts.get_source(ts.get_source_id(0)) as TileSetAtlasSource
+		if src and src.has_tile(atlas):
+			var td := src.get_tile_data(atlas, 0)
+			if td:
+				origin = td.texture_origin
+	return Vector2(coord.x * 64.0, coord.y * 64.0) - Vector2(origin)
+
+
+# Mirrors the decor layer's wind in plant_sway.gdshader (wind_strength 5.0,
+# wind_speed 1.0, wind_spread 0.038) so a perched froggo rides his grass
+# tuft. Shader TIME and engine ticks both count seconds since startup, so
+# the phases line up.
+func _frog_sway_offset(frog: Dictionary) -> float:
+	var atlas: Vector2i = frog.get("atlas", Vector2i(-1, -1))
+	if not (atlas in FROGGO_SWAY_TILES):
+		return 0.0
+	var cell := frog.get("cell") as FarmCell
+	var slot := int(frog.get("slot", -1))
+	if not is_instance_valid(cell) or slot < 0:
+		return 0.0
+	var anchor: Vector2 = frog.get("body_anchor", Vector2.ZERO)
+	var quad_tl := _decor_quad_top_left(_slot_coord(cell, slot), atlas)
+	var flower_id := (quad_tl / 64.0).floor()
+
+	var phase_jitter := _shader_hash(flower_id) * TAU
+	var speed_jitter := lerpf(0.94, 1.06, _shader_hash(flower_id + Vector2(3.1, 7.2)))
+	var amp_jitter   := lerpf(0.92, 1.08, _shader_hash(flower_id + Vector2(8.4, 1.9)))
+
+	# The frog sits partway up the tuft — same bend falloff as the shader.
+	var y01 := clampf((anchor.y - quad_tl.y) / 64.0, 0.0, 1.0)
+	var bend_mask := pow(1.0 - y01, 1.7)
+
+	var t := Time.get_ticks_msec() / 1000.0
+	var wave1 := sin(t * 1.0 * speed_jitter + anchor.x * 0.038 \
+		+ anchor.y * 0.018 + phase_jitter)
+	var wave2 := sin(t * 0.53 * speed_jitter + anchor.x * 0.038 * 1.7 \
+		+ anchor.y * 0.031 + phase_jitter * 1.37)
+	# Gust bands — same formula as the shader (gust_strength 0.45, speed 0.35).
+	var gust := 0.5 + 0.5 * sin(t * 0.35 * 2.0 - anchor.x * 0.006 - anchor.y * 0.003)
+	gust = lerpf(1.0 - 0.45, 1.0 + 0.45 * 0.6, gust)
+	return (wave1 * 0.7 + wave2 * 0.3) * 5.0 * amp_jitter * gust * bend_mask \
+		* FROGGO_SWAY_GENTLENESS
+
+
+func _apply_frog_sway(frog: Dictionary) -> void:
+	var atlas: Vector2i = frog.get("atlas", Vector2i(-1, -1))
+	if not (atlas in FROGGO_SWAY_TILES):
+		return
+	var sprite := frog.get("node") as AnimatedSprite2D
+	if sprite == null or not frog.has("base_pos"):
+		return
+	var base: Vector2 = frog["base_pos"]
+	sprite.position.x = base.x + _frog_sway_offset(frog)
+
+
 func _tick_frogs(delta: float) -> void:
 	if not _game_active:
 		return
@@ -2281,6 +2352,7 @@ func _tick_frogs(delta: float) -> void:
 		if not _frog_host_still_valid(frog):
 			_despawn_frog(frog, false)
 			continue
+		_apply_frog_sway(frog)
 		if bool(frog.get("busy", false)):
 			continue
 		frog["timer"] = float(frog.get("timer", 0.0)) - delta
