@@ -40,6 +40,15 @@ var _gleam_tween: Tween = null
 var _mote_tex: ImageTexture = null
 var _completed: bool = false
 
+# ---- capacity / cauldron ------------------------------------------------------
+# Slots at index >= capacity are permanently blocked (always 0). The Zen
+# cauldron is a capacity-1 vessel that accepts any color, one layer at a time.
+var capacity: int = MAX_LAYERS
+var is_cauldron: bool = false
+
+# Per-color-id modulate tints (alchemical batch variation); empty = no tint.
+var _tints: Array[Color] = []
+
 
 func _init() -> void:
 	custom_minimum_size = Vector2(VIAL_W, VIAL_H)
@@ -76,7 +85,7 @@ func is_empty() -> bool:
 
 
 func is_full() -> bool:
-	return _layers[MAX_LAYERS - 1] != 0
+	return _layers[capacity - 1] != 0
 
 
 func is_pure() -> bool:
@@ -122,8 +131,8 @@ func top_run_count() -> int:
 
 func free_slots() -> int:
 	var count := 0
-	for v in _layers:
-		if v == 0:
+	for i in range(capacity):
+		if _layers[i] == 0:
 			count += 1
 	return count
 
@@ -158,6 +167,38 @@ func _top_run_start() -> int:
 	while i > 0 and _layers[i - 1] == tc:
 		i -= 1
 	return i
+
+
+# ---- alchemical tints ---------------------------------------------------------
+
+func _tint_for(cid: int) -> Color:
+	if cid >= 1 and cid <= _tints.size():
+		return _tints[cid - 1]
+	return Color.WHITE
+
+
+# Tinted palette color for particle effects, so droplets/motes match the
+# liquid as currently displayed.
+func tinted_color(cid: int) -> Color:
+	var base := _palette[cid - 1] if cid >= 1 and cid <= _palette.size() else Color.WHITE
+	return base * _tint_for(cid)
+
+
+# Apply per-color-id tints to all visible liquid layers. Called every frame
+# while Zen drift is active, so it only touches RGB — the alpha channel
+# belongs to the pour fade animations.
+func set_tints(tints: Array[Color]) -> void:
+	_tints = tints
+	if _layer_rects.is_empty():
+		return  # before _build_visuals(); _set_layer_color applies tints later
+	for i in range(MAX_LAYERS):
+		if _layers[i] == 0:
+			continue
+		if _fog_mode and i < _fog_reveal_from:
+			continue
+		var t := _tint_for(_layers[i])
+		var rect := _layer_rects[i]
+		rect.modulate = Color(t.r, t.g, t.b, rect.modulate.a)
 
 
 # ---- snapshot / undo --------------------------------------------------------
@@ -201,9 +242,9 @@ func animate_pour_out(amount: int) -> void:
 
 
 func animate_pour_in(color_id: int, amount: int) -> void:
-	# Identify the lowest `amount` empty slots.
+	# Identify the lowest `amount` empty slots (blocked slots never qualify).
 	var indices: Array[int] = []
-	for i in range(MAX_LAYERS):
+	for i in range(capacity):
 		if _layers[i] == 0 and indices.size() < amount:
 			indices.append(i)
 
@@ -211,7 +252,7 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 		_layers[idx] = color_id
 		if color_id >= 1 and color_id <= _atlas_textures.size():
 			_layer_rects[idx].texture = _atlas_textures[color_id - 1]
-		_layer_rects[idx].modulate = Color.WHITE
+		_layer_rects[idx].modulate = _tint_for(color_id)
 		_layer_rects[idx].modulate.a = 0.0
 		if _layer_rects[idx].get_child_count() > 0:
 			_layer_rects[idx].get_child(0).visible = true
@@ -270,7 +311,7 @@ func set_completed(done: bool) -> void:
 			add_child(_complete_motes)
 		var cid := top_color()
 		if cid >= 1 and cid <= _palette.size():
-			_complete_motes.color = _palette[cid - 1].lightened(0.5)
+			_complete_motes.color = tinted_color(cid).lightened(0.5)
 		_complete_motes.color.a = 0.6
 		_complete_motes.emitting = true
 		# Occasional soft glass glint — the leading interval also keeps it
@@ -351,7 +392,7 @@ func show_selected(v: bool) -> void:
 			add_child(_select_motes)
 		var cid := top_color()
 		if cid >= 1 and cid <= _palette.size():
-			_select_motes.color = _palette[cid - 1].lightened(0.45)
+			_select_motes.color = tinted_color(cid).lightened(0.45)
 		_select_motes.emitting = true
 	elif _select_motes:
 		_select_motes.emitting = false
@@ -484,7 +525,7 @@ func _build_visuals() -> void:
 func _set_layer_color(rect: TextureRect, cid: int, fog: bool) -> void:
 	if cid > 0 and cid <= _atlas_textures.size():
 		rect.texture  = _atlas_textures[cid - 1]
-		rect.modulate = Color(0, 0, 0, 1) if fog else Color.WHITE
+		rect.modulate = Color(0, 0, 0, 1) if fog else _tint_for(cid)
 	else:
 		rect.texture    = null
 		rect.modulate.a = 0.0

@@ -57,6 +57,15 @@ var _max_undo_depth: int = 1     # -1 = unlimited (Zen); otherwise Easy=3, Mediu
 var _droplet_mat: ShaderMaterial = null  # lazily built, shared across all pours
 var _droplet_spark_tex: ImageTexture = null  # tiny white square for trail/splash sparks
 
+# ---- alchemical tints ---------------------------------------------------------
+# Every game rolls a subtle per-color tint (each brew batch is a little
+# different); in Zen mode the tints additionally wander on slow sine waves.
+var _color_tints: Array[Color] = []   # rolled per game, one per palette color
+var _active_tints: Array[Color] = []  # currently displayed (drifts in Zen)
+var _tint_phases: Array[Vector3] = [] # per color: random sine phases for r/g/b
+var _tint_time: float = 0.0
+var _zen_drift: bool = false
+
 @onready var _move_label:    Label   = $MoveLabel
 @onready var _best_label:    Label   = $BestLabel
 @onready var _undo_button:   Button  = $UndoButton
@@ -92,6 +101,7 @@ func set_difficulty(d: int) -> void:
 func _apply_difficulty_layout() -> void:
 	# Zen picks a random base difficulty each game (Easy/Medium/Hard).
 	_actual_difficulty = _difficulty if _difficulty != 3 else randi() % 3
+	_zen_drift = _difficulty == 3
 
 	# Mystery fog-of-war fires as a 25 % random event when the player chose
 	# Medium, Hard, or Zen.  The explicit Mystery button (d=4) always fires.
@@ -123,9 +133,58 @@ func _apply_difficulty_layout() -> void:
 				_vials_per_row = 5
 
 
+# Roll a subtle per-color tint for this game. Channel leans are normalized
+# (max channel = 1.0) so liquids only hue-shift, never darken — keeps every
+# color readable against its neighbours.
+func _roll_tints() -> void:
+	_color_tints.clear()
+	_tint_phases.clear()
+	for i in range(PALETTE.size()):
+		var c := Color(
+			randf_range(0.86, 1.0),
+			randf_range(0.86, 1.0),
+			randf_range(0.86, 1.0)
+		)
+		var m := maxf(c.r, maxf(c.g, c.b))
+		_color_tints.append(Color(c.r / m, c.g / m, c.b / m))
+		_tint_phases.append(Vector3(randf() * TAU, randf() * TAU, randf() * TAU))
+	_active_tints = _color_tints.duplicate()
+	_tint_time = 0.0
+
+
+# Zen drift: every color's tint wanders on slow desynced sine waves around
+# its rolled value — mesmerizing, like live reagents. Cheap: a handful of
+# modulate writes per frame.
+func _process(delta: float) -> void:
+	if not _zen_drift or _vials.is_empty():
+		return
+	_tint_time += delta
+	const DEPTH := 0.09
+	_active_tints.clear()
+	for i in range(_color_tints.size()):
+		var base := _color_tints[i]
+		var ph := _tint_phases[i]
+		var r := base.r * (1.0 - DEPTH * (0.5 + 0.5 * sin(_tint_time * 0.29 + ph.x)))
+		var g := base.g * (1.0 - DEPTH * (0.5 + 0.5 * sin(_tint_time * 0.23 + ph.y)))
+		var b := base.b * (1.0 - DEPTH * (0.5 + 0.5 * sin(_tint_time * 0.19 + ph.z)))
+		var m := maxf(r, maxf(g, b))
+		_active_tints.append(Color(r / m, g / m, b / m))
+	for v: Vial in _vials:
+		v.set_tints(_active_tints)
+
+
+# Tinted palette color for the pour droplet, matching the liquid on screen.
+func _tinted_palette(cid: int) -> Color:
+	var base := _palette[cid - 1] if cid >= 1 and cid <= _palette.size() else Color.WHITE
+	if cid >= 1 and cid <= _active_tints.size():
+		base = base * _active_tints[cid - 1]
+	return base
+
+
 # Called by Main.gd before the fade-in.
 func prepare_board() -> void:
 	_apply_difficulty_layout()  # re-roll Zen / Mystery every new game
+	_roll_tints()
 	_board_active = false
 	_undo_stack.clear()
 	_win_panel.visible = false
@@ -240,6 +299,7 @@ func _build_vials() -> void:
 		var layers: Array[int] = []
 		layers.assign(assignments[i] if i < assignments.size() else [])
 		vial.setup(layers, _palette)
+		vial.set_tints(_active_tints)
 		if _fog_mode:
 			vial.enable_fog()
 		vial.position = Vector2(
@@ -249,6 +309,24 @@ func _build_vials() -> void:
 		vial.tapped.connect(_on_vial_tapped)
 		add_child(vial)
 		_vials.append(vial)
+
+	# Zen brews get a tiny cauldron: a one-layer vessel that accepts any
+	# color — a gentle escape hatch and a little alchemical workbench.
+	if _difficulty == 3:
+		var cauldron := Vial.new()
+		cauldron.capacity = 1
+		cauldron.is_cauldron = true
+		var no_layers: Array[int] = []
+		cauldron.setup(no_layers, _palette)
+		cauldron.set_tints(_active_tints)
+		cauldron.scale = Vector2(0.62, 0.62)
+		cauldron.position = Vector2(
+			vp.x - cauldron.VIAL_W - 20.0,
+			vp.y - cauldron.VIAL_H - 26.0
+		)
+		cauldron.tapped.connect(_on_vial_tapped)
+		add_child(cauldron)
+		_vials.append(cauldron)
 
 	# Start hidden — start_game() will slide them in.
 	for v: Vial in _vials:
@@ -341,8 +419,7 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 
 	var color_id := src.top_color()
 	var amount   := mini(src.top_run_count(), dst.free_slots())
-	var color    := _palette[color_id - 1] if color_id >= 1 and color_id <= _palette.size() \
-		else Color.WHITE
+	var color    := _tinted_palette(color_id)
 
 	_save_undo_snapshot()
 
@@ -358,7 +435,7 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	_move_count += 1
 	_update_ui()
 
-	if dst.is_pure() and dst.is_full():
+	if dst.is_pure() and dst.is_full() and not dst.is_cauldron:
 		dst.celebrate()
 		dst.set_completed(true)
 		await get_tree().create_timer(0.13).timeout
@@ -419,9 +496,12 @@ func _on_reshuffle_pressed() -> void:
 
 
 func _apply_reshuffle() -> void:
-	# Collect all non-zero layers across all vials.
+	# Collect all non-zero layers across all vials. The cauldron keeps its
+	# layer (capacity 1 can't take a 5-deep refill), so it's skipped entirely.
 	var pool: Array[int] = []
 	for v: Vial in _vials:
+		if v.is_cauldron:
+			continue
 		for layer in v.get_layers():
 			if layer != 0:
 				pool.append(layer)
@@ -430,7 +510,7 @@ func _apply_reshuffle() -> void:
 	# Redistribute: fill non-empty vials from the pool, bottom to top.
 	var idx := 0
 	for v: Vial in _vials:
-		if v.is_empty():
+		if v.is_empty() or v.is_cauldron:
 			continue
 		var new_layers: Array[int] = [0, 0, 0, 0, 0]
 		for i in range(Vial.MAX_LAYERS):
@@ -544,7 +624,7 @@ func _make_droplet_sparks(color: Color) -> CPUParticles2D:
 # after undo and reshuffle, where vials change without pouring.
 func _refresh_completed_states() -> void:
 	for v: Vial in _vials:
-		v.set_completed(v.is_full() and v.is_pure())
+		v.set_completed(v.is_full() and v.is_pure() and not v.is_cauldron)
 
 
 # ---- win condition ----------------------------------------------------------
@@ -642,7 +722,7 @@ func _on_undo_pressed() -> void:
 
 	if src_vial != null and dst_vial != null and pour_amount > 0:
 		await dst_vial.animate_pour_out(pour_amount)
-		var color   := _palette[pour_color_id - 1] if pour_color_id >= 1 and pour_color_id <= _palette.size() else Color.WHITE
+		var color   := _tinted_palette(pour_color_id)
 		var dst_top := dst_vial.position + Vector2(dst_vial.VIAL_W * 0.5, 0.0)
 		var src_top := src_vial.position + Vector2(src_vial.VIAL_W * 0.5, 0.0)
 		await _animate_droplet(dst_top, src_top, color)   # arc runs dst → src (reversed)
