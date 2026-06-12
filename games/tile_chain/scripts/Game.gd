@@ -287,6 +287,15 @@ func _on_cell_tapped(cell: BoardCell) -> void:
 		if _sfx_milestone.stream:
 			_sfx_milestone.play()
 		_show_milestone(_current_combo)
+		# Milestone juice: punch the combo counter, burst both cells gold.
+		_combo_label.pivot_offset = _combo_label.size * 0.5
+		var punch := create_tween()
+		punch.tween_property(_combo_label, "scale", Vector2(1.35, 1.35), 0.1) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		punch.tween_property(_combo_label, "scale", Vector2.ONE, 0.22) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_selected.play_sparkle(20, 260.0)
+		cell.play_sparkle(20, 260.0)
 
 	_update_ui()
 

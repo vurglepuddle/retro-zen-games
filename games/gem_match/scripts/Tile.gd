@@ -36,6 +36,10 @@ var _hint_phase: float = 0.0
 
 var _effect_phase: float = 0.0
 
+# Timed mode: matching this gem adds `time_bonus` seconds to the clock.
+var time_bonus: int = 0
+var _bonus_label: Label = null
+
 @onready var _anim: AnimatedSprite2D = $Tile
 
 
@@ -74,6 +78,39 @@ func set_special(type: int) -> void:
 				and anim.sprite_frames.has_animation("sp_heart"):
 			anim.animation = "sp_heart"
 			anim.play()
+
+
+# Timed mode: stamp a "+N" seconds bonus on this gem — golden vetka text
+# with a dark outline, gently pulsing until the gem is matched.
+func set_time_bonus(v: int) -> void:
+	time_bonus = v
+	if v <= 0:
+		if _bonus_label:
+			_bonus_label.visible = false
+		return
+	if _bonus_label == null:
+		_bonus_label = Label.new()
+		var ls := LabelSettings.new()
+		ls.font = load("res://assets/font/vetka.ttf")
+		ls.font_size = 36
+		ls.font_color = Color(1.0, 0.85, 0.25)
+		ls.outline_size = 9
+		ls.outline_color = Color(0.28, 0.13, 0.0, 0.95)
+		_bonus_label.label_settings = ls
+		_bonus_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_bonus_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_bonus_label.size = Vector2(100, 44)
+		_bonus_label.position = Vector2(-50, -22)
+		_bonus_label.pivot_offset = Vector2(50, 22)
+		_bonus_label.z_index = 6
+		add_child(_bonus_label)
+		var tw := create_tween().set_loops()
+		tw.tween_property(_bonus_label, "scale", Vector2(1.18, 1.18), 0.55) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(_bonus_label, "scale", Vector2.ONE, 0.55) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_bonus_label.text = "+%d" % v
+	_bonus_label.visible = true
 
 
 # Draw pixel-art special markers behind the gem sprite.

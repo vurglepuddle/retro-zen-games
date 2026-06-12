@@ -57,6 +57,7 @@ const COMBO_WORDS := [
 ]
 
 const TIMED_DURATION      := 90.0
+const TIME_BONUS_CHANCE   := 0.06   # timed mode: chance a new gem carries +5..10 s
 const TIMED_SAVE_PATH     := "user://gem_match_save.cfg"
 const LEVEL_BASE_TARGET   := 1000   # score to beat level 1
 const LEVEL_TARGET_SCALE  := 1.3    # each level needs 30% more than the last
@@ -864,6 +865,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 						_flash_cell_in_board(nr, center.c, Color(0.25, 0.55, 1.0, 0.55),
 								absi(nr - center.r) * 0.03)
 			_play_sfx(sfx_match)
+			_collect_time_bonus(to_remove)
 			var tw := create_tween()
 			tw.set_parallel(true)
 			for t in to_remove:
@@ -1003,6 +1005,7 @@ func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
 
 	score += to_remove.size() * 10 * target_level
 	_play_sfx(sfx_color_bomb)
+	_collect_time_bonus(to_remove)
 
 	# Violet shockwave from the heart; cell flashes + sparks ride the wave
 	# outward, delayed by distance from the bomb.
@@ -1059,6 +1062,7 @@ func _fire_color_bomb_clear_board(bomb: Tile) -> void:
 	for t: Tile in to_remove:
 		score += 10 * t.level
 	_play_sfx(sfx_color_bomb)
+	_collect_time_bonus(to_remove)
 	await _animate_color_bomb_removal(to_remove, bomb, 7.0)
 	await _finish_color_bomb_resolution()
 
@@ -1083,6 +1087,7 @@ func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special
 	for t: Tile in to_remove:
 		score += 10 * t.level
 	_play_sfx(sfx_color_bomb)
+	_collect_time_bonus(to_remove)
 	if copied_special == Tile.SPECIAL_BOMB:
 		_play_sfx(sfx_explosion)
 	elif copied_special == Tile.SPECIAL_CROSS:
@@ -1253,6 +1258,8 @@ func _animate_fill() -> void:
 			board[r][c] = tile
 			board_container.add_child(tile)
 			tile.set_level(randi_range(1, 6))
+			if _timed_mode and randf() < TIME_BONUS_CHANCE:
+				tile.set_time_bonus(randi_range(5, 10))
 
 			var target := _cell_pos(r, c)
 			tile.position = Vector2(target.x, -(n - i) * float(cell_size))
@@ -1268,6 +1275,44 @@ func _animate_fill() -> void:
 		_play_sfx(sfx_tink)
 	else:
 		tw.kill()
+
+
+# Timed mode: sum the time bonuses on removed gems, extend the clock, and
+# float a golden "+N s" up from the last bonus gem. Call with tiles still
+# valid (before queue_free).
+func _collect_time_bonus(tiles: Array) -> void:
+	if not _timed_mode:
+		return
+	var total := 0
+	var at: Tile = null
+	for t in tiles:
+		if is_instance_valid(t) and t is Tile and t.time_bonus > 0:
+			total += t.time_bonus
+			at = t
+	if total <= 0:
+		return
+	_time_remaining = minf(_time_remaining + float(total), TIMED_DURATION)
+	_update_timer_display()
+
+	var lbl := Label.new()
+	var ls := LabelSettings.new()
+	ls.font = load("res://assets/font/vetka.ttf")
+	ls.font_size = 46
+	ls.font_color = Color(1.0, 0.88, 0.3)
+	ls.outline_size = 11
+	ls.outline_color = Color(0.3, 0.15, 0.0, 0.95)
+	lbl.label_settings = ls
+	lbl.text = "+%d s" % total
+	lbl.z_index = 30
+	lbl.position = at.position + Vector2(-44, -70)
+	board_container.add_child(lbl)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(lbl, "position:y", lbl.position.y - 52.0, 0.85) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.85) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(lbl.queue_free)
 
 
 # ----- Screen shake ---------------------------------------------------------
