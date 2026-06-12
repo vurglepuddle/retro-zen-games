@@ -253,6 +253,7 @@ func _build_vials() -> void:
 	# Start hidden — start_game() will slide them in.
 	for v: Vial in _vials:
 		v.modulate.a = 0.0
+	_refresh_completed_states()  # rare: random distribution made a vial pure
 
 
 func _generate_shuffled_layers() -> Array:
@@ -359,6 +360,7 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 
 	if dst.is_pure() and dst.is_full():
 		dst.celebrate()
+		dst.set_completed(true)
 		await get_tree().create_timer(0.13).timeout
 
 	_pouring = false
@@ -438,6 +440,7 @@ func _apply_reshuffle() -> void:
 		v.restore(new_layers)
 		if _fog_mode:
 			v.enable_fog()  # reset fog so only the new top run is visible
+	_refresh_completed_states()
 
 
 # ---- droplet arc animation --------------------------------------------------
@@ -535,6 +538,13 @@ func _make_droplet_sparks(color: Color) -> CPUParticles2D:
 	ramp.set_color(1, Color(1, 1, 1, 0.0))
 	fx.color_ramp = ramp
 	return fx
+
+
+# Sync each vial's "finished potion" sparkle with its actual state — needed
+# after undo and reshuffle, where vials change without pouring.
+func _refresh_completed_states() -> void:
+	for v: Vial in _vials:
+		v.set_completed(v.is_full() and v.is_pure())
 
 
 # ---- win condition ----------------------------------------------------------
@@ -639,6 +649,7 @@ func _on_undo_pressed() -> void:
 
 	for i in range(_vials.size()):
 		(_vials[i] as Vial).restore(snap[i])
+	_refresh_completed_states()
 	_move_count   = maxi(0, _move_count - 1)
 	_update_ui()
 	_pouring      = false

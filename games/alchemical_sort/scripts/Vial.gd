@@ -31,6 +31,15 @@ var _layer_rects:    Array[TextureRect]   = []
 var _atlas_textures: Array[AtlasTexture]  = []   # one entry per color id (0-based)
 var _outline: Panel = null
 
+# ---- magic visuals ------------------------------------------------------------
+var _select_motes:   CPUParticles2D = null  # essence pixels rising while selected
+var _complete_motes: CPUParticles2D = null  # sparse sparkle on completed vials
+var _gleam: TextureRect = null              # additive bottle flash (masked by bottle art)
+var _outline_tween: Tween = null
+var _gleam_tween: Tween = null
+var _mote_tex: ImageTexture = null
+var _completed: bool = false
+
 
 func _init() -> void:
 	custom_minimum_size = Vector2(VIAL_W, VIAL_H)
@@ -215,7 +224,7 @@ func animate_pour_in(color_id: int, amount: int) -> void:
 	await tw.finished
 
 
-# Quick scale-bounce when a vial becomes pure and full.
+# Scale-bounce + glass gleam + golden burst when a vial becomes pure and full.
 func celebrate() -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector2(1.14, 1.14), 0.08) \
@@ -223,12 +232,129 @@ func celebrate() -> void:
 	tw.tween_property(self, "scale", Vector2.ONE, 0.12) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
+	if _gleam:
+		_kill_gleam_tween()
+		_gleam_tween = create_tween()
+		_gleam_tween.tween_property(_gleam, "modulate:a", 0.55, 0.10) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_gleam_tween.tween_property(_gleam, "modulate:a", 0.0, 0.32) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+	var burst := _make_motes()
+	burst.one_shot = true
+	burst.explosiveness = 1.0
+	burst.amount = 12
+	burst.lifetime = 0.7
+	burst.spread = 40.0
+	burst.initial_velocity_min = 30.0
+	burst.initial_velocity_max = 85.0
+	burst.color = Color(1.0, 0.9, 0.55)
+	add_child(burst)
+	burst.emitting = true
+	burst.finished.connect(burst.queue_free)
+
+
+# Persistent "finished potion" state: sparse motes of the vial's own color
+# drift up from the mouth, and the glass glints softly every few seconds.
+func set_completed(done: bool) -> void:
+	if done == _completed:
+		return
+	_completed = done
+	if done:
+		if _complete_motes == null:
+			_complete_motes = _make_motes()
+			_complete_motes.amount = 3
+			_complete_motes.lifetime = 1.6
+			_complete_motes.initial_velocity_min = 6.0
+			_complete_motes.initial_velocity_max = 16.0
+			add_child(_complete_motes)
+		var cid := top_color()
+		if cid >= 1 and cid <= _palette.size():
+			_complete_motes.color = _palette[cid - 1].lightened(0.5)
+		_complete_motes.color.a = 0.6
+		_complete_motes.emitting = true
+		# Occasional soft glass glint — the leading interval also keeps it
+		# from fighting the celebrate() flash on the same property.
+		_kill_gleam_tween()
+		if _gleam:
+			_gleam_tween = create_tween().set_loops()
+			_gleam_tween.tween_interval(2.2)
+			_gleam_tween.tween_property(_gleam, "modulate:a", 0.12, 0.8) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			_gleam_tween.tween_property(_gleam, "modulate:a", 0.0, 0.8) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	else:
+		if _complete_motes:
+			_complete_motes.emitting = false
+		_kill_gleam_tween()
+		if _gleam:
+			_gleam.modulate.a = 0.0
+
+
+func _kill_gleam_tween() -> void:
+	if _gleam_tween and is_instance_valid(_gleam_tween):
+		_gleam_tween.kill()
+	_gleam_tween = null
+
+
+# Base emitter for essence motes: tiny squares rising from the bottle mouth.
+func _make_motes() -> CPUParticles2D:
+	if _mote_tex == null:
+		var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_mote_tex = ImageTexture.create_from_image(img)
+	var fx := CPUParticles2D.new()
+	fx.texture = _mote_tex
+	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.position = Vector2(VIAL_W * 0.5, 10.0)   # bottle mouth
+	fx.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	fx.emission_rect_extents = Vector2(9.0, 3.0)
+	fx.direction = Vector2.UP
+	fx.spread = 14.0
+	fx.gravity = Vector2(0, -14)                # gentle upward drift
+	fx.initial_velocity_min = 10.0
+	fx.initial_velocity_max = 26.0
+	fx.amount = 6
+	fx.lifetime = 1.1
+	fx.scale_amount_min = 1.0
+	fx.scale_amount_max = 2.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.9))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
+	fx.color_ramp = ramp
+	fx.emitting = false
+	return fx
+
 
 # ---- selection --------------------------------------------------------------
 
 func show_selected(v: bool) -> void:
 	if _outline:
 		_outline.visible = v
+		if _outline_tween and is_instance_valid(_outline_tween):
+			_outline_tween.kill()
+			_outline_tween = null
+		_outline.modulate.a = 1.0
+		if v:
+			# Slow breathing pulse on the golden outline.
+			_outline_tween = create_tween().set_loops()
+			_outline_tween.tween_property(_outline, "modulate:a", 0.45, 0.55) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			_outline_tween.tween_property(_outline, "modulate:a", 1.0, 0.55) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	# Essence motes: stray pixels of the potion's color drift off the mouth
+	# while the vial is "held".
+	if v and not is_empty():
+		if _select_motes == null:
+			_select_motes = _make_motes()
+			add_child(_select_motes)
+		var cid := top_color()
+		if cid >= 1 and cid <= _palette.size():
+			_select_motes.color = _palette[cid - 1].lightened(0.45)
+		_select_motes.emitting = true
+	elif _select_motes:
+		_select_motes.emitting = false
 
 
 # ---- visuals (placeholder — swap with sprite art) ---------------------------
@@ -324,6 +450,20 @@ func _build_visuals() -> void:
 	overlay.size         = Vector2(VIAL_W, VIAL_H)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(overlay)
+
+	# 4b. Gleam — additive copy of the bottle art, flashed on completion and
+	#     softly pulsed afterwards. The art doubles as its own mask, so the
+	#     glow never spills outside the glass.
+	var gleam_mat := CanvasItemMaterial.new()
+	gleam_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_gleam = TextureRect.new()
+	_gleam.texture      = bottle_tex
+	_gleam.stretch_mode = TextureRect.STRETCH_KEEP
+	_gleam.size         = Vector2(VIAL_W, VIAL_H)
+	_gleam.material     = gleam_mat
+	_gleam.modulate.a   = 0.0
+	_gleam.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_gleam)
 
 	# 5. Selection outline — topmost so it's never obscured.
 	var out_style := StyleBoxFlat.new()
