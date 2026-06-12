@@ -5,6 +5,7 @@ signal back_to_menu
 signal play_again
 
 const TILE_SCENE = preload("res://games/gem_match/scenes/Tile.tscn")
+const SHOCKWAVE_SHADER = preload("res://games/gem_match/assets/shockwave.gdshader")
 
 # Octagonal board (11 rows x 7 cols). 0 = empty cell, 1 = valid cell.
 const SHAPE := [
@@ -89,6 +90,10 @@ var _level_label:       Label = null
 # Score milestone flash overlay.
 var _flash_overlay: ColorRect = null
 var _next_milestone: int = 1000
+
+# Explosion FX: clipped layer for shockwaves/sparks + shared spark texture.
+var _fx_clip: Control = null
+var _spark_texture: ImageTexture = null
 
 @onready var board_container: Node2D = $Board
 @onready var score_label: Label      = $ScoreLabel
@@ -828,20 +833,30 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		# 1. Scale matched tiles to zero then free them.
 		if to_remove.size() > 0:
 			for center in bomb_flash_centers:
+				_spawn_shockwave(center.r, center.c, Color(1.0, 0.62, 0.2, 0.9), 1.9)
+				_spawn_sparks(center.r, center.c, Color(1.0, 0.78, 0.3), 22, 340.0)
 				for dr in range(-1, 2):
 					for dc in range(-1, 2):
 						var nr: int = center.r + dr
 						var nc: int = center.c + dc
 						if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols \
 								and SHAPE[nr][nc] == 1:
-							_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.55))
+							# Center cell flashes first, ring of 8 follows — a tiny
+							# outward blast wave instead of a simultaneous blink.
+							_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.55),
+									maxi(absi(dr), absi(dc)) * 0.05)
 			for center in cross_flash_centers:
+				_spawn_shockwave(center.r, center.c, Color(0.35, 0.65, 1.0, 0.85), 1.3, 0.35)
+				_spawn_sparks(center.r, center.c, Color(0.62, 0.86, 1.0), 16, 300.0)
 				for nc in range(board_cols):
 					if SHAPE[center.r][nc] == 1:
-						_flash_cell_in_board(center.r, nc, Color(0.25, 0.55, 1.0, 0.55))
+						# Flashes sweep outward along the row/column like a bolt.
+						_flash_cell_in_board(center.r, nc, Color(0.25, 0.55, 1.0, 0.55),
+								absi(nc - center.c) * 0.03)
 				for nr in range(board_rows):
 					if SHAPE[nr][center.c] == 1:
-						_flash_cell_in_board(nr, center.c, Color(0.25, 0.55, 1.0, 0.55))
+						_flash_cell_in_board(nr, center.c, Color(0.25, 0.55, 1.0, 0.55),
+								absi(nr - center.r) * 0.03)
 			_play_sfx(sfx_match)
 			var tw := create_tween()
 			tw.set_parallel(true)
@@ -956,9 +971,17 @@ func _fire_color_bomb(bomb: Tile, target_level: int) -> void:
 	score += to_remove.size() * 10 * target_level
 	_play_sfx(sfx_color_bomb)
 
+	# Violet shockwave from the heart; cell flashes + sparks ride the wave
+	# outward, delayed by distance from the bomb.
+	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
+	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
+	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.6)
+	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
 	for t in to_remove:
 		if is_instance_valid(t):
-			_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55))
+			var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.04
+			_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
+			_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
 
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -1377,7 +1400,7 @@ func _flash_screen() -> void:
 
 # ----- Explosion zone flash --------------------------------------------------
 
-func _flash_rect_in_board(rect: Rect2, color: Color) -> void:
+func _flash_rect_in_board(rect: Rect2, color: Color, delay: float = 0.0) -> void:
 	if not is_instance_valid(board_container):
 		return
 	var p := Polygon2D.new()
@@ -1395,16 +1418,91 @@ func _flash_rect_in_board(rect: Rect2, color: Color) -> void:
 	p.z_index  = 10
 	board_container.add_child(p)
 	var tw := create_tween()
+	if delay > 0.0:
+		tw.tween_interval(delay)
 	tw.tween_property(p, "modulate:a", 1.0, 0.07).set_ease(Tween.EASE_OUT)
 	tw.tween_interval(0.10)
 	tw.tween_property(p, "modulate:a", 0.0, 0.28).set_ease(Tween.EASE_IN)
 	tw.tween_callback(p.queue_free)
 
 
-func _flash_cell_in_board(r: int, c: int, color: Color) -> void:
+func _flash_cell_in_board(r: int, c: int, color: Color, delay: float = 0.0) -> void:
 	_flash_rect_in_board(
 		Rect2(c * float(cell_size), r * float(cell_size), float(cell_size), float(cell_size)),
-		color)
+		color, delay)
+
+
+# ----- Explosion shockwave + sparks ------------------------------------------
+
+# Lazily created Control that clips shockwaves/sparks to the board rect so
+# nothing bleeds onto the background art outside the gem field.
+func _fx_layer() -> Control:
+	if _fx_clip == null or not is_instance_valid(_fx_clip):
+		_fx_clip = Control.new()
+		_fx_clip.clip_contents = true
+		_fx_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fx_clip.position = Vector2.ZERO
+		_fx_clip.size = Vector2(board_cols * cell_size, board_rows * cell_size)
+		_fx_clip.z_index = 11
+		board_container.add_child(_fx_clip)
+	return _fx_clip
+
+
+# Expanding pixel-block ring (shockwave.gdshader) centered on a board cell.
+func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
+		duration: float = 0.45) -> void:
+	if not is_instance_valid(board_container):
+		return
+	var rect := ColorRect.new()
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.size = Vector2.ONE * cell_size * radius_cells * 2.0
+	rect.position = Vector2((c + 0.5) * cell_size, (r + 0.5) * cell_size) - rect.size * 0.5
+	var mat := ShaderMaterial.new()
+	mat.shader = SHOCKWAVE_SHADER
+	mat.set_shader_parameter("ring_color", color)
+	# Must be set explicitly before tweening: an unset shader parameter reads
+	# back as null, which makes tween_property reject the property path.
+	mat.set_shader_parameter("progress", 0.0)
+	rect.material = mat
+	_fx_layer().add_child(rect)
+	var tw := create_tween()
+	tw.tween_property(mat, "shader_parameter/progress", 1.0, duration) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(rect.queue_free)
+
+
+# Chunky square debris burst — pixel-art sparks, no texture asset needed.
+func _spawn_sparks(r: int, c: int, color: Color, count: int = 18,
+		speed: float = 300.0) -> void:
+	if not is_instance_valid(board_container):
+		return
+	if _spark_texture == null:
+		var img := Image.create(3, 3, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_spark_texture = ImageTexture.create_from_image(img)
+	var fx := CPUParticles2D.new()
+	fx.position = Vector2((c + 0.5) * cell_size, (r + 0.5) * cell_size)
+	fx.texture = _spark_texture
+	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.one_shot = true
+	fx.explosiveness = 1.0
+	fx.amount = count
+	fx.lifetime = 0.6
+	fx.direction = Vector2.RIGHT
+	fx.spread = 180.0
+	fx.gravity = Vector2(0, 420)
+	fx.initial_velocity_min = speed * 0.3
+	fx.initial_velocity_max = speed
+	fx.scale_amount_min = 1.4
+	fx.scale_amount_max = 3.2
+	fx.color = color
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 1))
+	ramp.set_color(1, Color(1, 1, 1, 0))
+	fx.color_ramp = ramp
+	_fx_layer().add_child(fx)
+	fx.emitting = true
+	fx.finished.connect(fx.queue_free)
 
 
 # ----- Audio helpers --------------------------------------------------------
