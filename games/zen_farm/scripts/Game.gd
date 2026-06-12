@@ -164,10 +164,10 @@ const FROGGO_FLIPPED_EXTRA_OFFSETS := {
 	Vector2i(18, 4): Vector2(8.0, 0.0),
 	Vector2i(17, 3): Vector2(4.0, 0.0),
 }
-# Decor tiles that sway in the wind — a frog perched on these rides along.
-# (17, 3) is a rock: rocks don't sway and neither should its frog.
+# Decor tiles that sway in the wind — a frog perched on these rides along
+# via froggo_ride.gdshader (same GPU clock as the decor sway, so he stays
+# glued). (17, 3) is a rock: rocks don't sway and neither should its frog.
 const FROGGO_SWAY_TILES := [Vector2i(14, 4), Vector2i(18, 4)]
-const FROGGO_SWAY_GENTLENESS := 1.0  # match the decor exactly — damping reads as sliding
 const POKE_RADIUS := 80.0
 const POKE_STRENGTH := 8.0
 const WATER_POKE_STRENGTH := 4.0
@@ -1582,37 +1582,48 @@ func _update_day_night(delta: float) -> void:
 	_sync_day_night_insects()
 
 
+# Catmull-Rom through the keyframes: C1-continuous, so dusk/dawn glide
+# through each key instead of easing to a stop at it (the old per-segment
+# smoothstep made the grade visibly pause and step at every keyframe).
 func _day_night_params(phase: float) -> Dictionary:
-	var previous: Dictionary = DAY_NIGHT_KEYS[0]
-	for i in range(1, DAY_NIGHT_KEYS.size()):
-		var next: Dictionary = DAY_NIGHT_KEYS[i]
-		var next_t := float(next["t"])
-		if phase <= next_t:
-			var prev_t := float(previous["t"])
-			var span := maxf(0.001, next_t - prev_t)
-			var u := smoothstep(0.0, 1.0, clampf((phase - prev_t) / span, 0.0, 1.0))
-			var shadow_a: Color = previous["shadow"]
-			var shadow_b: Color = next["shadow"]
-			var mid_a: Color = previous["mid"]
-			var mid_b: Color = next["mid"]
-			var highlight_a: Color = previous["highlight"]
-			var highlight_b: Color = next["highlight"]
-			return {
-				"shadow": shadow_a.lerp(shadow_b, u),
-				"mid": mid_a.lerp(mid_b, u),
-				"highlight": highlight_a.lerp(highlight_b, u),
-				"night": lerpf(float(previous["night"]), float(next["night"]), u),
-				"dusk": lerpf(float(previous["dusk"]), float(next["dusk"]), u),
-				"dawn": lerpf(float(previous["dawn"]), float(next["dawn"]), u),
-				"sat": lerpf(float(previous["sat"]), float(next["sat"]), u),
-				"exposure": lerpf(float(previous["exposure"]), float(next["exposure"]), u),
-				"contrast": lerpf(float(previous["contrast"]), float(next["contrast"]), u),
-				"lift": lerpf(float(previous["lift"]), float(next["lift"]), u),
-				"vignette": lerpf(float(previous["vignette"]), float(next["vignette"]), u),
-				"lamp": lerpf(float(previous["lamp"]), float(next["lamp"]), u),
-			}
-		previous = next
-	return DAY_NIGHT_KEYS[0]
+	phase = clampf(phase, 0.0, 1.0)
+	var n := DAY_NIGHT_KEYS.size()
+	var i := n - 2
+	for j in range(1, n):
+		if phase <= float(DAY_NIGHT_KEYS[j]["t"]):
+			i = j - 1
+			break
+	var prev_t := float(DAY_NIGHT_KEYS[i]["t"])
+	var next_t := float(DAY_NIGHT_KEYS[i + 1]["t"])
+	var u := clampf((phase - prev_t) / maxf(0.001, next_t - prev_t), 0.0, 1.0)
+	# Keys 0 and n-1 are the same midnight moment, so neighbors wrap.
+	var k0: Dictionary = DAY_NIGHT_KEYS[i - 1 if i > 0 else n - 2]
+	var k1: Dictionary = DAY_NIGHT_KEYS[i]
+	var k2: Dictionary = DAY_NIGHT_KEYS[i + 1]
+	var k3: Dictionary = DAY_NIGHT_KEYS[i + 2 if i + 2 <= n - 1 else 1]
+
+	var out := {}
+	for key in ["night", "dusk", "dawn", "sat", "exposure", "contrast",
+			"lift", "vignette", "lamp"]:
+		out[key] = maxf(0.0, _catmull(
+			float(k0[key]), float(k1[key]), float(k2[key]), float(k3[key]), u))
+	for key in ["shadow", "mid", "highlight"]:
+		var c0: Color = k0[key]
+		var c1: Color = k1[key]
+		var c2: Color = k2[key]
+		var c3: Color = k3[key]
+		out[key] = Color(
+			clampf(_catmull(c0.r, c1.r, c2.r, c3.r, u), 0.0, 1.0),
+			clampf(_catmull(c0.g, c1.g, c2.g, c3.g, u), 0.0, 1.0),
+			clampf(_catmull(c0.b, c1.b, c2.b, c3.b, u), 0.0, 1.0),
+			1.0)
+	return out
+
+
+func _catmull(v0: float, v1: float, v2: float, v3: float, u: float) -> float:
+	return 0.5 * (2.0 * v1 + (-v0 + v2) * u \
+		+ (2.0 * v0 - 5.0 * v1 + 4.0 * v2 - v3) * u * u \
+		+ (-v0 + 3.0 * v1 - 3.0 * v2 + v3) * u * u * u)
 
 
 func _sync_day_night_insects() -> void:
@@ -2142,6 +2153,16 @@ func _spawn_frog(cell: FarmCell, slot: int, atlas: Vector2i) -> void:
 	sprite.position = _frog_position_for_slot(cell, slot, atlas, sprite)
 	sprite.z_index = _frog_z_for_slot(slot)
 	sprite.play(&"idle", randf_range(FROGGO_IDLE_SPEED_MIN, FROGGO_IDLE_SPEED_MAX))
+	if atlas in FROGGO_SWAY_TILES:
+		var quad_tl := _decor_quad_top_left(_slot_coord(cell, slot), atlas)
+		var seat := _frog_body_anchor_for_slot(cell, slot, atlas)
+		var y01 := clampf((seat.y - quad_tl.y) / 64.0, 0.0, 1.0)
+		var ride := ShaderMaterial.new()
+		ride.shader = load("res://games/zen_farm/assets/froggo_ride.gdshader")
+		ride.set_shader_parameter("seat_pos", seat)
+		ride.set_shader_parameter("flower_id", (quad_tl / 64.0).floor())
+		ride.set_shader_parameter("bend_mask", pow(1.0 - y01, 1.7))
+		sprite.material = ride
 	_insect_parent().add_child(sprite)
 	var frog := {
 		"node": sprite,
@@ -2149,7 +2170,6 @@ func _spawn_frog(cell: FarmCell, slot: int, atlas: Vector2i) -> void:
 		"slot": slot,
 		"atlas": atlas,
 		"body_anchor": _frog_body_anchor_for_slot(cell, slot, atlas),
-		"base_pos": sprite.position,
 		"timer": randf_range(1.0, 3.5),
 		"busy": false,
 		"tween": null,
@@ -2276,11 +2296,6 @@ func _frog_catch_flies(frog: Dictionary) -> void:
 	tw.tween_callback(func(): _frog_idle(frog))
 
 
-# GLSL hash from plant_sway.gdshader, bit-for-bit.
-func _shader_hash(p: Vector2) -> float:
-	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
-
-
 # Top-left of a decor tile's quad in map-local space — the same anchor the
 # sway shader reconstructs (texture_origin shifts the quad up).
 func _decor_quad_top_left(coord: Vector2i, atlas: Vector2i) -> Vector2:
@@ -2295,53 +2310,6 @@ func _decor_quad_top_left(coord: Vector2i, atlas: Vector2i) -> Vector2:
 	return Vector2(coord.x * 64.0, coord.y * 64.0) - Vector2(origin)
 
 
-# Mirrors the decor layer's wind in plant_sway.gdshader (wind_strength 5.0,
-# wind_speed 1.0, wind_spread 0.038) so a perched froggo rides his grass
-# tuft. Shader TIME and engine ticks both count seconds since startup, so
-# the phases line up.
-func _frog_sway_offset(frog: Dictionary) -> float:
-	var atlas: Vector2i = frog.get("atlas", Vector2i(-1, -1))
-	if not (atlas in FROGGO_SWAY_TILES):
-		return 0.0
-	var cell := frog.get("cell") as FarmCell
-	var slot := int(frog.get("slot", -1))
-	if not is_instance_valid(cell) or slot < 0:
-		return 0.0
-	var anchor: Vector2 = frog.get("body_anchor", Vector2.ZERO)
-	var quad_tl := _decor_quad_top_left(_slot_coord(cell, slot), atlas)
-	var flower_id := (quad_tl / 64.0).floor()
-
-	var phase_jitter := _shader_hash(flower_id) * TAU
-	var speed_jitter := lerpf(0.94, 1.06, _shader_hash(flower_id + Vector2(3.1, 7.2)))
-	var amp_jitter   := lerpf(0.92, 1.08, _shader_hash(flower_id + Vector2(8.4, 1.9)))
-
-	# The frog sits partway up the tuft — same bend falloff as the shader.
-	var y01 := clampf((anchor.y - quad_tl.y) / 64.0, 0.0, 1.0)
-	var bend_mask := pow(1.0 - y01, 1.7)
-
-	var t := Time.get_ticks_msec() / 1000.0
-	var wave1 := sin(t * 1.0 * speed_jitter + anchor.x * 0.038 \
-		+ anchor.y * 0.018 + phase_jitter)
-	var wave2 := sin(t * 0.53 * speed_jitter + anchor.x * 0.038 * 1.7 \
-		+ anchor.y * 0.031 + phase_jitter * 1.37)
-	# Gust bands — same formula as the shader (gust_strength 0.45, speed 0.35).
-	var gust := 0.5 + 0.5 * sin(t * 0.35 * 2.0 - anchor.x * 0.006 - anchor.y * 0.003)
-	gust = lerpf(1.0 - 0.45, 1.0 + 0.45 * 0.6, gust)
-	return (wave1 * 0.7 + wave2 * 0.3) * 5.0 * amp_jitter * gust * bend_mask \
-		* FROGGO_SWAY_GENTLENESS
-
-
-func _apply_frog_sway(frog: Dictionary) -> void:
-	var atlas: Vector2i = frog.get("atlas", Vector2i(-1, -1))
-	if not (atlas in FROGGO_SWAY_TILES):
-		return
-	var sprite := frog.get("node") as AnimatedSprite2D
-	if sprite == null or not frog.has("base_pos"):
-		return
-	var base: Vector2 = frog["base_pos"]
-	sprite.position.x = base.x + _frog_sway_offset(frog)
-
-
 func _tick_frogs(delta: float) -> void:
 	if not _game_active:
 		return
@@ -2352,7 +2320,6 @@ func _tick_frogs(delta: float) -> void:
 		if not _frog_host_still_valid(frog):
 			_despawn_frog(frog, false)
 			continue
-		_apply_frog_sway(frog)
 		if bool(frog.get("busy", false)):
 			continue
 		frog["timer"] = float(frog.get("timer", 0.0)) - delta

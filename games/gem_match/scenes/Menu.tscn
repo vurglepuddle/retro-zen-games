@@ -47,12 +47,6 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 24
 text = "Start Game"
 
-[node name="Bg" type="Sprite2D" parent="."]
-z_index = -999
-position = Vector2(270, 480)
-scale = Vector2(0.499284, 0.499284)
-texture = ExtResource("3_cbor3")
-
 [node name="LogoGem" type="Sprite2D" parent="."]
 position = Vector2(269, 271)
 scale = Vector2(0.437848, 0.437848)
@@ -116,6 +110,12 @@ flat = true
 
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("8_click")
+
+[node name="Bg" type="Sprite2D" parent="."]
+z_index = -999
+position = Vector2(270.5, 601)
+scale = Vector2(0.872581, 0.872581)
+texture = ExtResource("3_cbor3")
 
 [connection signal="pressed" from="Panel/VBox/StartButton" to="." method="_on_StartButton_pressed"]
 [connection signal="pressed" from="Start" to="." method="_on_Start_pressed"]

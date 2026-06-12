@@ -15,6 +15,7 @@ var _a_rect: TextureRect
 var _b_rect: TextureRect
 var _c_rect: TextureRect
 var _outline: Panel
+var _halo: Panel       # soft outer glow shown with the selection outline
 
 # Per-layer idle-spin guard flags.
 var _spinning_a := false
@@ -38,6 +39,7 @@ func _ready() -> void:
 	_idle_loop("a", randf_range(4.0, 9.0))
 	_idle_loop("b", randf_range(4.0, 8.0))
 	_idle_loop("c", randf_range(4.0, 7.0))
+	_glint_loop(randf_range(6.0, 14.0))
 
 
 func setup(z_tex: Texture2D, a_tex: Texture2D, a_val: int,
@@ -84,15 +86,34 @@ func setup(z_tex: Texture2D, a_tex: Texture2D, a_val: int,
 	_outline.z_as_relative = false
 	_outline.z_index = 115  # above A/B/C (110) and bgsmall (100)
 
+	# Soft outer halo — a wider, fainter golden ring behind the outline that
+	# breathes while the cell is selected.
+	var halo_style := StyleBoxFlat.new()
+	halo_style.bg_color = Color(0, 0, 0, 0)
+	halo_style.set_border_width_all(5)
+	halo_style.border_color = Color(1.0, 0.88, 0.35, 0.30)
+	halo_style.set_corner_radius_all(8)
+	_halo = Panel.new()
+	_halo.add_theme_stylebox_override("panel", halo_style)
+	_halo.size = Vector2(CELL_SIZE + 12, CELL_SIZE + 12)
+	_halo.position = Vector2(-6, -6)
+	_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_halo.visible = false
+	_halo.z_as_relative = false
+	_halo.z_index = 114
+
 	add_child(_z_rect)
 	add_child(_a_rect)
 	add_child(_b_rect)
 	add_child(_c_rect)
+	add_child(_halo)
 	add_child(_outline)
 
 
 func show_outline(v: bool) -> void:
 	_outline.visible = v
+	if _halo:
+		_halo.visible = v
 	if v:
 		_start_pulse()
 	else:
@@ -131,6 +152,7 @@ func remove_element(layer: String) -> void:
 
 func _spin_out(rect: TextureRect) -> void:
 	rect.pivot_offset = Vector2(CELL_SIZE * 0.5, CELL_SIZE * 0.5)
+	play_sparkle(8, 140.0, Color(1.0, 0.95, 0.75))
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(rect, "rotation_degrees", 180.0, 0.5) \
@@ -138,6 +160,85 @@ func _spin_out(rect: TextureRect) -> void:
 	tw.tween_property(rect, "modulate:a", 0.0, 0.44)
 	tw.tween_property(rect, "scale", Vector2(0.55, 0.55), 0.5) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+
+
+# Pixel spark burst at the cell centre — removal pops and combo milestones.
+static var _spark_tex: ImageTexture = null
+
+func play_sparkle(count: int = 12, speed: float = 170.0,
+		color: Color = Color(1.0, 0.93, 0.6)) -> void:
+	if _spark_tex == null:
+		var img := Image.create(3, 3, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_spark_tex = ImageTexture.create_from_image(img)
+	var fx := CPUParticles2D.new()
+	fx.texture = _spark_tex
+	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.position = Vector2(CELL_SIZE * 0.5, CELL_SIZE * 0.5)
+	fx.one_shot = true
+	fx.explosiveness = 1.0
+	fx.amount = count
+	fx.lifetime = 0.5
+	fx.direction = Vector2.RIGHT
+	fx.spread = 180.0
+	fx.gravity = Vector2(0, 200)
+	fx.initial_velocity_min = speed * 0.3
+	fx.initial_velocity_max = speed
+	fx.scale_amount_min = 1.0
+	fx.scale_amount_max = 2.2
+	fx.color = color
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.95))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
+	fx.color_ramp = ramp
+	fx.z_as_relative = false
+	fx.z_index = 118
+	add_child(fx)
+	fx.emitting = true
+	fx.finished.connect(fx.queue_free)
+
+
+# ----- Border glints -----------------------------------------------------------
+
+# Background coroutine: occasionally a tiny glint sparkles on the tile
+# border — quiet rune-glint life across the board.
+func _glint_loop(initial_delay: float) -> void:
+	await get_tree().create_timer(initial_delay).timeout
+	while is_instance_valid(self) and is_inside_tree():
+		await get_tree().create_timer(randf_range(7.0, 16.0)).timeout
+		if not is_instance_valid(self) or not is_inside_tree():
+			break
+		if randf() < 0.35 and not is_empty():
+			_play_glint()
+
+
+func _play_glint() -> void:
+	var p := Polygon2D.new()
+	var arm := 6.0
+	var th := 2.0
+	p.polygon = PackedVector2Array([
+		Vector2(-th, -arm), Vector2(th, -arm), Vector2(th, -th), Vector2(arm, -th),
+		Vector2(arm, th), Vector2(th, th), Vector2(th, arm), Vector2(-th, arm),
+		Vector2(-th, th), Vector2(-arm, th), Vector2(-arm, -th), Vector2(-th, -th),
+	])
+	var along := randf_range(10.0, CELL_SIZE - 10.0)
+	match randi() % 4:
+		0: p.position = Vector2(along, 4.0)
+		1: p.position = Vector2(along, CELL_SIZE - 4.0)
+		2: p.position = Vector2(4.0, along)
+		_: p.position = Vector2(CELL_SIZE - 4.0, along)
+	p.color = Color(1.0, 0.97, 0.82, 0.0)
+	p.scale = Vector2(0.4, 0.4)
+	p.z_as_relative = false
+	p.z_index = 117
+	add_child(p)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(p, "color:a", 0.9, 0.14).set_ease(Tween.EASE_OUT)
+	tw.tween_property(p, "scale", Vector2.ONE, 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_property(p, "color:a", 0.0, 0.35).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(p.queue_free)
 
 
 # Called by Game during a reshuffle — updates ID and texture, resets visual state.
@@ -220,9 +321,14 @@ func _start_pulse() -> void:
 	_stop_pulse()
 	_pulse_tween = create_tween()
 	_pulse_tween.set_loops()
+	# Scale breathes while the halo glow fades against it — a living selection.
 	_pulse_tween.tween_property(self, "scale", Vector2(1.06, 1.06), 0.4) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	_pulse_tween.tween_property(self, "scale", Vector2.ONE, 0.4) \
+	_pulse_tween.parallel().tween_property(_halo, "modulate:a", 0.45, 0.4) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_pulse_tween.chain().tween_property(self, "scale", Vector2.ONE, 0.4) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_pulse_tween.parallel().tween_property(_halo, "modulate:a", 1.0, 0.4) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
@@ -231,6 +337,8 @@ func _stop_pulse() -> void:
 		_pulse_tween.kill()
 		_pulse_tween = null
 	scale = Vector2.ONE
+	if _halo:
+		_halo.modulate.a = 1.0
 
 
 # ----- Idle spin animation ---------------------------------------------------

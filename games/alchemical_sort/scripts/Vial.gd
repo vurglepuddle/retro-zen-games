@@ -372,9 +372,9 @@ func set_rune(enabled: bool) -> void:
 # Algiz — an angular protective sigil in chunky gold strokes.
 func _draw_rune() -> void:
 	var gold := Color(1.0, 0.85, 0.35, 0.9)
-	_rune.draw_line(Vector2(0, 10), Vector2(0, -10), gold, 2.0, false)
-	_rune.draw_line(Vector2(0, -2), Vector2(-7, -10), gold, 2.0, false)
-	_rune.draw_line(Vector2(0, -2), Vector2(7, -10), gold, 2.0, false)
+	_rune.draw_line(Vector2(0, 15), Vector2(0, -15), gold, 3.0, false)
+	_rune.draw_line(Vector2(0, -3), Vector2(-11, -15), gold, 3.0, false)
+	_rune.draw_line(Vector2(0, -3), Vector2(11, -15), gold, 3.0, false)
 
 
 # Persistent "finished potion" state: sparse motes of the vial's own color
@@ -603,14 +603,31 @@ func _build_visuals() -> void:
 	add_child(_outline)
 
 
+# Shared swirling-fog material for hidden Mystery layers (TIME-driven and
+# world-space sampled, so one instance serves every vial).
+static var _fog_mat: ShaderMaterial = null
+
+static func _fog_material() -> ShaderMaterial:
+	if _fog_mat == null:
+		_fog_mat = ShaderMaterial.new()
+		_fog_mat.shader = load("res://games/alchemical_sort/assets/mystery_swirl.gdshader")
+	return _fog_mat
+
+
 # Assigns the correct atlas region and modulate for a layer.
-# fog=true → dark-teal tint so the actual color isn't revealed.
+# fog=true → swirling dark-purple mystery material hides the actual color.
 func _set_layer_color(rect: TextureRect, cid: int, fog: bool) -> void:
 	if cid > 0 and cid <= _atlas_textures.size():
-		rect.texture  = _atlas_textures[cid - 1]
-		rect.modulate = Color(0, 0, 0, 1) if fog else _tint_for(cid)
+		rect.texture = _atlas_textures[cid - 1]
+		if fog:
+			rect.material = _fog_material()
+			rect.modulate = Color.WHITE
+		else:
+			rect.material = null
+			rect.modulate = _tint_for(cid)
 	else:
 		rect.texture    = null
+		rect.material   = null
 		rect.modulate.a = 0.0
 	# Show shimmer only on visible, occupied layers.
 	if rect.get_child_count() > 0:

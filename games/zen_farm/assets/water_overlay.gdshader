@@ -20,6 +20,24 @@ void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
 }
 
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// Expanding raindrop rings: the water is divided into cells; each cell
+// spawns a ring at a hash-random moment of a repeating cycle, expanding
+// and fading like a real raindrop hit.
+float rain_rings(vec2 pos, float t, float cell, vec2 seed) {
+	vec2 gid = floor(pos / cell);
+	vec2 jitter = vec2(hash(gid + seed), hash(gid + seed + vec2(7.3, 1.9))) - 0.5;
+	vec2 center = (gid + 0.5 + jitter * 0.6) * cell;
+	float phase = fract(t + hash(gid + seed + vec2(3.7, 9.1)));
+	float radius = phase * cell * 0.55;
+	float d = length(pos - center);
+	float ring = 1.0 - smoothstep(0.0, 2.4, abs(d - radius));
+	return ring * (1.0 - phase);
+}
+
 void fragment() {
 	vec2 pattern_pos = world_pos - pattern_origin;
 	vec2 from_touch = world_pos - poke_pos;
@@ -34,7 +52,7 @@ void fragment() {
 		sin((pattern_pos.x + pattern_pos.y) * 0.085 + TIME * 18.0) +
 		sin(pattern_pos.x * 0.12 - pattern_pos.y * 0.07 - TIME * 24.0)
 	) * 0.5;
-	pattern_pos += vec2(rain_wave * 0.85, -rain_wave * 0.35) * rain_amount;
+	pattern_pos += vec2(rain_wave * 0.5, -rain_wave * 0.2) * rain_amount;
 	vec2 base_wobble = vec2(
 		sin((pattern_pos.y + TIME * 21.0) * wobble_scale),
 		cos((pattern_pos.x + TIME * 17.0) * wobble_scale)
@@ -47,10 +65,15 @@ void fragment() {
 	vec2 pattern_size = vec2(textureSize(pattern_texture, 0));
 	vec2 pattern_uv = (pattern_pos + TIME * scroll_speed_px + wobble) / pattern_size;
 	COLOR = texture(pattern_texture, pattern_uv) * COLOR;
-	vec2 impact_grid = floor((world_pos - pattern_origin + TIME * vec2(42.0, 78.0)) / 18.0);
-	float impact_hash = fract(sin(dot(impact_grid, vec2(127.1, 311.7))) * 43758.5453);
-	float impact = step(0.975, impact_hash) * rain_amount;
-	COLOR.rgb += vec3(0.025, 0.032, 0.032) * impact * COLOR.a;
+	if (rain_amount > 0.001) {
+		// Chunky 2 px blocks keep the rings pixel-art; two offset grids of
+		// different sizes give natural, non-repeating drop coverage.
+		vec2 ring_pos = floor((world_pos - pattern_origin) / 2.0) * 2.0;
+		float rings = rain_rings(ring_pos, TIME * 0.9, 34.0, vec2(0.0));
+		rings += rain_rings(ring_pos, TIME * 0.9 + 0.37, 52.0, vec2(11.0));
+		rings = floor(clamp(rings, 0.0, 1.0) * 3.0 + 0.5) / 3.0;
+		COLOR.rgb += vec3(0.10, 0.13, 0.14) * rings * rain_amount * COLOR.a;
+	}
 	COLOR.rgb += vec3(0.05) * touch_falloff * COLOR.a;
 	COLOR.a *= opacity;
 }

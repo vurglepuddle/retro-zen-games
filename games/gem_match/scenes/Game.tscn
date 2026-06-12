@@ -29,9 +29,10 @@ sfx_fall_delay = 0.3
 z_index = 999
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 218.0
-offset_right = 319.0
-offset_bottom = 48.0
+offset_left = 215.5
+offset_top = 59.0
+offset_right = 321.5
+offset_bottom = 107.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
 theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
@@ -149,22 +150,22 @@ volume_db = -5.0
 
 [node name="Bg" type="Sprite2D" parent="."]
 z_index = -999
-position = Vector2(270, 619)
-scale = Vector2(0.499284, 0.499284)
+position = Vector2(270.5, 601)
+scale = Vector2(0.872581, 0.872581)
 texture = ExtResource("13_d4bl2")
 
 [node name="BgTop" type="Sprite2D" parent="."]
 z_index = 500
-position = Vector2(270, 34)
-scale = Vector2(0.499, 0.499)
+position = Vector2(270, 63)
+scale = Vector2(0.871122, 0.871122)
 texture = ExtResource("14_nd3sr")
 
 [node name="Back_Button" type="TextureButton" parent="."]
 z_index = 800
 offset_left = 24.0
-offset_top = 1034.0
+offset_top = 1052.0
 offset_right = 122.0
-offset_bottom = 1132.0
+offset_bottom = 1150.0
 scale = Vector2(0.5, 0.5)
 texture_normal = ExtResource("18_bvndk")
 texture_pressed = ExtResource("19_pok54")

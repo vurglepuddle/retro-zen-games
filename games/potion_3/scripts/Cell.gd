@@ -39,30 +39,29 @@ var _mystery_panels:  Array[Panel]       = []
 var _bg:           Panel = null
 var _lock_overlay: Panel = null    # dark overlay drawn over a locked cell
 var _lock_label:   Label = null    # shows remaining-match count on the overlay
+var _lock_seal:    Node2D = null   # rotating arcane circle around the counter
 var _disp_dots:    Array[ColorRect] = []   # indicator dots for dispenser depth
 var _disp_total:   int = 0                 # total items at dispenser creation time
 
-# --- Mystery silhouette shaders (shared across all cells) ---
-# Colours are baked into the shader string to avoid uniform-setting issues.
-# Top layer + drag:  very dark blue, almost black  — edit the vec4 in _get_mystery_mat()
-# Preview layer:     light dusty blue              — edit the vec4 in _get_mystery_mat_prev()
+# --- Mystery silhouette materials (shared across all cells) ---
+# Both use mystery_item.gdshader: a SOLID swirling-smoke cutout (binarized
+# alpha), so overlapping silhouettes never show through each other.
+# Top layer + drag: near-black blue. Preview layer: lighter dusty blue.
 static var _mystery_mat_top:  ShaderMaterial = null
 static var _mystery_mat_prev: ShaderMaterial = null
 
 static func _get_mystery_mat() -> ShaderMaterial:
 	if _mystery_mat_top == null:
-		var s := Shader.new()
-		s.code = "shader_type canvas_item;\nvoid fragment() { float a = texture(TEXTURE, UV).a; COLOR = vec4(0.08, 0.08, 0.14, a); }"  # ← tweak RGB
 		_mystery_mat_top = ShaderMaterial.new()
-		_mystery_mat_top.shader = s
+		_mystery_mat_top.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
 	return _mystery_mat_top
 
 static func _get_mystery_mat_prev() -> ShaderMaterial:
 	if _mystery_mat_prev == null:
-		var s := Shader.new()
-		s.code = "shader_type canvas_item;\nvoid fragment() { float a = texture(TEXTURE, UV).a; COLOR = vec4(0.10, 0.10, 0.14, a * 0.65); }"  # ← tweak RGB / alpha
 		_mystery_mat_prev = ShaderMaterial.new()
-		_mystery_mat_prev.shader = s
+		_mystery_mat_prev.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
+		_mystery_mat_prev.set_shader_parameter("base_color", Color(0.15, 0.17, 0.25))
+		_mystery_mat_prev.set_shader_parameter("swirl_color", Color(0.22, 0.25, 0.36))
 	return _mystery_mat_prev
 
 
@@ -125,16 +124,57 @@ func check_match() -> bool:
 
 
 func clear_match() -> void:
-	## Animate all 3 items vanishing, then reveal next z-layer.
+	## Animate all 3 items dissolving — swirl out + spark puff — then reveal
+	## the next z-layer.
 	var tw := create_tween()
 	for i in range(SLOTS):
 		var rect := _slot_rects[i]
+		_spawn_dissolve_sparks(i)
 		tw.parallel().tween_property(rect, "scale", Vector2.ZERO, 0.25) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(rect, "rotation", randf_range(-0.9, 0.9), 0.25) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.parallel().tween_property(rect, "modulate:a", 0.0, 0.25)
 	await tw.finished
+	# Rects are reused for the next layer — undo the dissolve spin.
+	for rect in _slot_rects:
+		rect.rotation = 0.0
 	_slots = [0, 0, 0]
 	reveal_next_layer()
+
+
+# Small puff of pixel sparks where a matched item dissolves.
+static var _dissolve_spark_tex: ImageTexture = null
+
+func _spawn_dissolve_sparks(idx: int) -> void:
+	if _dissolve_spark_tex == null:
+		var img := Image.create(3, 3, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_dissolve_spark_tex = ImageTexture.create_from_image(img)
+	var fx := CPUParticles2D.new()
+	fx.texture = _dissolve_spark_tex
+	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.position = get_slot_center(idx)
+	fx.one_shot = true
+	fx.explosiveness = 1.0
+	fx.amount = 10
+	fx.lifetime = 0.45
+	fx.direction = Vector2.RIGHT
+	fx.spread = 180.0
+	fx.gravity = Vector2(0, 240)
+	fx.initial_velocity_min = 40.0
+	fx.initial_velocity_max = 130.0
+	fx.scale_amount_min = 1.0
+	fx.scale_amount_max = 2.4
+	fx.color = Color(1.0, 0.95, 0.75)
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.95))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
+	fx.color_ramp = ramp
+	fx.z_index = 30
+	add_child(fx)
+	fx.emitting = true
+	fx.finished.connect(fx.queue_free)
 
 
 func reveal_next_layer() -> void:
@@ -372,6 +412,34 @@ func set_as_locked(unlock_count: int) -> void:
 	_lock_label.size         = _lock_overlay.size
 	_lock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_lock_overlay.add_child(_lock_label)
+	# Magical seal: a slowly rotating arcane circle around the counter.
+	_lock_seal = Node2D.new()
+	_lock_seal.position = Vector2(CELL_W * 0.5, CELL_H * 0.5)
+	_lock_seal.modulate.a = 0.55
+	_lock_seal.draw.connect(_draw_lock_seal)
+	_lock_overlay.add_child(_lock_seal)
+	var seal_tw := _lock_seal.create_tween().set_loops()
+	seal_tw.tween_property(_lock_seal, "rotation", TAU, 14.0).from(0.0)
+
+
+# Arcane seal: outer ring, rotating inner dashes, diamonds at the cardinal
+# points — drawn around the unlock counter.
+func _draw_lock_seal() -> void:
+	if _lock_seal == null:
+		return
+	var faint  := Color(0.62, 0.58, 0.95, 0.5)
+	var bright := Color(0.78, 0.72, 1.0, 0.8)
+	_lock_seal.draw_arc(Vector2.ZERO, 38.0, 0.0, TAU, 40, faint, 2.0, false)
+	for i in range(8):
+		var a0 := float(i) * TAU / 8.0
+		_lock_seal.draw_arc(Vector2.ZERO, 31.0, a0, a0 + TAU / 16.0, 6, bright, 2.0, false)
+	for i in range(4):
+		var ang := float(i) * TAU / 4.0
+		var p := Vector2(cos(ang), sin(ang)) * 38.0
+		_lock_seal.draw_colored_polygon(PackedVector2Array([
+			p + Vector2(0, -5), p + Vector2(5, 0),
+			p + Vector2(0, 5), p + Vector2(-5, 0),
+		]), bright)
 
 
 func notify_match() -> bool:
