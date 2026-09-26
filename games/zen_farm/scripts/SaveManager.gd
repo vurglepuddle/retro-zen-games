@@ -49,6 +49,8 @@ static func save_game(game: Node) -> void:
 		cfg.set_value(sec, "slot_watered",       cell.slot_watered)
 		cfg.set_value(sec, "slot_wilt_timers",   cell.slot_wilt_timers)
 		cfg.set_value(sec, "slot_weed_atlas_coords", cell.slot_weed_atlas_coords)
+		cfg.set_value(sec, "slot_decor_ids", cell.slot_decor_ids)
+		cfg.set_value(sec, "bridge_vertical", cell.bridge_vertical)
 		for slot in range(FarmCell.SLOT_COUNT):
 			cfg.set_value(sec, "harvest_icon_shown_once_%d" % slot, game._harvest_icon_shown_once.get(Vector3i(cell.grid_col, cell.grid_row, slot), false))
 
@@ -84,7 +86,7 @@ static func load_game(game: Node) -> bool:
 				continue
 			game._static_decor_tiles[entry[0]] = [String(entry[1]), int(entry[2]), entry[3], int(entry[4])]
 
-	for cid in [CropData.ROSE, CropData.LAVENDER, CropData.DAISY, CropData.SUNFLOWER, CropData.HYDRANGEA, CropData.TULIP, CropData.LOTUS]:
+	for cid in CropData.all_ids():
 		var count: int = cfg.get_value("inventory", str(cid), 0)
 		if count > 0:
 			game._inventory[cid] = count
@@ -110,6 +112,8 @@ static func load_game(game: Node) -> bool:
 			var watered: Array = cfg.get_value(sec, "slot_watered", [])
 			var wilts: Array = cfg.get_value(sec, "slot_wilt_timers", [])
 			var weed_coords: Array = cfg.get_value(sec, "slot_weed_atlas_coords", [])
+			var decor_ids: Array = cfg.get_value(sec, "slot_decor_ids", [])
+			cell.bridge_vertical = cfg.get_value(sec, "bridge_vertical", false)
 			for slot in range(FarmCell.SLOT_COUNT):
 				cell.slot_states[slot] = int(states[slot]) if slot < states.size() else FarmCell.SlotState.EMPTY
 				cell.slot_crop_ids[slot] = int(crop_ids[slot]) if slot < crop_ids.size() else -1
@@ -118,6 +122,12 @@ static func load_game(game: Node) -> bool:
 				cell.slot_watered[slot] = bool(watered[slot]) if slot < watered.size() else false
 				cell.slot_wilt_timers[slot] = float(wilts[slot]) if slot < wilts.size() else 0.0
 				cell.slot_weed_atlas_coords[slot] = weed_coords[slot] if slot < weed_coords.size() and weed_coords[slot] is Vector2i else Vector2i(-1, -1)
+				cell.slot_decor_ids[slot] = int(decor_ids[slot]) if slot < decor_ids.size() else -1
+				# A DECOR slot without a known prop id can't be drawn or removed — free it.
+				if cell.slot_states[slot] == FarmCell.SlotState.DECOR \
+						and not DecorData.all_ids().has(cell.slot_decor_ids[slot]):
+					cell.slot_states[slot] = FarmCell.SlotState.EMPTY
+					cell.slot_decor_ids[slot] = -1
 		elif cell.state == FarmCell.TileState.CROP or cell.state == FarmCell.TileState.WILTED or cell.state == FarmCell.TileState.WEED:
 			var migrated_state := FarmCell.SlotState.EMPTY
 			if cell.state == FarmCell.TileState.CROP:

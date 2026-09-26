@@ -296,6 +296,63 @@ var _sfx_rock_hit_3: AudioStreamPlayer = null
 var _sfx_rock_hit_3_water: AudioStreamPlayer = null
 var _active_touch_loop: AudioStreamPlayer = null
 
+# ── garden props (DecorData) ─────────────────────────────────────────────────
+# Each prop is split in two sprites: its bottom building tile draws under the
+# plant layer (flowers in the row below stand in front of it), the rest draws
+# over plants (it rises in front of the tile behind it).
+const PROP_BASE_ROWS := 64
+const PROP_Z_UNDER := 5     # PlantMapLayer is 6
+const PROP_Z_OVER := 7
+const PROP_Z_GLOW := 9      # above the day/night grade (8) so lit windows stay warm
+const PLOT_PROP_SLOT := 4   # _prop_nodes key slot used by plot-sized props
+const HIVE_BEE_INTERVAL := Vector2(12.0, 28.0)
+var _placing_decor: int = -1
+var _prop_layer_under: Node2D = null
+var _prop_layer_over: Node2D = null
+var _prop_layer_glow: Node2D = null
+var _prop_nodes: Dictionary = {}          # Vector3i(col,row,slot) → prop entry (see _build_prop_sprites)
+var _prop_textures: Dictionary = {}       # res path → Texture2D (null if missing)
+var _prop_glow_textures: Dictionary = {}  # DecorData id → Texture2D holding only the lit pixels
+var _hive_bee_timer: float = 6.0
+var _shop_tab: int = 0                    # 0 = tools, 1 = garden
+var _garden_btns: Dictionary = {}         # DecorData id → Button
+var _shop_tab_btns: Array[Button] = []
+
+# ── UI skin (ui_*.png, sources in art_src/zen_farm) ──────────────────────────
+const UI_TEX_ICONS := "res://games/zen_farm/assets/ui_icons.png"
+const UI_TEX_PARTS := "res://games/zen_farm/assets/ui_parts.png"
+# Regions in ui_icons.png (4x export of ui_icons.aseprite). Update here if the sheet layout changes.
+const UI_ICON_REGIONS := {
+	"glove": Rect2(0, 0, 64, 64),
+	"can": Rect2(64, 0, 64, 64),
+	"shears": Rect2(128, 0, 64, 64),
+	"coin": Rect2(192, 16, 32, 32),
+	"sun": Rect2(232, 12, 48, 40),
+	"well": Rect2(288, 0, 80, 64),
+}
+const UI_PART_REGIONS := {
+	"plate": Rect2(0, 0, 160, 68),
+	"plate_on": Rect2(160, 0, 160, 68),
+	"well_plate": Rect2(320, 0, 104, 72),
+	"stake": Rect2(0, 72, 116, 40),
+	"stake_down": Rect2(116, 72, 116, 40),
+	"card": Rect2(232, 72, 92, 92),
+	"tab": Rect2(324, 72, 100, 36),
+	"tab_on": Rect2(324, 108, 100, 36),
+}
+const UI_CARD_MARGIN := 28
+const TOOL_PLATE_PAD := 10    # symmetric, so glove/shears stay centred; leaves room for the can's "20/20"
+const UI_INK := Color(0.247059, 0.156863, 0.196078)    # #3F2832 dark wood
+const UI_RUST := Color(0.541176, 0.207843, 0.141176)   # #8A3524
+const UI_NIGHT_TINT := Color(0.70, 0.72, 0.92)
+var _ui_icons_tex: Texture2D = null
+var _ui_parts_tex: Texture2D = null
+var _ui_styles: Dictionary = {}           # "key/pad" → shared StyleBoxTexture
+var _coin_icon: TextureRect = null
+var _sun_icon: TextureRect = null
+var _mat_inventory: CenterContainer = null
+var _mat_hint: Label = null
+
 
 func _ready() -> void:
 	_back_btn.pressed.connect(_on_back_pressed)
@@ -304,13 +361,11 @@ func _ready() -> void:
 	_sell_btn.pressed.connect(_on_sell_pressed)
 	_grass_toggle_btn.pressed.connect(_on_grass_toggle_upgrade_pressed)
 	_water_toggle_btn.pressed.connect(_on_water_toggle_upgrade_pressed)
-	$SeedPanel/LavenderBtn.pressed.connect(func(): _select_seed(CropData.LAVENDER))
-	$SeedPanel/RoseBtn.pressed.connect(func():  _select_seed(CropData.ROSE))
-	$SeedPanel/DaisyBtn.pressed.connect(func():  _select_seed(CropData.DAISY))
-	$SeedPanel/SunflowerBtn.pressed.connect(func():  _select_seed(CropData.SUNFLOWER))
-	$SeedPanel/HydrangeaBtn.pressed.connect(func(): _select_seed(CropData.HYDRANGEA))
-	$SeedPanel/TulipBtn.pressed.connect(func(): _select_seed(CropData.TULIP))
-	$SeedPanel/LotusBtn.pressed.connect(func(): _select_seed(CropData.LOTUS))
+	var seed_btns := _seed_buttons()
+	var seed_ids := _seed_crop_ids()
+	for i in range(seed_btns.size()):
+		var cid: int = seed_ids[i]
+		seed_btns[i].pressed.connect(func(): _select_seed(cid))
 	_can_upgrade_btn.pressed.connect(_on_can_upgrade_pressed)
 	_status_timer.timeout.connect(func(): _status_label.text = "")
 
@@ -448,6 +503,8 @@ func _ready() -> void:
 	_rain_particles.z_index  = 10
 	$FarmScroll.add_child(_rain_particles)
 	_setup_rain_sprites()
+	_setup_prop_layers()
+	_apply_ui_skin()
 	_update_day_night(0.0)
 
 
@@ -457,11 +514,14 @@ func prepare_farm() -> void:
 	_cols = SaveManager.load_cols()
 	_clear_cells()
 	_build_cells()
+	_placing_decor = -1
 	var loaded := SaveManager.load_game(self)
 	if loaded:
 		_restore_static_decor_snapshot()
 		_update_lock_costs()
 		_apply_offline_catchup()
+		# Cells load one by one, so bridges built before their neighbours need a second pass.
+		_sync_all_props()
 		_upgrade_panel.visible = false
 		_shop_open = false
 	else:
@@ -507,6 +567,7 @@ func start_game() -> void:
 	_active_tool = Tool.HAND
 	_seeds_open  = false
 	_shop_open   = false
+	_placing_decor = -1
 	_seed_panel.visible    = false
 	_upgrade_panel.visible = false
 	_refresh_ui()
@@ -520,6 +581,7 @@ func _clear_cells() -> void:
 	_clear_butterflies()
 	_clear_fireflies()
 	_clear_frogs()
+	_clear_all_props()
 	# clear all tilemap layers so border decor from prior session doesn't linger
 	if _terrain_map:    _terrain_map.clear()
 	for rect in _water_shade_rects.values():
@@ -609,6 +671,7 @@ func _update_grid_size() -> void:
 	if _icon_container:     _icon_container.position     = pos
 	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
+	_position_prop_layers(pos)
 
 
 func _apply_scroll(delta: int) -> void:
@@ -631,6 +694,7 @@ func _apply_scroll(delta: int) -> void:
 	if _icon_container:     _icon_container.position     = pos
 	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
+	_position_prop_layers(pos)
 
 
 # ── tilemap refresh ───────────────────────────────────────────────────────────
@@ -920,6 +984,7 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 		return
 	cell.refresh_summary_state()
 	_sync_legacy_cell_fields(cell)
+	_sync_cell_props(cell)
 	var all := _cell_coords(cell)
 
 	# Always clear crop-related layers first. Locked cells keep their decor until bought.
@@ -948,6 +1013,7 @@ func _refresh_cell_tilemap(cell: FarmCell) -> void:
 				_move_locked_sign_front(cell)
 			_store_static_decor_coords(all)
 			_decor_placed[key] = true
+		_clear_decor_under_props(cell)
 		for slot in range(FarmCell.SLOT_COUNT):
 			_hide_slot_harvest_icon(cell, slot)
 		return
@@ -1103,7 +1169,8 @@ func _show_slot_harvest_icon(cell: FarmCell, slot: int) -> void:
 	_harvest_icons[key] = icon
 
 	var base_y := icon.position.y
-	var tw := create_tween().set_loops()
+	# Bound to the icon so the endless bob dies with it (farm rebuilds free icons directly).
+	var tw := icon.create_tween().set_loops()
 	tw.tween_property(icon, "position:y", base_y - 8.0, 0.45) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_property(icon, "position:y", base_y, 0.45) \
@@ -1114,7 +1181,7 @@ func _show_slot_harvest_icon(cell: FarmCell, slot: int) -> void:
 		if not is_instance_valid(icon):
 			return
 		tw.kill()
-		var fade := create_tween()
+		var fade := icon.create_tween()
 		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
 		fade.tween_callback(func():
 			if is_instance_valid(icon):
@@ -1162,7 +1229,7 @@ func _show_harvest_icon(cell: FarmCell) -> void:
 	_harvest_icons[key] = icon
 
 	var base_y := icon.position.y
-	var tw := create_tween().set_loops()
+	var tw := icon.create_tween().set_loops()
 	tw.tween_property(icon, "position:y", base_y - 8.0, 0.45) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_property(icon, "position:y", base_y, 0.45) \
@@ -1173,7 +1240,7 @@ func _show_harvest_icon(cell: FarmCell) -> void:
 		if not is_instance_valid(icon):
 			return
 		tw.kill()
-		var fade := create_tween()
+		var fade := icon.create_tween()
 		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
 		fade.tween_callback(func():
 			if is_instance_valid(icon):
@@ -1424,7 +1491,7 @@ func _clear_owned_grass_decor(cell: FarmCell, slot: int, coord: Vector2i) -> voi
 
 
 func _try_mow_grass_decor(cell: FarmCell, slot: int) -> bool:
-	if cell.state != FarmCell.TileState.GRASS:
+	if cell.state != FarmCell.TileState.GRASS or cell.slot_states[slot] == FarmCell.SlotState.DECOR:
 		return false
 	var coord := _slot_coord(cell, slot)
 	var snapshot := _capture_static_decor_at(coord)
@@ -1457,6 +1524,8 @@ func _tick_grass_decor(delta: float) -> void:
 		if farm_cell.state != FarmCell.TileState.GRASS:
 			continue
 		for slot in range(FarmCell.SLOT_COUNT):
+			if farm_cell.slot_states[slot] == FarmCell.SlotState.DECOR:
+				continue
 			var coord := _slot_coord(farm_cell, slot)
 			if _capture_static_decor_at(coord).is_empty():
 				candidates.append(coord)
@@ -1498,11 +1567,12 @@ func _update_lock_costs() -> void:
 # Returns the newly unlocked crop name, or "" if no milestone was crossed.
 func _check_crop_unlocks(tiles_before: int) -> String:
 	var tiles_now := _tiles_owned()
-	var milestones := { 4: "Rose", 8: "Daisy", 12: "Sunflower", 16: "Hydrangea", 20: "Tulip" }
-	for threshold in milestones:
-		if tiles_before < threshold and tiles_now >= threshold:
-			return milestones[threshold]
-	return ""
+	var names: PackedStringArray = []
+	for cid in CropData.all_ids():
+		var threshold := CropData.get_unlock_tile_count(cid)
+		if threshold > 0 and tiles_before < threshold and tiles_now >= threshold:
+			names.append(CropData.crop_name(cid))
+	return " & ".join(names)
 
 
 # ── process ───────────────────────────────────────────────────────────────
@@ -1514,6 +1584,7 @@ func _process(delta: float) -> void:
 	_tick_frogs(delta)
 	_tick_rain(delta)
 	_tick_fireflies()
+	_tick_props(delta)
 
 
 # -- day/night ---------------------------------------------------------------
@@ -1579,6 +1650,7 @@ func _update_day_night(delta: float) -> void:
 	if absf(_night_amount - _last_audio_night_amount) > 0.02:
 		_last_audio_night_amount = _night_amount
 		day_night_changed.emit(_night_amount)
+	_update_ui_daylight()
 	_sync_day_night_insects()
 
 
@@ -2577,6 +2649,7 @@ func _apply_offline_catchup() -> void:
 # ── tool buttons ─────────────────────────────────────────────────────────
 func _on_hand_btn_pressed() -> void:
 	_active_tool = Tool.HAND
+	_placing_decor = -1
 	_seeds_open    = false
 	_shop_open     = false
 	_seed_panel.visible    = false
@@ -2585,6 +2658,7 @@ func _on_hand_btn_pressed() -> void:
 
 func _on_can_btn_pressed() -> void:
 	_active_tool   = Tool.WATERING_CAN
+	_placing_decor = -1
 	_seeds_open    = false
 	_shop_open     = false
 	_seed_panel.visible    = false
@@ -2593,6 +2667,7 @@ func _on_can_btn_pressed() -> void:
 
 func _on_shears_btn_pressed() -> void:
 	_active_tool   = Tool.SHEARS
+	_placing_decor = -1
 	_seeds_open    = false
 	_shop_open     = false
 	_seed_panel.visible    = false
@@ -2636,11 +2711,22 @@ func _on_well_gui_input(event: InputEvent) -> void:
 func _on_cell_tapped(cell: FarmCell, slot: int) -> void:
 	_scatter_butterfly_from(cell)
 
+	if _placing_decor >= 0:
+		_try_place_decor(cell, slot)
+		return
+
 	if _seeds_open:
 		if cell.state != FarmCell.TileState.LOCKED and cell.slot_states[slot] == FarmCell.SlotState.EMPTY:
 			_try_plant(cell, slot)
 		else:
 			_show_status("Choose an empty soil patch.")
+		return
+
+	if cell.slot_states[slot] == FarmCell.SlotState.DECOR:
+		if _active_tool == Tool.SHEARS:
+			_pack_decor(cell, slot)
+		else:
+			_interact_decor(cell, slot)
 		return
 
 	match _active_tool:
@@ -3020,6 +3106,7 @@ func _try_plant(cell: FarmCell, slot: int) -> void:
 
 # ── seed panel button ─────────────────────────────────────────────────────
 func _on_seeds_btn_pressed() -> void:
+	_placing_decor = -1
 	if _seeds_open:
 		_seeds_open = false
 	else:
@@ -3045,6 +3132,11 @@ func _select_seed(crop_id: int) -> void:
 
 # ── upgrade shop ─────────────────────────────────────────────────────────
 func _on_shop_btn_pressed() -> void:
+	if _placing_decor >= 0:
+		_placing_decor = -1
+		_show_status("Put it back for later.")
+		_refresh_ui()
+		return
 	if _shop_open:
 		_shop_open = false
 	else:
@@ -3131,6 +3223,518 @@ func _on_back_pressed() -> void:
 	back_to_menu.emit()
 
 
+# ── garden props ─────────────────────────────────────────────────────────────
+const HIVE_ENTRANCE := Vector2(0, -58)   # from a hive's base point to its doorway
+const PROP_LIGHT_OFFSET := Vector2(0, -70)   # lantern window / hut door, from the base point
+
+func _setup_prop_layers() -> void:
+	_prop_layer_under = _make_prop_layer("PropLayerUnder", PROP_Z_UNDER)
+	_prop_layer_over = _make_prop_layer("PropLayerOver", PROP_Z_OVER)
+	_prop_layer_glow = _make_prop_layer("PropLayerGlow", PROP_Z_GLOW)
+
+
+func _make_prop_layer(layer_name: String, z: int) -> Node2D:
+	var layer := Node2D.new()
+	layer.name = layer_name
+	layer.z_index = z
+	$FarmScroll.add_child(layer)
+	return layer
+
+
+func _position_prop_layers(pos: Vector2) -> void:
+	for layer in [_prop_layer_under, _prop_layer_over, _prop_layer_glow]:
+		if layer:
+			layer.position = pos
+
+
+func _prop_texture(path: String) -> Texture2D:
+	if not _prop_textures.has(path):
+		_prop_textures[path] = load(path) if ResourceLoader.exists(path) else null
+	return _prop_textures[path]
+
+
+# Only the pixels that change between the day and lit frames, drawn above the
+# day/night grade so windows and lanterns keep their warm colour at night.
+func _prop_glow_texture(id: int) -> Texture2D:
+	if _prop_glow_textures.has(id):
+		return _prop_glow_textures[id]
+	var result: Texture2D = null
+	var lit := DecorData.lit_frame(id)
+	var tex := _prop_texture(DecorData.texture_path(id))
+	if tex and lit > 0:
+		var img := tex.get_image()
+		if img:
+			if img.is_compressed():
+				img.decompress()
+			var fs := DecorData.frame_size(id)
+			var glow := Image.create(fs.x, fs.y, false, Image.FORMAT_RGBA8)
+			for y in range(fs.y):
+				for x in range(fs.x):
+					var night_px := img.get_pixel(lit * fs.x + x, y)
+					if not night_px.is_equal_approx(img.get_pixel(x, y)):
+						glow.set_pixel(x, y, night_px)
+			result = ImageTexture.create_from_image(glow)
+	_prop_glow_textures[id] = result
+	return result
+
+
+func _cell_origin(cell: FarmCell) -> Vector2:
+	return Vector2(cell.grid_col * TILE_SIZE, cell.grid_row * TILE_SIZE)
+
+
+func _cell_at_grid(col: int, row: int) -> FarmCell:
+	for c in _cells:
+		var farm_cell := c as FarmCell
+		if farm_cell.grid_col == col and farm_cell.grid_row == row:
+			return farm_cell
+	return null
+
+
+# Neighbouring bridges running the same way link up (end posts become middle planks).
+func _bridge_joins(cell: FarmCell, dx: int, dy: int) -> bool:
+	var along_y := dy != 0
+	if cell.bridge_vertical != along_y:
+		return false
+	var other := _cell_at_grid(cell.grid_col + dx, cell.grid_row + dy)
+	return other != null and other.state != FarmCell.TileState.LOCKED \
+		and other.plot_decor_id() == DecorData.BRIDGE and other.bridge_vertical == along_y
+
+
+# What a cell's prop key should currently show; "" = nothing. Unchanged
+# signatures skip the rebuild, so frequent cell refreshes stay cheap.
+func _prop_signature(cell: FarmCell, slot_key: int) -> String:
+	if cell.state == FarmCell.TileState.LOCKED:
+		return ""
+	var plot_id := cell.plot_decor_id()
+	if slot_key == PLOT_PROP_SLOT:
+		if plot_id < 0:
+			return ""
+		if plot_id == DecorData.BRIDGE:
+			var v := cell.bridge_vertical
+			var a := _bridge_joins(cell, 0, -1) if v else _bridge_joins(cell, -1, 0)
+			var b := _bridge_joins(cell, 0, 1) if v else _bridge_joins(cell, 1, 0)
+			return "B%d%d%d" % [int(v), int(a), int(b)]
+		return "P%d" % plot_id
+	if plot_id >= 0:
+		return ""
+	var id := cell.decor_at(slot_key)
+	return "" if id < 0 else "S%d" % id
+
+
+func _sync_cell_props(cell: FarmCell) -> void:
+	if not _prop_layer_under:
+		return
+	for slot_key in range(FarmCell.SLOT_COUNT + 1):
+		var key := Vector3i(cell.grid_col, cell.grid_row, slot_key)
+		var sig := _prop_signature(cell, slot_key)
+		var existing: Dictionary = _prop_nodes.get(key, {})
+		if existing.get("sig", "") == sig:
+			continue
+		_free_prop(key)
+		if sig.is_empty():
+			continue
+		if slot_key == PLOT_PROP_SLOT:
+			var id := cell.plot_decor_id()
+			if id == DecorData.BRIDGE:
+				_build_bridge(cell, key, sig)
+			else:
+				_build_prop_sprites(key, id, _cell_origin(cell) + Vector2(TILE_SIZE * 0.5, TILE_SIZE), sig)
+		else:
+			var half := TILE_SIZE * 0.5
+			var slot_origin := _cell_origin(cell) + Vector2((slot_key % 2) * half, (slot_key >> 1) * half)
+			_build_prop_sprites(key, cell.decor_at(slot_key), slot_origin + Vector2(half * 0.5, half), sig)
+
+
+func _sync_all_props() -> void:
+	for c in _cells:
+		_sync_cell_props(c)
+
+
+func _sync_neighbor_props(cell: FarmCell) -> void:
+	for d in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var other := _cell_at_grid(cell.grid_col + d.x, cell.grid_row + d.y)
+		if other:
+			_sync_cell_props(other)
+
+
+func _new_prop_sprite(tex: Texture2D, region: Rect2, offset: Vector2, pos: Vector2, layer: Node2D) -> Sprite2D:
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	sprite.centered = false
+	sprite.region_enabled = true
+	sprite.region_rect = region
+	sprite.offset = offset
+	sprite.position = pos
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	layer.add_child(sprite)
+	return sprite
+
+
+func _new_prop_entry(id: int, sig: String, base: Vector2) -> Dictionary:
+	return {"id": id, "sig": sig, "base": base, "parts": [], "glow": null, "halo": null,
+		"flash": 0.0, "tween": null}
+
+
+# Sprites share their origin at the prop's base point (bottom-centre of its footprint),
+# so squash tweens on the split halves stay glued together.
+func _build_prop_sprites(key: Vector3i, id: int, base: Vector2, sig: String) -> void:
+	var tex := _prop_texture(DecorData.texture_path(id))
+	if tex == null:
+		return
+	var fs := Vector2(DecorData.frame_size(id))
+	var top_h := fs.y - PROP_BASE_ROWS
+	var entry := _new_prop_entry(id, sig, base)
+	var parts: Array = entry["parts"]
+	parts.append(_new_prop_sprite(tex, Rect2(0, 0, fs.x, top_h), Vector2(-fs.x * 0.5, -fs.y), base, _prop_layer_over))
+	parts.append(_new_prop_sprite(tex, Rect2(0, top_h, fs.x, PROP_BASE_ROWS), Vector2(-fs.x * 0.5, -PROP_BASE_ROWS), base, _prop_layer_under))
+	var glow_tex := _prop_glow_texture(id)
+	if glow_tex:
+		var glow := _new_prop_sprite(glow_tex, Rect2(Vector2.ZERO, fs), Vector2(-fs.x * 0.5, -fs.y), base, _prop_layer_glow)
+		glow.modulate.a = 0.0
+		entry["glow"] = glow
+		parts.append(glow)
+		if _firefly_texture:
+			var halo := Sprite2D.new()
+			halo.texture = _firefly_texture
+			var add_mat := CanvasItemMaterial.new()
+			add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+			halo.material = add_mat
+			halo.position = base + PROP_LIGHT_OFFSET
+			halo.scale = Vector2.ONE * (1.3 if id == DecorData.LANTERN else 2.2)
+			halo.modulate = Color(1.0, 0.82, 0.36, 0.0)
+			_prop_layer_glow.add_child(halo)
+			entry["halo"] = halo
+	_prop_nodes[key] = entry
+
+
+func _build_bridge(cell: FarmCell, key: Vector3i, sig: String) -> void:
+	var vertical := cell.bridge_vertical
+	var tex := _prop_texture(DecorData.bridge_texture_path(vertical))
+	if tex == null:
+		return
+	var origin := _cell_origin(cell)
+	var entry := _new_prop_entry(DecorData.BRIDGE, sig, origin + Vector2(64, 96))
+	var parts: Array = entry["parts"]
+	# sheet pieces: 0 = end (left/top), 1 = middle, 2 = end (right/bottom)
+	var first := 1 if sig[2] == "1" else 0
+	var second := 1 if sig[3] == "1" else 2
+	if vertical:
+		parts.append(_new_prop_sprite(tex, Rect2(0, first * 64, 64, 64), Vector2(-32, -64), origin + Vector2(64, 64), _prop_layer_under))
+		parts.append(_new_prop_sprite(tex, Rect2(0, second * 64, 64, 64), Vector2(-32, -64), origin + Vector2(64, 128), _prop_layer_under))
+	else:
+		parts.append(_new_prop_sprite(tex, Rect2(first * 64, 0, 64, 64), Vector2(-32, -64), origin + Vector2(32, 96), _prop_layer_under))
+		parts.append(_new_prop_sprite(tex, Rect2(second * 64, 0, 64, 64), Vector2(-32, -64), origin + Vector2(96, 96), _prop_layer_under))
+	_prop_nodes[key] = entry
+
+
+func _free_prop(key: Vector3i) -> void:
+	if not _prop_nodes.has(key):
+		return
+	var entry: Dictionary = _prop_nodes[key]
+	_prop_nodes.erase(key)
+	var tw = entry.get("tween")
+	if tw and is_instance_valid(tw):
+		tw.kill()
+	for node in entry["parts"]:
+		if is_instance_valid(node):
+			node.queue_free()
+	var halo = entry.get("halo")
+	if halo and is_instance_valid(halo):
+		halo.queue_free()
+
+
+func _clear_all_props() -> void:
+	for key in _prop_nodes.keys():
+		_free_prop(key)
+	_prop_nodes.clear()
+
+
+func _prop_entry_for(cell: FarmCell, slot: int) -> Dictionary:
+	var slot_key := PLOT_PROP_SLOT if cell.plot_decor_id() >= 0 else slot
+	return _prop_nodes.get(Vector3i(cell.grid_col, cell.grid_row, slot_key), {})
+
+
+# Grass plots keep random flowers/rocks; none should poke through a prop.
+func _clear_decor_under_props(cell: FarmCell) -> void:
+	for slot in range(FarmCell.SLOT_COUNT):
+		if cell.slot_states[slot] != FarmCell.SlotState.DECOR:
+			continue
+		var coord := _slot_coord(cell, slot)
+		_clear_decor_at(coord)
+		_static_decor_coverage[coord] = true
+		_static_decor_tiles.erase(coord)
+
+
+func _squash_prop(entry: Dictionary, pop_in: bool = false) -> void:
+	if entry.is_empty():
+		return
+	var old_tw = entry.get("tween")
+	if old_tw and is_instance_valid(old_tw):
+		old_tw.kill()
+	var parts: Array = entry["parts"]
+	var tw := create_tween()
+	entry["tween"] = tw
+	if pop_in:
+		tw.tween_method(_prop_pop_step.bind(parts), 0.35, 1.0, 0.34) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		tw.tween_method(_prop_squash_step.bind(parts), 0.0, 1.0, 0.42)
+
+
+func _prop_pop_step(v: float, parts: Array) -> void:
+	for node in parts:
+		if is_instance_valid(node):
+			node.scale = Vector2(v, v)
+
+
+func _prop_squash_step(t: float, parts: Array) -> void:
+	var s := sin(t * PI * 3.0) * (1.0 - t) * 0.08
+	for node in parts:
+		if is_instance_valid(node):
+			node.scale = Vector2(1.0 + s, 1.0 - s)
+
+
+func _tick_props(delta: float) -> void:
+	if _prop_nodes.is_empty():
+		return
+	var now := Time.get_ticks_msec() * 0.001
+	var hives: Array = []
+	for key in _prop_nodes:
+		var entry: Dictionary = _prop_nodes[key]
+		var id: int = entry["id"]
+		if id == DecorData.BEEHIVE:
+			hives.append(entry)
+		var glow = entry.get("glow")
+		if glow == null or not is_instance_valid(glow):
+			continue
+		var flash: float = entry["flash"]
+		if flash > 0.0:
+			entry["flash"] = maxf(0.0, flash - delta * 0.7)
+		var light := maxf(_lamp_amount, flash)
+		if id == DecorData.LANTERN:
+			light *= 0.88 + 0.12 * sin(now * 4.7 + key.x * 1.9 + key.y * 1.3)
+		glow.modulate.a = clampf(light, 0.0, 1.0)
+		var halo = entry.get("halo")
+		if halo and is_instance_valid(halo):
+			halo.modulate.a = clampf(light * (0.55 if id == DecorData.LANTERN else 0.4), 0.0, 1.0)
+
+	# hives send out a lone forager now and then on fair days
+	_hive_bee_timer -= delta
+	if _hive_bee_timer <= 0.0:
+		_hive_bee_timer = randf_range(HIVE_BEE_INTERVAL.x, HIVE_BEE_INTERVAL.y)
+		if not hives.is_empty() and _game_active and not _is_raining and _night_amount < 0.3:
+			var hive: Dictionary = hives[randi() % hives.size()]
+			_release_hive_bee(hive["base"])
+
+
+func _release_hive_bee(hive_base: Vector2) -> void:
+	var template := get_node_or_null("FarmScroll/Butterfly4") as AnimatedSprite2D
+	if template == null or template.sprite_frames == null:
+		return
+	var bee := AnimatedSprite2D.new()
+	bee.sprite_frames = template.sprite_frames
+	bee.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	bee.z_index = 100
+	bee.scale = Vector2(0.75, 0.75)
+	var start := hive_base + HIVE_ENTRANCE
+	bee.position = start
+	bee.modulate.a = 0.0
+	_insect_parent().add_child(bee)
+	bee.play()
+	var target := _bee_visit_point(hive_base)
+	var bend := Vector2(randf_range(-60.0, 60.0), -randf_range(40.0, 90.0))
+	var dur := clampf(start.distance_to(target) / 70.0, 1.2, 3.6)
+	_set_butterfly_facing(bee, target)
+	var tw := bee.create_tween()
+	tw.tween_property(bee, "modulate:a", 1.0, 0.25)
+	tw.parallel().tween_method(_bee_fly.bind(bee, start, target, bend), 0.0, 1.0, dur) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_interval(randf_range(1.2, 3.0))
+	tw.tween_callback(_set_butterfly_facing.bind(bee, start))
+	tw.tween_method(_bee_fly.bind(bee, target, start, -bend * 0.6), 0.0, 1.0, dur) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(bee, "modulate:a", 0.0, 0.2)
+	tw.tween_callback(bee.queue_free)
+
+
+func _bee_fly(t: float, bee: AnimatedSprite2D, from: Vector2, to: Vector2, bend: Vector2) -> void:
+	if not is_instance_valid(bee):
+		return
+	var mid := (from + to) * 0.5 + bend
+	var p := from.lerp(mid, t).lerp(mid.lerp(to, t), t)
+	bee.position = p + Vector2(0.0, sin(t * TAU * 3.0) * 4.0)
+
+
+# A blooming flower near the hive, or a lazy spot in the air if nothing is in bloom.
+func _bee_visit_point(hive_base: Vector2) -> Vector2:
+	var spots: Array[Vector2] = []
+	var half := TILE_SIZE * 0.5
+	for c in _cells:
+		var cell := c as FarmCell
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] != FarmCell.SlotState.CROP \
+					or cell.slot_growth_stages[slot] != CropData.STAGE_MATURE:
+				continue
+			var head := _cell_origin(cell) + Vector2((slot % 2) * half + half * 0.5, (slot >> 1) * half - 20.0)
+			if head.distance_to(hive_base) < 360.0:
+				spots.append(head)
+	if spots.is_empty():
+		return hive_base + Vector2(randf_range(-160.0, 160.0), randf_range(-150.0, 40.0))
+	return spots[randi() % spots.size()]
+
+
+func _interact_decor(cell: FarmCell, slot: int) -> void:
+	var id := cell.decor_at(slot)
+	var entry := _prop_entry_for(cell, slot)
+	match id:
+		DecorData.LANTERN:
+			_squash_prop(entry)
+			if not entry.is_empty():
+				entry["flash"] = 1.0
+			_play(_sfx_rock_hit_1)
+			_show_status("The lantern glows for you.")
+		DecorData.BEEHIVE:
+			_squash_prop(entry)
+			_play(_sfx_crop_tap)
+			if _is_raining or entry.is_empty():
+				_show_status("The bees are napping.")
+			else:
+				var base: Vector2 = entry["base"]
+				for i in range(3):
+					get_tree().create_timer(0.14 * i).timeout.connect(func():
+						if _game_active:
+							_release_hive_bee(base)
+					)
+				_show_status("Bzzz...")
+		DecorData.WELL:
+			_squash_prop(entry)
+			var cmax := _can_max()
+			if _can_water < cmax:
+				_can_water = cmax
+				_play(_sfx_well)
+				_show_status("Can filled at the well! (" + str(cmax) + "/" + str(cmax) + ")")
+				_refresh_ui()
+				SaveManager.save_game(self)
+			else:
+				_play(_sfx_water_plop)
+				_show_status("Plip.")
+		DecorData.TEA_HUT:
+			_squash_prop(entry)
+			if not entry.is_empty():
+				entry["flash"] = 1.0
+			_play(_sfx_crop_tap)
+			_show_status("The kettle's on.")
+		DecorData.BRIDGE:
+			cell.bridge_vertical = not cell.bridge_vertical
+			_sync_cell_props(cell)
+			_sync_neighbor_props(cell)
+			_squash_prop(_prop_entry_for(cell, slot), true)
+			_play(_sfx_water_plop)
+			_show_status("Bridge turned.")
+			SaveManager.save_game(self)
+
+
+func _start_decor_placement(id: int) -> void:
+	var cost := DecorData.cost(id)
+	if _coins < cost:
+		_play(_sfx_noaction)
+		_show_status("Need " + str(cost) + "c for the " + DecorData.prop_name(id) + ".")
+		return
+	_placing_decor = id
+	_active_tool = Tool.HAND
+	_shop_open = false
+	_seeds_open = false
+	_upgrade_panel.visible = false
+	_seed_panel.visible = false
+	_refresh_ui()
+	match DecorData.footprint(id):
+		DecorData.Footprint.SLOT:
+			_show_status("Tap a free spot for the " + DecorData.prop_name(id) + ".")
+		DecorData.Footprint.PLOT:
+			_show_status("Tap an empty plot for the " + DecorData.prop_name(id) + ".")
+		_:
+			_show_status("Tap an empty water plot for the bridge.")
+
+
+func _decor_place_problem(cell: FarmCell, slot: int, id: int) -> String:
+	if cell.state == FarmCell.TileState.LOCKED:
+		return "Buy this land first."
+	match DecorData.footprint(id):
+		DecorData.Footprint.SLOT:
+			if cell.is_water_plot:
+				return "That needs dry ground."
+			if cell.slot_states[slot] != FarmCell.SlotState.EMPTY:
+				return "That spot is taken."
+		DecorData.Footprint.PLOT:
+			if cell.is_water_plot:
+				return "That needs dry ground."
+			if cell.empty_slot_count() != FarmCell.SLOT_COUNT:
+				return "Clear the whole plot first."
+		DecorData.Footprint.WATER_PLOT:
+			if not cell.is_water_plot:
+				return "Bridges go over water plots."
+			if cell.empty_slot_count() != FarmCell.SLOT_COUNT:
+				return "Clear the water first."
+	return ""
+
+
+func _try_place_decor(cell: FarmCell, slot: int) -> void:
+	var id := _placing_decor
+	var problem := _decor_place_problem(cell, slot, id)
+	if not problem.is_empty():
+		_play(_sfx_noaction)
+		_show_status(problem)
+		return
+	var cost := DecorData.cost(id)
+	if _coins < cost:
+		_placing_decor = -1
+		_play(_sfx_noaction)
+		_show_status("Need " + str(cost) + "c.")
+		_refresh_ui()
+		return
+	_coins -= cost
+	_placing_decor = -1
+	if DecorData.footprint(id) == DecorData.Footprint.SLOT:
+		cell.slot_states[slot] = FarmCell.SlotState.DECOR
+		cell.slot_decor_ids[slot] = id
+	else:
+		for s in range(FarmCell.SLOT_COUNT):
+			cell.slot_states[s] = FarmCell.SlotState.DECOR
+			cell.slot_decor_ids[s] = id
+		cell.bridge_vertical = false
+	cell.refresh_visual()
+	if id == DecorData.BRIDGE:
+		_sync_neighbor_props(cell)
+	_squash_prop(_prop_entry_for(cell, slot), true)
+	_play(_sfx_buy)
+	_show_status(DecorData.prop_name(id) + " placed!")
+	_refresh_ui()
+	SaveManager.save_game(self)
+
+
+# SHEARS on a prop: pack it away for a full refund, so the garden can be rearranged freely.
+func _pack_decor(cell: FarmCell, slot: int) -> void:
+	var id := cell.decor_at(slot)
+	if id < 0:
+		return
+	var refund := DecorData.cost(id)
+	if DecorData.footprint(id) == DecorData.Footprint.SLOT:
+		cell.clear_slot(slot)
+	else:
+		for s in range(FarmCell.SLOT_COUNT):
+			cell.clear_slot(s)
+		cell.bridge_vertical = false
+	_coins += refund
+	cell.refresh_visual()
+	if id == DecorData.BRIDGE:
+		_sync_neighbor_props(cell)
+	_play(_sfx_soil_toggle)
+	_spawn_coin_float(cell, refund)
+	_show_status(DecorData.prop_name(id) + " packed away. +" + str(refund) + "c")
+	_refresh_ui()
+	SaveManager.save_game(self)
+
+
 # ── SFX loading & playback ────────────────────────────────────────────────────
 const _SFX_DIR := "res://games/zen_farm/assets/sfx/"
 
@@ -3185,6 +3789,7 @@ func _crop_icon(crop_id: int, atlas_row: int, tall: bool = false) -> AtlasTextur
 	return tex
 
 
+# Same order as CropData.all_ids() / _seed_crop_ids().
 func _seed_buttons() -> Array[Button]:
 	return [
 		$SeedPanel/LavenderBtn,
@@ -3194,19 +3799,13 @@ func _seed_buttons() -> Array[Button]:
 		$SeedPanel/HydrangeaBtn,
 		$SeedPanel/TulipBtn,
 		$SeedPanel/LotusBtn,
+		$SeedPanel/OrchidBtn,
+		$SeedPanel/BirdBtn,
 	]
 
 
 func _seed_crop_ids() -> Array[int]:
-	return [
-		CropData.LAVENDER,
-		CropData.ROSE,
-		CropData.DAISY,
-		CropData.SUNFLOWER,
-		CropData.HYDRANGEA,
-		CropData.TULIP,
-		CropData.LOTUS,
-	]
+	return CropData.all_ids()
 
 
 func _setup_seed_panel_icons() -> void:
@@ -3260,7 +3859,7 @@ func _make_inventory_icon_count(crop_id: int, count: int) -> HBoxContainer:
 
 # ── UI refresh ────────────────────────────────────────────────────────────
 func _refresh_ui() -> void:
-	_coins_label.text = str(_coins) + " coins"
+	_coins_label.text = str(_coins) if _coin_icon else str(_coins) + " coins"
 	var cmax := _can_max()
 
 	# top-right: active tool indicator
@@ -3273,19 +3872,29 @@ func _refresh_ui() -> void:
 			_mode_label.text = "SHEARS"
 
 	# tool button highlights
-	_hand_btn.modulate   = Color(1.6, 1.6, 1.0) if _active_tool == Tool.HAND          else Color.WHITE
-	_can_btn.modulate    = Color(1.0, 1.6, 2.0) if _active_tool == Tool.WATERING_CAN  else Color.WHITE
-	_shears_btn.modulate = Color(2.0, 1.4, 1.0) if _active_tool == Tool.SHEARS        else Color.WHITE
+	if _ui_parts_tex:
+		_set_tool_plate(_hand_btn, _active_tool == Tool.HAND)
+		_set_tool_plate(_can_btn, _active_tool == Tool.WATERING_CAN)
+		_set_tool_plate(_shears_btn, _active_tool == Tool.SHEARS)
+	else:
+		_hand_btn.modulate   = Color(1.6, 1.6, 1.0) if _active_tool == Tool.HAND          else Color.WHITE
+		_can_btn.modulate    = Color(1.0, 1.6, 2.0) if _active_tool == Tool.WATERING_CAN  else Color.WHITE
+		_shears_btn.modulate = Color(2.0, 1.4, 1.0) if _active_tool == Tool.SHEARS        else Color.WHITE
 
 	# can button text shows current water level
-	_can_btn.text = "CAN " + str(_can_water) + "/" + str(cmax)
+	_can_btn.text = str(_can_water) + "/" + str(cmax)
 
 	# well label
 	_well_label.text = "WELL\ntap to fill"
 
 	# bottom-bar button labels
 	_seeds_btn.text = "CANCEL" if _seeds_open else "SEEDS"
-	_shop_btn.text  = "CLOSE"  if _shop_open  else "SHOP"
+	if _placing_decor >= 0:
+		_shop_btn.text = "CANCEL"
+	else:
+		_shop_btn.text = "CLOSE" if _shop_open else "SHOP"
+	_refresh_mat_inventory()
+	_refresh_shop_garden()
 
 	# ── seed panel ────────────────────────────────────────────────────────
 	var owned := _tiles_owned()
@@ -3353,6 +3962,330 @@ func _refresh_ui() -> void:
 		_water_toggle_btn.text = "Water Toggle  " + str(WATER_TOGGLE_COST) + "c"
 		_water_toggle_btn.disabled = false
 		_water_toggle_btn.modulate = Color.WHITE
+
+
+# ── UI skin ──────────────────────────────────────────────────────────────────
+# The bench background and grass lip are plain nodes in Game.tscn; buttons get
+# their wooden plates/stakes and icons here so selection states can swap them.
+func _apply_ui_skin() -> void:
+	if ResourceLoader.exists(UI_TEX_ICONS):
+		_ui_icons_tex = load(UI_TEX_ICONS)
+	if ResourceLoader.exists(UI_TEX_PARTS):
+		_ui_parts_tex = load(UI_TEX_PARTS)
+	if _ui_parts_tex == null:
+		_hand_btn.text = "HAND"
+		_shears_btn.text = "SHEARS"
+		return
+
+	for btn: Button in [_hand_btn, _can_btn, _shears_btn]:
+		_skin_button(btn, "plate", "plate_on", 30, TOOL_PLATE_PAD)
+		btn.expand_icon = false
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if _ui_icons_tex:
+		_hand_btn.icon = _ui_icon("glove")
+		_can_btn.icon = _ui_icon("can")
+		_shears_btn.icon = _ui_icon("shears")
+		_can_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_hand_btn.text = ""
+		_shears_btn.text = ""
+		_hand_btn.tooltip_text = "Hand"
+		_can_btn.tooltip_text = "Watering Can"
+		_shears_btn.tooltip_text = "Shears"
+	else:
+		_hand_btn.text = "HAND"
+		_shears_btn.text = "SHEARS"
+
+	for btn: Button in [_back_btn, _seeds_btn, _shop_btn, _sell_btn]:
+		_skin_button(btn, "stake", "stake_down", 28, 6)
+
+	# well: wooden slot + little well icon
+	var plate := TextureRect.new()
+	plate.texture = _ui_part("well_plate")
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_well_panel.add_child(plate)
+	_well_panel.move_child(plate, 0)
+	if _ui_icons_tex:
+		var well_icon := TextureRect.new()
+		well_icon.texture = _ui_icon("well")
+		well_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		well_icon.position = Vector2(12, 4)
+		well_icon.size = Vector2(80, 64)
+		_well_panel.add_child(well_icon)
+		_well_panel.tooltip_text = "Well - tap to fill the can"
+
+		_coin_icon = TextureRect.new()
+		_coin_icon.texture = _ui_icon("coin")
+		_coin_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_coin_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_coin_icon.position = Vector2(32, 20)
+		_coin_icon.size = Vector2(32, 32)
+		$TopBar.add_child(_coin_icon)
+
+		_sun_icon = TextureRect.new()
+		_sun_icon.texture = _ui_icon("sun")
+		_sun_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_sun_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_sun_icon.position = Vector2(460, 16)
+		_sun_icon.size = Vector2(48, 40)
+		$TopBar.add_child(_sun_icon)
+
+	# pop-up panels become linen cards
+	for panel_path in ["SeedPanel/BgUiPanel1", "UpgradePanel/BgUiPanel2", "TipPanel/Card/CardBg"]:
+		var old := get_node_or_null(panel_path) as CanvasItem
+		if old:
+			old.visible = false
+	_add_card_bg(_seed_panel)
+	_add_card_bg(_upgrade_panel)
+	_add_card_bg($TipPanel/Card)
+	var title := $TipPanel/Card/TitleLabel as Label
+	var body := $TipPanel/Card/BodyLabel as Label
+	title.add_theme_color_override("font_color", UI_RUST)
+	title.add_theme_constant_override("outline_size", 0)
+	body.add_theme_color_override("font_color", UI_INK)
+	body.add_theme_constant_override("outline_size", 0)
+	var got_it := $TipPanel/Card/GotItBtn as Button
+	_skin_button(got_it, "stake", "stake_down", 40, 6)
+
+	# harvested flowers rest on the linen mat (the seed panel's copy is retired)
+	if _inventory_icon_row:
+		_inventory_icon_row.visible = false
+	_mat_inventory = CenterContainer.new()
+	_mat_inventory.name = "MatInventory"
+	_mat_inventory.position = Vector2(28, 996)
+	_mat_inventory.size = Vector2(484, 140)
+	_mat_inventory.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mat_inventory.z_index = 4
+	add_child(_mat_inventory)
+	_mat_hint = Label.new()
+	_mat_hint.text = "harvested flowers rest here"
+	_mat_hint.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
+	_mat_hint.add_theme_font_size_override("font_size", 28)
+	_mat_hint.add_theme_color_override("font_color", Color(UI_RUST, 0.45))
+	_mat_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mat_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_mat_hint.position = Vector2(28, 1040)
+	_mat_hint.size = Vector2(484, 52)
+	_mat_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mat_hint.z_index = 4
+	add_child(_mat_hint)
+	# the seed/shop cards sit over the mat; keep the mat's contents out from under them
+	move_child(_mat_inventory, _seed_panel.get_index())
+	move_child(_mat_hint, _seed_panel.get_index())
+
+	_build_shop_garden()
+
+
+func _ui_icon(key: String) -> AtlasTexture:
+	var tex := AtlasTexture.new()
+	tex.atlas = _ui_icons_tex
+	tex.region = UI_ICON_REGIONS[key]
+	return tex
+
+
+func _ui_part(key: String) -> AtlasTexture:
+	var tex := AtlasTexture.new()
+	tex.atlas = _ui_parts_tex
+	tex.region = UI_PART_REGIONS[key]
+	return tex
+
+
+func _ui_style(key: String, pad: int = 16) -> StyleBoxTexture:
+	var cache_key := key + "/" + str(pad)
+	if _ui_styles.has(cache_key):
+		return _ui_styles[cache_key]
+	var sb := StyleBoxTexture.new()
+	sb.texture = _ui_parts_tex
+	sb.region_rect = UI_PART_REGIONS[key]
+	# keep plank corners/nails crisp when a button is larger than its art
+	sb.texture_margin_left = 12
+	sb.texture_margin_right = 12
+	sb.texture_margin_top = 12
+	sb.texture_margin_bottom = 12
+	sb.content_margin_left = pad
+	sb.content_margin_right = pad
+	# small top/bottom padding so a 64 px icon fits the 68 px plate without growing it
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	_ui_styles[cache_key] = sb
+	return sb
+
+
+func _skin_button(btn: Button, normal: String, pressed: String, font_size: int, pad: int = 16) -> void:
+	btn.flat = false
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	btn.add_theme_stylebox_override("normal", _ui_style(normal, pad))
+	btn.add_theme_stylebox_override("hover", _ui_style(normal, pad))
+	btn.add_theme_stylebox_override("pressed", _ui_style(pressed, pad))
+	btn.add_theme_stylebox_override("hover_pressed", _ui_style(pressed, pad))
+	btn.add_theme_stylebox_override("disabled", _ui_style(normal, pad))
+	for color_name in ["font_color", "font_hover_color", "font_pressed_color",
+			"font_hover_pressed_color", "font_focus_color", "font_disabled_color"]:
+		btn.add_theme_color_override(color_name, UI_INK)
+	btn.add_theme_constant_override("outline_size", 0)
+	btn.add_theme_font_size_override("font_size", font_size)
+
+
+func _set_tool_plate(btn: Button, selected: bool) -> void:
+	var key := "plate_on" if selected else "plate"
+	btn.add_theme_stylebox_override("normal", _ui_style(key, TOOL_PLATE_PAD))
+	btn.add_theme_stylebox_override("hover", _ui_style(key, TOOL_PLATE_PAD))
+	btn.modulate = Color.WHITE
+
+
+func _add_card_bg(parent: Control) -> void:
+	var card := NinePatchRect.new()
+	card.name = "LinenCard"
+	card.texture = _ui_parts_tex
+	card.region_rect = UI_PART_REGIONS["card"]
+	card.patch_margin_left = UI_CARD_MARGIN
+	card.patch_margin_right = UI_CARD_MARGIN
+	card.patch_margin_top = UI_CARD_MARGIN
+	card.patch_margin_bottom = UI_CARD_MARGIN
+	card.axis_stretch_horizontal = NinePatchRect.AXIS_STRETCH_MODE_TILE_FIT
+	card.axis_stretch_vertical = NinePatchRect.AXIS_STRETCH_MODE_TILE_FIT
+	card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	parent.add_child(card)
+	parent.move_child(card, 0)
+
+
+func _update_ui_daylight() -> void:
+	var night := clampf(_night_amount, 0.0, 1.0)
+	var tint := Color.WHITE.lerp(UI_NIGHT_TINT, night * 0.8)
+	var bench := get_node_or_null("ToolBar/BgUi") as CanvasItem
+	if bench:
+		bench.modulate = tint
+	var lip := get_node_or_null("GrassLip") as CanvasItem
+	if lip:
+		lip.modulate = tint
+	if _sun_icon:
+		_sun_icon.modulate.a = 1.0 - smoothstep(0.2, 0.6, night)
+
+
+func _refresh_mat_inventory() -> void:
+	if not _mat_inventory:
+		return
+	for child in _mat_inventory.get_children():
+		child.queue_free()
+	var ids: Array[int] = []
+	for cid in CropData.all_ids():
+		if _inventory.get(cid, 0) > 0:
+			ids.append(cid)
+	_mat_hint.visible = ids.is_empty()
+	if ids.is_empty():
+		return
+	# 64 px = the art's 4x; 48 px = a clean 3x when too many kinds to fit one row
+	var big := ids.size() <= 6
+	var icon_px := 64 if big else 48
+	var grid := GridContainer.new()
+	grid.columns = ids.size() if big else 5
+	grid.add_theme_constant_override("h_separation", 10 if big else 18)
+	grid.add_theme_constant_override("v_separation", 0)
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mat_inventory.add_child(grid)
+	var font: Font = load("res://assets/font/vetka.ttf")
+	for cid in ids:
+		var item := VBoxContainer.new()
+		item.add_theme_constant_override("separation", -4)
+		item.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := TextureRect.new()
+		icon.texture = _crop_icon(cid, PM_BLOSSOM_ROW)
+		icon.custom_minimum_size = Vector2(icon_px, icon_px)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.tooltip_text = CropData.crop_name(cid)
+		item.add_child(icon)
+		var label := Label.new()
+		label.text = "x" + str(_inventory[cid])
+		label.add_theme_font_override("font", font)
+		label.add_theme_font_size_override("font_size", 28 if big else 24)
+		label.add_theme_color_override("font_color", UI_RUST)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		item.add_child(label)
+		grid.add_child(item)
+
+
+func _build_shop_garden() -> void:
+	var header := $UpgradePanel/UpgradeLabel as Label
+	header.visible = false
+	var font: Font = load("res://assets/font/vetka.ttf")
+	var tab_names := ["TOOLS", "GARDEN"]
+	for i in range(2):
+		var tab := Button.new()
+		tab.text = tab_names[i]
+		tab.position = Vector2(123 + i * 116, 4)
+		tab.size = Vector2(100, 36)
+		tab.add_theme_font_override("font", font)
+		_skin_button(tab, "tab", "tab_on", 24, 4)
+		var idx := i
+		tab.pressed.connect(func(): _set_shop_tab(idx))
+		_upgrade_panel.add_child(tab)
+		_shop_tab_btns.append(tab)
+	var col := 0
+	var row := 0
+	for id in DecorData.all_ids():
+		var btn := Button.new()
+		btn.position = Vector2(15 + col * 222, 43 + row * 47)
+		btn.size = Vector2(212, 45)
+		btn.flat = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		btn.expand_icon = true
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.icon = _decor_icon(id)
+		btn.add_theme_font_override("font", font)
+		btn.add_theme_font_size_override("font_size", 30)
+		for color_name in ["font_color", "font_hover_color", "font_pressed_color",
+				"font_hover_pressed_color", "font_focus_color", "font_disabled_color"]:
+			btn.add_theme_color_override(color_name, UI_INK)
+		var decor_id: int = id
+		btn.pressed.connect(func(): _start_decor_placement(decor_id))
+		_upgrade_panel.add_child(btn)
+		_garden_btns[id] = btn
+		col += 1
+		if col == 2:
+			col = 0
+			row += 1
+	_set_shop_tab(_shop_tab)
+
+
+func _decor_icon(id: int) -> Texture2D:
+	var tex := AtlasTexture.new()
+	if id == DecorData.BRIDGE:
+		tex.atlas = _prop_texture(DecorData.bridge_texture_path(false))
+		tex.region = Rect2(64, 0, 64, 64)
+	else:
+		tex.atlas = _prop_texture(DecorData.texture_path(id))
+		var fs := DecorData.frame_size(id)
+		tex.region = Rect2(0, 0, fs.x, fs.y)
+	return tex
+
+
+func _set_shop_tab(tab: int) -> void:
+	_shop_tab = tab
+	for i in range(_shop_tab_btns.size()):
+		var key := "tab_on" if i == tab else "tab"
+		_shop_tab_btns[i].add_theme_stylebox_override("normal", _ui_style(key, 4))
+		_shop_tab_btns[i].add_theme_stylebox_override("hover", _ui_style(key, 4))
+	for btn: Button in [_can_upgrade_btn, _grass_toggle_btn, _water_toggle_btn]:
+		btn.visible = tab == 0
+	for btn: Button in _garden_btns.values():
+		btn.visible = tab == 1
+
+
+func _refresh_shop_garden() -> void:
+	for id in _garden_btns:
+		var btn: Button = _garden_btns[id]
+		var cost := DecorData.cost(id)
+		btn.text = DecorData.prop_name(id) + "  " + str(cost) + "c"
+		btn.modulate = Color.WHITE if _coins >= cost else Color(1, 1, 1, 0.45)
 
 
 # ── animations ───────────────────────────────────────────────────────────────
