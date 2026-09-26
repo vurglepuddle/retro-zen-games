@@ -11,7 +11,7 @@ const LOCK_PRICE_TEXT_Y_OFFSET := 7.0 # Tweak this if the price needs to sit hig
 const LOCK_PRICE_TEXT_HEIGHT := 34.0
 
 enum TileState { SOIL, CROP, WILTED, WEED, LOCKED, GRASS, WATER }
-enum SlotState { EMPTY, CROP, WILTED, WEED }
+enum SlotState { EMPTY, CROP, WILTED, WEED, DECOR }
 
 signal visual_changed   # Game.gd connects this to _refresh_cell_tilemap(cell)
 
@@ -34,6 +34,9 @@ var slot_time_in_stage: Array[float] = []
 var slot_watered: Array[bool] = []
 var slot_wilt_timers: Array[float] = []
 var slot_weed_atlas_coords: Array[Vector2i] = []
+# DECOR — DecorData id per slot (-1 = none). Plot-sized props fill all four slots with the same id.
+var slot_decor_ids: Array[int] = []
+var bridge_vertical: bool = false
 
 # LOCKED
 var unlock_cost: int = 0
@@ -62,6 +65,8 @@ func reset_slots() -> void:
 	slot_watered = []
 	slot_wilt_timers = []
 	slot_weed_atlas_coords = []
+	slot_decor_ids = []
+	bridge_vertical = false
 	for i in range(SLOT_COUNT):
 		slot_states.append(SlotState.EMPTY)
 		slot_crop_ids.append(-1)
@@ -70,6 +75,7 @@ func reset_slots() -> void:
 		slot_watered.append(false)
 		slot_wilt_timers.append(0.0)
 		slot_weed_atlas_coords.append(Vector2i(-1, -1))
+		slot_decor_ids.append(-1)
 
 
 func clear_slot(slot: int) -> void:
@@ -82,6 +88,7 @@ func clear_slot(slot: int) -> void:
 	slot_watered[slot] = false
 	slot_wilt_timers[slot] = 0.0
 	slot_weed_atlas_coords[slot] = Vector2i(-1, -1)
+	slot_decor_ids[slot] = -1
 	refresh_summary_state()
 
 
@@ -140,6 +147,20 @@ func has_thirsty_crop() -> bool:
 				and not CropData.is_water_crop(slot_crop_ids[slot]):
 			return true
 	return false
+
+
+func decor_at(slot: int) -> int:
+	if slot < 0 or slot >= SLOT_COUNT or slot_states[slot] != SlotState.DECOR:
+		return -1
+	return slot_decor_ids[slot]
+
+
+# DecorData id when a plot-sized prop (well, tea hut, bridge) covers this cell, else -1.
+func plot_decor_id() -> int:
+	var id := decor_at(0)
+	if id < 0 or DecorData.footprint(id) == DecorData.Footprint.SLOT:
+		return -1
+	return id
 
 
 func empty_slot_count() -> int:

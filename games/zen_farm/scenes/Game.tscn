@@ -1,4 +1,4 @@
-[gd_scene load_steps=79 format=4 uid="uid://dtpkgpxa13pbd"]
+[gd_scene load_steps=80 format=4 uid="uid://dtpkgpxa13pbd"]
 
 [ext_resource type="Script" path="res://games/zen_farm/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -10,7 +10,6 @@
 [ext_resource type="Texture2D" uid="uid://dwjhj7fsrywou" path="res://games/zen_farm/assets/butterfly3.png" id="4_my706"]
 [ext_resource type="AudioStream" uid="uid://bh1coksfyebuf" path="res://games/zen_farm/assets/sfx/harvest.mp3" id="5_8n77c"]
 [ext_resource type="AudioStream" uid="uid://qyepyrt8wdr6" path="res://games/zen_farm/assets/sfx/weed_cut.mp3" id="6_hromi"]
-[ext_resource type="Texture2D" uid="uid://cd2flabr343h0" path="res://games/zen_farm/assets/BG_UI.png" id="7_420xh"]
 [ext_resource type="Texture2D" uid="uid://b6gpopxjbyoqt" path="res://games/zen_farm/assets/bee-Sheet.png" id="7_lduut"]
 [ext_resource type="AudioStream" uid="uid://bvj76udjg2igm" path="res://games/zen_farm/assets/sfx/plant_tap.mp3" id="7_vla5i"]
 [ext_resource type="AudioStream" uid="uid://rkycd08ok7r7" path="res://games/zen_farm/assets/sfx/buy.mp3" id="8_a3t42"]
@@ -26,6 +25,8 @@
 [ext_resource type="Texture2D" uid="uid://dlju0dj5h8d1s" path="res://games/zen_farm/assets/butterfly.png" id="18_14l61"]
 [ext_resource type="Texture2D" uid="uid://duneehqcqfby0" path="res://games/zen_farm/assets/fx/Rain.png" id="21_1sgoj"]
 [ext_resource type="Texture2D" uid="uid://bhi57amn8722t" path="res://games/zen_farm/assets/fx/RainOnFloor.png" id="22_gvchx"]
+[ext_resource type="Texture2D" uid="uid://davdenwur70f0" path="res://games/zen_farm/assets/ui_bench.png" id="23_uibench"]
+[ext_resource type="Texture2D" uid="uid://b3nmatbrsf1it" path="res://games/zen_farm/assets/ui_grass_lip.png" id="24_uilip"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_r4y48"]
 atlas = ExtResource("21_1sgoj")
@@ -1771,24 +1772,27 @@ sprite_frames = SubResource("SpriteFrames_s1kjy")
 animation = &"catching_flies"
 
 [node name="TopBar" type="Control" parent="."]
+z_index = 4
 anchors_preset = 0
-offset_top = 862.0
+offset_top = 916.0
 offset_right = 540.0
-offset_bottom = 934.0
+offset_bottom = 988.0
 mouse_filter = 2
 
 [node name="CoinsLabel" type="Label" parent="TopBar"]
 layout_mode = 0
-offset_left = 30.0
-offset_top = 2.0
-offset_right = 314.0
-offset_bottom = 50.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 76.0
+offset_top = 8.0
+offset_right = 216.0
+offset_bottom = 64.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 40
-text = "0 coins"
+theme_override_font_sizes/font_size = 36
+text = "0"
+vertical_alignment = 1
 
 [node name="ModeLabel" type="Label" parent="TopBar"]
+visible = false
 layout_mode = 0
 offset_left = 270.0
 offset_top = 2.0
@@ -1824,50 +1828,48 @@ mouse_filter = 2
 
 [node name="BgUi" type="Sprite2D" parent="ToolBar"]
 z_index = -10
-position = Vector2(270, 201)
-scale = Vector2(0.984694, 0.984694)
-texture = ExtResource("7_420xh")
+texture_filter = 1
+position = Vector2(270, 196)
+texture = ExtResource("23_uibench")
 
 [node name="HandBtn" type="Button" parent="ToolBar"]
 z_index = 20
+texture_filter = 1
 layout_mode = 0
-offset_left = 4.0
-offset_top = 9.0
-offset_right = 174.0
-offset_bottom = 68.0
+offset_left = 16.0
+offset_top = 38.0
+offset_right = 176.0
+offset_bottom = 106.0
 theme = ExtResource("11_4d5gv")
 theme_type_variation = &"FlatButton"
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
-text = "HAND"
-flat = true
+theme_override_font_sizes/font_size = 36
 
 [node name="CanBtn" type="Button" parent="ToolBar"]
 z_index = 20
+texture_filter = 1
 layout_mode = 0
-offset_left = 182.0
-offset_top = 9.0
-offset_right = 358.0
-offset_bottom = 68.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 188.0
+offset_top = 38.0
+offset_right = 348.0
+offset_bottom = 106.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
-text = "CAN 0/5"
-flat = true
+theme_override_font_sizes/font_size = 36
+text = "0/5"
 
 [node name="ShearsBtn" type="Button" parent="ToolBar"]
 z_index = 20
+texture_filter = 1
 layout_mode = 0
-offset_left = 366.0
-offset_top = 9.0
-offset_right = 536.0
-offset_bottom = 68.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 364.0
+offset_top = 38.0
+offset_right = 524.0
+offset_bottom = 106.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
-text = "SHEARS"
-flat = true
+theme_override_font_sizes/font_size = 36
 
 [node name="ToolBg" type="ColorRect" parent="ToolBar"]
 visible = false
@@ -1882,11 +1884,13 @@ mouse_filter = 2
 color = Color(0.07, 0.13, 0.07, 1)
 
 [node name="WellPanel" type="Control" parent="."]
+z_index = 4
+texture_filter = 1
 anchors_preset = 0
-offset_left = 194.0
-offset_top = 859.0
-offset_right = 342.0
-offset_bottom = 918.0
+offset_left = 220.0
+offset_top = 916.0
+offset_right = 324.0
+offset_bottom = 988.0
 
 [node name="WellBg" type="ColorRect" parent="WellPanel"]
 visible = false
@@ -1902,6 +1906,7 @@ mouse_filter = 2
 color = Color(0.22, 0.25, 0.28, 1)
 
 [node name="WellLabel" type="Label" parent="WellPanel"]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -2054,6 +2059,32 @@ text = "ITEM 7"
 flat = true
 alignment = 2
 
+[node name="OrchidBtn" type="Button" parent="SeedPanel"]
+layout_mode = 0
+offset_left = 158.0
+offset_top = 152.0
+offset_right = 269.0
+offset_bottom = 211.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "ITEM 8"
+flat = true
+alignment = 2
+
+[node name="BirdBtn" type="Button" parent="SeedPanel"]
+layout_mode = 0
+offset_left = 284.0
+offset_top = 152.0
+offset_right = 395.0
+offset_bottom = 211.0
+theme_override_colors/font_color = Color(0.172386, 0.0994559, 0.302907, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 38
+text = "ITEM 9"
+flat = true
+alignment = 2
+
 [node name="InvLabel" type="Label" parent="SeedPanel"]
 layout_mode = 0
 offset_left = 150.0
@@ -2140,6 +2171,8 @@ text = "Water Toggle  100c"
 flat = true
 
 [node name="BottomBar" type="Control" parent="."]
+z_index = 4
+texture_filter = 1
 anchors_preset = 0
 offset_top = 1140.0
 offset_right = 540.0
@@ -2148,51 +2181,57 @@ mouse_filter = 2
 
 [node name="BackButton" type="Button" parent="BottomBar"]
 layout_mode = 0
-offset_left = 30.0
-offset_top = 4.0
-offset_right = 108.0
-offset_bottom = 53.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 132.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 28
 text = "< BACK"
-flat = true
 
 [node name="SeedsButton" type="Button" parent="BottomBar"]
 layout_mode = 0
-offset_left = 125.0
-offset_top = -3.0
-offset_right = 271.0
-offset_bottom = 56.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 148.0
+offset_top = 12.0
+offset_right = 264.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
+theme_override_font_sizes/font_size = 28
 text = "SEEDS"
-flat = true
 
 [node name="ShopButton" type="Button" parent="BottomBar"]
 layout_mode = 0
-offset_left = 274.0
-offset_top = -3.0
-offset_right = 404.0
-offset_bottom = 56.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 280.0
+offset_top = 12.0
+offset_right = 396.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 42
+theme_override_font_sizes/font_size = 28
 text = "SHOP"
-flat = true
 
 [node name="SellButton" type="Button" parent="BottomBar"]
 layout_mode = 0
-offset_left = 429.0
-offset_top = 2.0
-offset_right = 508.0
-offset_bottom = 51.0
-theme_override_colors/font_color = Color(0.572549, 0.215686, 0.0627451, 1)
+offset_left = 412.0
+offset_top = 12.0
+offset_right = 528.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.247059, 0.156863, 0.196078, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 28
 text = "SELL"
-flat = true
+
+[node name="GrassLip" type="TextureRect" parent="."]
+z_index = 10
+texture_filter = 1
+layout_mode = 0
+offset_top = 784.0
+offset_right = 540.0
+offset_bottom = 820.0
+mouse_filter = 2
+texture = ExtResource("24_uilip")
 
 [node name="TipPanel" type="Control" parent="."]
 visible = false
