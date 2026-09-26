@@ -3,15 +3,18 @@
 #   - desktop builds and the editor: silent
 #   - "all sound off" (AudioManager mute state 2) also quiets haptics
 #   - a shared cooldown keeps it from ever becoming a buzz
-# Android needs the VIBRATE permission ticked in the export preset.
+# Android needs the VIBRATE permission ticked in the export preset. Godot sends these
+# as touch haptics, so Android drops them when the phone's "Touch feedback" is off and
+# scales them down at low intensity — which is why pulses under ~15 ms / 0.5 vanish.
 class_name Haptics
 
-const TICK := 0    # stone tap, water touch
+const TICK := 0    # stone tap, frog poke
 const TAP := 1     # snip, small interaction
 const THUNK := 2   # something set down / broken
 
-const _DURATION_MS := [8, 14, 24]
-const _AMPLITUDE := [0.22, 0.38, 0.6]
+# Close to Android's own TICK (26 ms) / CLICK (45 ms) primitives so they survive system scaling.
+const _DURATION_MS := [18, 28, 42]
+const _AMPLITUDE := [0.55, 0.75, 1.0]
 const DEFAULT_GAP_MS := 70
 
 static var _last_msec: int = -100000
