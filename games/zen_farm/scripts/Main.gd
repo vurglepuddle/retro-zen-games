@@ -19,6 +19,9 @@ var _night_mix: float = 0.0
 var _rain_duck_db: float = 0.0
 var _rain_tween: Tween = null
 var _rain_duck_tween: Tween = null
+var _bloom_lift_db: float = 0.0     # day ambience swells a little while the garden is in full bloom
+var _bloom_tween: Tween = null
+const _BLOOM_LIFT_DB := 3.0
 
 
 func _ready() -> void:
@@ -28,6 +31,7 @@ func _ready() -> void:
 	_game.back_to_menu.connect(_on_back_to_menu)
 	_game.rain_changed.connect(_on_rain_changed)
 	_game.day_night_changed.connect(_on_day_night_changed)
+	_game.bloom_changed.connect(_on_bloom_changed)
 	_rain_player = AudioStreamPlayer.new()
 	add_child(_rain_player)
 	AudioManager.play_music(load("res://games/zen_farm/assets/music/music.mp3"))
@@ -100,10 +104,23 @@ func _set_rain_duck(value: float) -> void:
 	_apply_ambient_mix()
 
 
+func _on_bloom_changed(active: bool) -> void:
+	if _bloom_tween and is_instance_valid(_bloom_tween):
+		_bloom_tween.kill()
+	_bloom_tween = create_tween()
+	_bloom_tween.tween_method(_set_bloom_lift, _bloom_lift_db, _BLOOM_LIFT_DB if active else 0.0, 4.0) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+func _set_bloom_lift(value: float) -> void:
+	_bloom_lift_db = value
+	_apply_ambient_mix()
+
+
 func _apply_ambient_mix() -> void:
 	var day_mix := 1.0 - _night_mix
 	if _ambient_player:
-		_ambient_player.volume_db = _SILENT_DB if day_mix <= 0.01 else _DAY_AMBIENT_DB + linear_to_db(day_mix) + _rain_duck_db
+		_ambient_player.volume_db = _SILENT_DB if day_mix <= 0.01 else _DAY_AMBIENT_DB + linear_to_db(day_mix) + _rain_duck_db + _bloom_lift_db
 	if _ambient2_player:
 		_ambient2_player.volume_db = _SILENT_DB if _night_mix <= 0.01 else _NIGHT_AMBIENT_DB + linear_to_db(_night_mix) + _rain_duck_db
 

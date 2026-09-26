@@ -4,6 +4,7 @@ extends Control
 signal back_to_menu
 signal rain_changed(is_raining: bool)
 signal day_night_changed(night_amount: float)
+signal bloom_changed(active: bool)
 
 # ── layout ──────────────────────────────────────────────────────────────────
 const ROWS      := 5
@@ -314,7 +315,29 @@ var _prop_nodes: Dictionary = {}          # Vector3i(col,row,slot) → prop entr
 var _prop_textures: Dictionary = {}       # res path → Texture2D (null if missing)
 var _prop_glow_textures: Dictionary = {}  # DecorData id → Texture2D holding only the lit pixels
 var _hive_bee_timer: float = 6.0
+var _prop_rain_light: float = 0.0         # eases toward 1 while it rains: hut/lanterns glow cosily
 var _shop_tab: int = 0                    # 0 = tools, 1 = garden
+
+# ── full bloom & idle sighs ──────────────────────────────────────────────────
+# Full bloom: every planted flower is open, no bare soil or weeds, and enough of
+# them. The garden answers with a quiet ambient state instead of a victory screen.
+const FULL_BLOOM_MIN_FLOWERS := 12
+const BLOOM_CHECK_INTERVAL := 1.0
+const BLOOM_FADE_TIME := 4.0
+const IDLE_SIGH_DELAY := Vector2(35.0, 65.0)   # seconds without a touch before the garden sighs
+const PLANT_WIND_BASE := 4.0                   # plant_sway.gdshader default wind_strength
+const DECOR_WIND_BASE := 5.0                   # set on the decor material in _ready
+var _full_bloom: bool = false
+var _bloom_amount: float = 0.0
+var _bloom_check_timer: float = 0.0
+var _bloom_petals: CPUParticles2D = null
+var _sigh_petals: CPUParticles2D = null
+var _bloom_light: ColorRect = null
+var _objects_image: Image = null
+var _petal_colors: Dictionary = {}             # crop id → blossom colour sampled from objects.png
+var _idle_timer: float = 0.0
+var _idle_sigh_at: float = 50.0
+var _sigh_tween: Tween = null
 var _garden_btns: Dictionary = {}         # DecorData id → Button
 var _shop_tab_btns: Array[Button] = []
 
@@ -521,6 +544,7 @@ func _ready() -> void:
 	$FarmScroll.add_child(_rain_particles)
 	_setup_rain_sprites()
 	_setup_prop_layers()
+	_setup_bloom_fx()
 	_apply_ui_skin()
 	_update_day_night(0.0)
 
@@ -532,6 +556,9 @@ func prepare_farm() -> void:
 	_clear_cells()
 	_build_cells()
 	_placing_decor = -1
+	_set_full_bloom(false)
+	_bloom_amount = 0.0
+	_idle_timer = 0.0
 	var loaded := SaveManager.load_game(self)
 	if loaded:
 		_restore_static_decor_snapshot()
@@ -1194,18 +1221,15 @@ func _show_slot_harvest_icon(cell: FarmCell, slot: int) -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	icon.set_meta("tween", tw)
 
-	get_tree().create_timer(HARVEST_ICON_LIFETIME).timeout.connect(func():
-		if not is_instance_valid(icon):
-			return
-		tw.kill()
-		var fade := icon.create_tween()
-		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
-		fade.tween_callback(func():
-			if is_instance_valid(icon):
-				_harvest_icons.erase(key)
-				_harvest_icon_shown_once[key] = true
-				icon.queue_free()
-		)
+	# Lifetime runs on the icon itself: harvesting early frees the icon and cancels this too.
+	var life := icon.create_tween()
+	life.tween_interval(HARVEST_ICON_LIFETIME)
+	life.tween_callback(tw.kill)
+	life.tween_property(icon, "modulate:a", 0.0, 1.0)
+	life.tween_callback(func():
+		_harvest_icons.erase(key)
+		_harvest_icon_shown_once[key] = true
+		icon.queue_free()
 	)
 
 
@@ -1253,18 +1277,14 @@ func _show_harvest_icon(cell: FarmCell) -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	icon.set_meta("tween", tw)
 
-	get_tree().create_timer(30.0).timeout.connect(func():
-		if not is_instance_valid(icon):
-			return
-		tw.kill()
-		var fade := icon.create_tween()
-		fade.tween_property(icon, "modulate:a", 0.0, 1.0)
-		fade.tween_callback(func():
-			if is_instance_valid(icon):
-				_harvest_icons.erase(key)
-				_harvest_icon_shown_once[key] = true
-				icon.queue_free()
-		)
+	var life := icon.create_tween()
+	life.tween_interval(30.0)
+	life.tween_callback(tw.kill)
+	life.tween_property(icon, "modulate:a", 0.0, 1.0)
+	life.tween_callback(func():
+		_harvest_icons.erase(key)
+		_harvest_icon_shown_once[key] = true
+		icon.queue_free()
 	)
 
 
@@ -1468,10 +1488,13 @@ func _shake_decor_tile(coord: Vector2i, snapshot: Array, z_index: int) -> void:
 func _play_rock_hit(hit_number: int, is_water: bool) -> void:
 	if hit_number >= ROCK_WEED_HITS_TO_CLEAR:
 		_play(_sfx_rock_hit_3_water if is_water else _sfx_rock_hit_3)
+		Haptics.pulse(Haptics.THUNK)
 	elif hit_number == 2:
 		_play(_sfx_rock_hit_2)
+		Haptics.pulse(Haptics.TICK)
 	else:
 		_play(_sfx_rock_hit_1)
+		Haptics.pulse(Haptics.TICK)
 
 
 func _bonk_rock_at(cell: FarmCell, slot: int, coord: Vector2i, snapshot: Array, is_water: bool, on_cleared: Callable) -> void:
@@ -1602,6 +1625,8 @@ func _process(delta: float) -> void:
 	_tick_rain(delta)
 	_tick_fireflies()
 	_tick_props(delta)
+	_tick_bloom(delta)
+	_tick_idle(delta)
 
 
 # -- day/night ---------------------------------------------------------------
@@ -1844,6 +1869,11 @@ func _start_water_poke(pos: Vector2) -> void:
 	if _water_poke_tween and is_instance_valid(_water_poke_tween):
 		_water_poke_tween.kill()
 		_water_poke_tween = null
+	# a soft touch as the finger meets the water, then only a sparse ripple while it trails through
+	if not _water_poke_active:
+		Haptics.pulse(Haptics.TICK, 150)
+	else:
+		Haptics.pulse(Haptics.TICK, 950)
 	_water_poke_active = true
 	_set_water_poke_shader_param(&"poke_pos", pos)
 	_set_water_poke_shader_param(&"poke_amount", 1.0)
@@ -1972,6 +2002,7 @@ func _update_poke(pos: Vector2) -> void:
 	var poked_frog := _frog_at_screen_pos(pos)
 	if not poked_frog.is_empty():
 		_despawn_frog(poked_frog, true)
+		Haptics.pulse(Haptics.TICK)
 	if _farm_point_is_water(pos):
 		_start_water_poke(pos)
 	else:
@@ -1996,6 +2027,9 @@ func _end_poke() -> void:
 func _input(event: InputEvent) -> void:
 	if not _game_active:
 		return
+	if event is InputEventScreenTouch or event is InputEventScreenDrag \
+			or (event is InputEventMouseButton and event.pressed):
+		_idle_timer = 0.0
 	# DEBUG: R toggles rain, D jumps to day, N jumps to night.
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
@@ -2974,6 +3008,7 @@ func _try_shear(cell: FarmCell, slot: int) -> void:
 				_clear_slot_harvest_icon_state(cell, slot)
 				cell.refresh_visual()
 				_play(_sfx_harvest)
+				Haptics.pulse(Haptics.TAP)
 				_spawn_coin_float(cell, value)
 				_show_status("Harvested! +" + str(value) + "c")
 				_refresh_ui()
@@ -3512,6 +3547,7 @@ func _prop_squash_step(t: float, parts: Array) -> void:
 
 
 func _tick_props(delta: float) -> void:
+	_prop_rain_light = move_toward(_prop_rain_light, 1.0 if _is_raining else 0.0, delta / 3.0)
 	if _prop_nodes.is_empty():
 		return
 	var now := Time.get_ticks_msec() * 0.001
@@ -3528,6 +3564,9 @@ func _tick_props(delta: float) -> void:
 		if flash > 0.0:
 			entry["flash"] = maxf(0.0, flash - delta * 0.7)
 		var light := maxf(_lamp_amount, flash)
+		# cosy lights come on when it rains, and a soft glow lingers through a full bloom
+		light = maxf(light, _prop_rain_light * (0.55 if id == DecorData.TEA_HUT else 0.4))
+		light = maxf(light, _bloom_amount * 0.3)
 		if id == DecorData.LANTERN:
 			light *= 0.88 + 0.12 * sin(now * 4.7 + key.x * 1.9 + key.y * 1.3)
 		glow.modulate.a = clampf(light, 0.0, 1.0)
@@ -3538,7 +3577,7 @@ func _tick_props(delta: float) -> void:
 	# hives send out a lone forager now and then on fair days
 	_hive_bee_timer -= delta
 	if _hive_bee_timer <= 0.0:
-		_hive_bee_timer = randf_range(HIVE_BEE_INTERVAL.x, HIVE_BEE_INTERVAL.y)
+		_hive_bee_timer = randf_range(HIVE_BEE_INTERVAL.x, HIVE_BEE_INTERVAL.y) * (0.45 if _full_bloom else 1.0)
 		if not hives.is_empty() and _game_active and not _is_raining and _night_amount < 0.3:
 			var hive: Dictionary = hives[randi() % hives.size()]
 			_release_hive_bee(hive["base"])
@@ -3552,7 +3591,7 @@ func _release_hive_bee(hive_base: Vector2) -> void:
 	bee.sprite_frames = template.sprite_frames
 	bee.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	bee.z_index = 100
-	bee.scale = Vector2(0.75, 0.75)
+	bee.scale = Vector2.ONE   # same size as the wild bees _setup_butterflies spawns from this template
 	var start := hive_base + HIVE_ENTRANCE
 	bee.position = start
 	bee.modulate.a = 0.0
@@ -3609,10 +3648,12 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			if not entry.is_empty():
 				entry["flash"] = 1.0
 			_play(_sfx_rock_hit_1)
+			Haptics.pulse(Haptics.TICK)
 			_show_status("The lantern glows for you.")
 		DecorData.BEEHIVE:
 			_squash_prop(entry)
 			_play(_sfx_crop_tap)
+			Haptics.pulse(Haptics.TAP)
 			if _is_raining or entry.is_empty():
 				_show_status("The bees are napping.")
 			else:
@@ -3629,6 +3670,7 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			if _can_water < cmax:
 				_can_water = cmax
 				_play(_sfx_well)
+				Haptics.pulse(Haptics.TAP)
 				_show_status("Can filled at the well! (" + str(cmax) + "/" + str(cmax) + ")")
 				_refresh_ui()
 				SaveManager.save_game(self)
@@ -3640,6 +3682,7 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			if not entry.is_empty():
 				entry["flash"] = 1.0
 			_play(_sfx_crop_tap)
+			Haptics.pulse(Haptics.TAP)
 			_show_status("The kettle's on.")
 		DecorData.BRIDGE:
 			cell.bridge_vertical = not cell.bridge_vertical
@@ -3647,6 +3690,7 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			_sync_neighbor_props(cell)
 			_squash_prop(_prop_entry_for(cell, slot), true)
 			_play(_sfx_water_plop)
+			Haptics.pulse(Haptics.THUNK)
 			_show_status("Bridge turned.")
 			SaveManager.save_game(self)
 
@@ -3724,6 +3768,7 @@ func _try_place_decor(cell: FarmCell, slot: int) -> void:
 		_sync_neighbor_props(cell)
 	_squash_prop(_prop_entry_for(cell, slot), true)
 	_play(_sfx_buy)
+	Haptics.pulse(Haptics.THUNK)
 	_show_status(DecorData.prop_name(id) + " placed!")
 	_refresh_ui()
 	SaveManager.save_game(self)
@@ -3746,10 +3791,220 @@ func _pack_decor(cell: FarmCell, slot: int) -> void:
 	if id == DecorData.BRIDGE:
 		_sync_neighbor_props(cell)
 	_play(_sfx_soil_toggle)
+	Haptics.pulse(Haptics.TAP)
 	_spawn_coin_float(cell, refund)
 	_show_status(DecorData.prop_name(id) + " packed away. +" + str(refund) + "c")
 	_refresh_ui()
 	SaveManager.save_game(self)
+
+
+# Lantern windows and hut doors, in content coords (same space as the insect layer).
+func _prop_light_points() -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for entry in _prop_nodes.values():
+		var id: int = entry["id"]
+		if id == DecorData.LANTERN or id == DecorData.TEA_HUT:
+			points.append((entry["base"] as Vector2) + PROP_LIGHT_OFFSET)
+	return points
+
+
+# ── full bloom & idle sighs ──────────────────────────────────────────────────
+func _setup_bloom_fx() -> void:
+	# a 3x2 art-pixel petal (4x like the rest of the farm art), tinted per flower
+	var petal := Image.create(12, 8, false, Image.FORMAT_RGBA8)
+	for p in [Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var shade := Color(0.8, 0.8, 0.86) if p == Vector2i(0, 1) else Color.WHITE
+		for dy in range(4):
+			for dx in range(4):
+				petal.set_pixel(p.x * 4 + dx, p.y * 4 + dy, shade)
+	var petal_tex := ImageTexture.create_from_image(petal)
+	_bloom_petals = _make_petal_emitter(petal_tex, 26)
+	_sigh_petals = _make_petal_emitter(petal_tex, 10)
+
+	# faint warm wash over the field while in bloom (above the grade, additive)
+	_bloom_light = ColorRect.new()
+	_bloom_light.name = "BloomLight"
+	_bloom_light.color = Color(1.0, 0.8, 0.5, 0.0)
+	_bloom_light.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_bloom_light.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bloom_light.z_index = 9
+	var add_mat := CanvasItemMaterial.new()
+	add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_bloom_light.material = add_mat
+	$FarmScroll.add_child(_bloom_light)
+
+
+func _make_petal_emitter(tex: Texture2D, amount: int) -> CPUParticles2D:
+	var p := CPUParticles2D.new()
+	p.texture = tex
+	p.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	p.emitting = false
+	p.amount = amount
+	p.lifetime = 7.0
+	p.local_coords = false
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
+	p.emission_points = PackedVector2Array([Vector2.ZERO])
+	p.direction = Vector2(0.55, -1.0)
+	p.spread = 35.0
+	p.initial_velocity_min = 14.0
+	p.initial_velocity_max = 34.0
+	p.gravity = Vector2(9.0, 15.0)
+	p.damping_min = 0.5
+	p.damping_max = 2.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0))
+	ramp.set_color(1, Color(1, 1, 1, 0))
+	ramp.add_point(0.08, Color.WHITE)
+	ramp.add_point(0.75, Color.WHITE)
+	p.color_ramp = ramp
+	p.z_index = 7   # over the flowers, under the day/night grade
+	$FarmScroll.add_child(p)
+	return p
+
+
+# The blossom's main petal colour, read from its icon in objects.png (skipping leaves and outlines).
+func _petal_color(crop_id: int) -> Color:
+	if _petal_colors.has(crop_id):
+		return _petal_colors[crop_id]
+	var best := Color(1.0, 0.85, 0.88)
+	if _objects_image == null and _objects_texture:
+		_objects_image = _objects_texture.get_image()
+		if _objects_image and _objects_image.is_compressed():
+			_objects_image.decompress()
+	if _objects_image:
+		var counts := {}
+		var y0 := PM_BLOSSOM_ROW * PM_TILE_SIZE
+		for y in range(y0, y0 + PM_TILE_SIZE, 4):
+			for x in range(crop_id * PM_TILE_SIZE, (crop_id + 1) * PM_TILE_SIZE, 4):
+				var c := _objects_image.get_pixel(x, y)
+				if c.a < 0.9 or c.get_luminance() < 0.3 or (c.g > c.r and c.g > c.b):
+					continue
+				counts[c] = int(counts.get(c, 0)) + 1
+		var top := 0
+		for c in counts:
+			if counts[c] > top:
+				top = counts[c]
+				best = c
+	_petal_colors[crop_id] = best
+	return best
+
+
+# [points, colours] for every open flower head, in FarmScroll space (where the emitters live).
+func _bloom_flower_points() -> Array:
+	var points := PackedVector2Array()
+	var colors := PackedColorArray()
+	var half := TILE_SIZE * 0.5
+	var origin := _grid_container.position
+	for c in _cells:
+		var cell := c as FarmCell
+		for slot in range(FarmCell.SLOT_COUNT):
+			if cell.slot_states[slot] != FarmCell.SlotState.CROP \
+					or cell.slot_growth_stages[slot] != CropData.STAGE_MATURE:
+				continue
+			points.append(origin + _cell_origin(cell) + Vector2((slot % 2) * half + half * 0.5, (slot >> 1) * half - 20.0))
+			colors.append(_petal_color(cell.slot_crop_ids[slot]))
+	return [points, colors]
+
+
+func _garden_in_full_bloom() -> bool:
+	var blooms := 0
+	for c in _cells:
+		var cell := c as FarmCell
+		if cell.state == FarmCell.TileState.LOCKED:
+			continue
+		for slot in range(FarmCell.SLOT_COUNT):
+			match cell.slot_states[slot]:
+				FarmCell.SlotState.CROP:
+					if cell.slot_growth_stages[slot] != CropData.STAGE_MATURE:
+						return false
+					blooms += 1
+				FarmCell.SlotState.WILTED:
+					return false
+				FarmCell.SlotState.WEED:
+					if not cell.is_water_plot:   # lily pads and pond stones are welcome
+						return false
+				FarmCell.SlotState.EMPTY:
+					if not cell.is_water_plot and cell.state != FarmCell.TileState.GRASS:
+						return false             # bare soil means the garden isn't finished
+	return blooms >= FULL_BLOOM_MIN_FLOWERS
+
+
+func _tick_bloom(delta: float) -> void:
+	if not _bloom_petals:
+		return
+	if _game_active:
+		_bloom_check_timer -= delta
+		if _bloom_check_timer <= 0.0:
+			_bloom_check_timer = BLOOM_CHECK_INTERVAL
+			_set_full_bloom(_garden_in_full_bloom())
+			if _full_bloom:
+				_aim_petals(_bloom_petals)
+	_bloom_amount = move_toward(_bloom_amount, 1.0 if _full_bloom else 0.0, delta / BLOOM_FADE_TIME)
+	_bloom_light.color.a = _bloom_amount * 0.07 * (1.0 - _night_amount * 0.5)
+	_bloom_petals.emitting = _full_bloom and _bloom_amount > 0.3 and not _is_raining
+
+
+func _set_full_bloom(active: bool) -> void:
+	if _full_bloom == active:
+		return
+	_full_bloom = active
+	bloom_changed.emit(active)
+	if not _bloom_petals:
+		return
+	if active:
+		_aim_petals(_bloom_petals)
+		if _game_active:
+			_garden_sigh(1.0)
+			_show_status("The garden is in full bloom.")
+			Haptics.pulse(Haptics.TAP)
+			_setup_butterflies(2)
+	else:
+		_bloom_petals.emitting = false
+
+
+func _aim_petals(emitter: CPUParticles2D) -> bool:
+	var found: Array = _bloom_flower_points()
+	var points: PackedVector2Array = found[0]
+	if points.is_empty():
+		return false
+	emitter.emission_points = points
+	emitter.emission_colors = found[1]
+	return true
+
+
+# Left alone for a while, the garden breathes: a swell of wind and a few petals lift off.
+func _tick_idle(delta: float) -> void:
+	if not _game_active:
+		return
+	_idle_timer += delta
+	if _idle_timer < _idle_sigh_at:
+		return
+	_idle_timer = 0.0
+	_idle_sigh_at = randf_range(IDLE_SIGH_DELAY.x, IDLE_SIGH_DELAY.y)
+	_garden_sigh(0.7)
+	if not _is_raining and _aim_petals(_sigh_petals):
+		_sigh_petals.emitting = true
+		get_tree().create_timer(2.4).timeout.connect(func():
+			if is_instance_valid(_sigh_petals):
+				_sigh_petals.emitting = false
+		)
+
+
+func _garden_sigh(amount: float) -> void:
+	if _sigh_tween and is_instance_valid(_sigh_tween):
+		_sigh_tween.kill()
+	_sigh_tween = create_tween()
+	_sigh_tween.tween_method(_set_wind_swell, 0.0, amount, 1.6) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_sigh_tween.tween_method(_set_wind_swell, amount, 0.0, 3.4) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+func _set_wind_swell(v: float) -> void:
+	if _plant_map.material is ShaderMaterial:
+		(_plant_map.material as ShaderMaterial).set_shader_parameter("wind_strength", PLANT_WIND_BASE + v * 3.5)
+	if _decor_map.material is ShaderMaterial:
+		(_decor_map.material as ShaderMaterial).set_shader_parameter("wind_strength", DECOR_WIND_BASE + v * 3.0)
 
 
 # ── SFX loading & playback ────────────────────────────────────────────────────
@@ -4444,7 +4699,8 @@ func _offscreen_content_pos(side: int) -> Vector2:
 			return Vector2(randf_range(rect.position.x, rect.end.x), rect.end.y + INSECT_SPAWN_MARGIN)
 
 
-func _setup_butterflies() -> void:
+# count_override >= 0 spawns exactly that many extra (full bloom invites a few more).
+func _setup_butterflies(count_override: int = -1) -> void:
 	if _is_raining or _night_amount >= 0.30:
 		return
 	var templates: Array = []
@@ -4454,7 +4710,7 @@ func _setup_butterflies() -> void:
 			templates.append(t)
 	if templates.is_empty():
 		return
-	var count := randi() % (BUTTERFLY_COUNT + 1)  # 0–3
+	var count := randi() % (BUTTERFLY_COUNT + 1) if count_override < 0 else count_override  # 0–3
 	for i in count:
 		var sprite := (templates[randi() % templates.size()] as AnimatedSprite2D).duplicate() as AnimatedSprite2D
 		if sprite == null:
@@ -4561,6 +4817,11 @@ func _firefly_offscreen_pos() -> Vector2:
 
 
 func _firefly_wander_pos() -> Vector2:
+	# fireflies like to linger around lanterns and lit windows
+	var lights := _prop_light_points()
+	if not lights.is_empty() and randf() < 0.4:
+		var light: Vector2 = lights[randi() % lights.size()]
+		return light + Vector2(randf_range(-46.0, 46.0), randf_range(-40.0, 30.0))
 	var grid_w := maxf(float(_cols) * TILE_SIZE, 64.0)
 	return Vector2(
 		randf_range(28.0, grid_w - 28.0),
