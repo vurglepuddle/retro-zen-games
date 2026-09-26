@@ -321,15 +321,21 @@ var _shop_tab_btns: Array[Button] = []
 # ── UI skin (ui_*.png, sources in art_src/zen_farm) ──────────────────────────
 const UI_TEX_ICONS := "res://games/zen_farm/assets/ui_icons.png"
 const UI_TEX_PARTS := "res://games/zen_farm/assets/ui_parts.png"
-# Regions in ui_icons.png (4x export of ui_icons.aseprite). Update here if the sheet layout changes.
+# ui_icons.png = ui_icons.aseprite exported at 4x as a horizontal sheet (frames side by side).
+# Regions are in the .aseprite's own pixels, so they can be read straight off the canvas.
+const UI_ICON_SCALE := 4
+const UI_ICON_FRAME_W := 92       # canvas width of one frame in ui_icons.aseprite
 const UI_ICON_REGIONS := {
-	"glove": Rect2(0, 0, 64, 64),
-	"can": Rect2(64, 0, 64, 64),
-	"shears": Rect2(128, 0, 64, 64),
-	"coin": Rect2(192, 16, 32, 32),
-	"sun": Rect2(232, 12, 48, 40),
-	"well": Rect2(288, 0, 80, 64),
+	"glove": Rect2i(0, 0, 16, 16),
+	"shears": Rect2i(32, 0, 16, 16),
+	"well": Rect2i(72, 0, 20, 16),       # the flower bucket
+	"moon": Rect2i(48, 16, 16, 16),
+	"sun": Rect2i(64, 16, 16, 16),
+	"coin": Rect2i(0, 32, 16, 16),       # frames: one coin / many coins / a lot of coins
+	"can": Rect2i(16, 32, 16, 16),       # frames: empty / filled
+	"coin_small": Rect2i(3, 52, 8, 8),
 }
+const COIN_PILE_STEPS := [100, 1000]    # coin icon frame 2 from 100 coins, frame 3 from 1000
 const UI_PART_REGIONS := {
 	"plate": Rect2(0, 0, 160, 68),
 	"plate_on": Rect2(160, 0, 160, 68),
@@ -339,6 +345,8 @@ const UI_PART_REGIONS := {
 	"card": Rect2(232, 72, 92, 92),
 	"tab": Rect2(324, 72, 100, 36),
 	"tab_on": Rect2(324, 108, 100, 36),
+	"sky_day": Rect2(0, 112, 72, 72),
+	"sky_night": Rect2(72, 112, 72, 72),
 }
 const UI_CARD_MARGIN := 28
 const TOOL_PLATE_PAD := 10    # symmetric, so glove/shears stay centred; leaves room for the can's "20/20"
@@ -349,7 +357,13 @@ var _ui_icons_tex: Texture2D = null
 var _ui_parts_tex: Texture2D = null
 var _ui_styles: Dictionary = {}           # "key/pad" → shared StyleBoxTexture
 var _coin_icon: TextureRect = null
+var _coin_frames: Array[AtlasTexture] = []
+var _can_frames: Array[AtlasTexture] = []
+var _last_can_water: int = 0
 var _sun_icon: TextureRect = null
+var _moon_icon: TextureRect = null
+var _sky_day: TextureRect = null
+var _sky_night: TextureRect = null
 var _mat_inventory: CenterContainer = null
 var _mat_hint: Label = null
 
@@ -3860,6 +3874,12 @@ func _make_inventory_icon_count(crop_id: int, count: int) -> HBoxContainer:
 # ── UI refresh ────────────────────────────────────────────────────────────
 func _refresh_ui() -> void:
 	_coins_label.text = str(_coins) if _coin_icon else str(_coins) + " coins"
+	if _coin_icon and not _coin_frames.is_empty():
+		var pile := _coin_frames[_coin_pile_frame()]
+		if _coin_icon.texture != pile:
+			if _game_active and _coin_frames.find(pile) > _coin_frames.find(_coin_icon.texture):
+				_pulse_ui(_coin_icon)
+			_coin_icon.texture = pile
 	var cmax := _can_max()
 
 	# top-right: active tool indicator
@@ -3883,6 +3903,11 @@ func _refresh_ui() -> void:
 
 	# can button text shows current water level
 	_can_btn.text = str(_can_water) + "/" + str(cmax)
+	if not _can_frames.is_empty():
+		_can_btn.icon = _can_frames[1] if _can_water > 0 else _can_frames[0]
+		if _can_water > _last_can_water and _game_active:
+			_pulse_ui(_can_btn)
+	_last_can_water = _can_water
 
 	# well label
 	_well_label.text = "WELL\ntap to fill"
@@ -3982,8 +4007,10 @@ func _apply_ui_skin() -> void:
 		btn.expand_icon = false
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if _ui_icons_tex:
+		_can_frames = [_ui_icon("can", 0), _ui_icon("can", 1)]
+		_coin_frames = [_ui_icon("coin", 0), _ui_icon("coin", 1), _ui_icon("coin", 2)]
 		_hand_btn.icon = _ui_icon("glove")
-		_can_btn.icon = _ui_icon("can")
+		_can_btn.icon = _can_frames[0]
 		_shears_btn.icon = _ui_icon("shears")
 		_can_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		_hand_btn.text = ""
@@ -4014,21 +4041,19 @@ func _apply_ui_skin() -> void:
 		_well_panel.add_child(well_icon)
 		_well_panel.tooltip_text = "Well - tap to fill the can"
 
-		_coin_icon = TextureRect.new()
-		_coin_icon.texture = _ui_icon("coin")
-		_coin_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_coin_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_coin_icon.position = Vector2(32, 20)
-		_coin_icon.size = Vector2(32, 32)
+		_coin_icon = _ui_rect(_coin_frames[0], Vector2(20, 4), Vector2(64, 64))
+		_coin_icon.pivot_offset = Vector2(32, 32)
 		$TopBar.add_child(_coin_icon)
 
-		_sun_icon = TextureRect.new()
-		_sun_icon.texture = _ui_icon("sun")
-		_sun_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_sun_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_sun_icon.position = Vector2(460, 16)
-		_sun_icon.size = Vector2(48, 40)
-		$TopBar.add_child(_sun_icon)
+		# a little sky window: sun by day, moon by night (crossfaded in _update_ui_daylight)
+		_sky_day = _ui_rect(_ui_part("sky_day"), Vector2(452, 0), Vector2(72, 72))
+		_sky_night = _ui_rect(_ui_part("sky_night"), Vector2(452, 0), Vector2(72, 72))
+		_sun_icon = _ui_rect(_ui_icon("sun"), Vector2(456, 4), Vector2(64, 64))
+		_moon_icon = _ui_rect(_ui_icon("moon"), Vector2(456, 4), Vector2(64, 64))
+		for node in [_sky_day, _sky_night, _sun_icon, _moon_icon]:
+			$TopBar.add_child(node)
+		_sky_night.modulate.a = 0.0
+		_moon_icon.modulate.a = 0.0
 
 	# pop-up panels become linen cards
 	for panel_path in ["SeedPanel/BgUiPanel1", "UpgradePanel/BgUiPanel2", "TipPanel/Card/CardBg"]:
@@ -4076,11 +4101,43 @@ func _apply_ui_skin() -> void:
 	_build_shop_garden()
 
 
-func _ui_icon(key: String) -> AtlasTexture:
+func _ui_icon(key: String, frame: int = 0) -> AtlasTexture:
+	var r: Rect2i = UI_ICON_REGIONS[key]
 	var tex := AtlasTexture.new()
 	tex.atlas = _ui_icons_tex
-	tex.region = UI_ICON_REGIONS[key]
+	tex.region = Rect2((r.position.x + frame * UI_ICON_FRAME_W) * UI_ICON_SCALE, r.position.y * UI_ICON_SCALE,
+		r.size.x * UI_ICON_SCALE, r.size.y * UI_ICON_SCALE)
 	return tex
+
+
+func _ui_rect(tex: Texture2D, pos: Vector2, rect_size: Vector2) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.texture = tex
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.position = pos
+	rect.size = rect_size
+	return rect
+
+
+func _coin_pile_frame() -> int:
+	var frame := 0
+	for step in COIN_PILE_STEPS:
+		if _coins >= step:
+			frame += 1
+	return frame
+
+
+# Quick springy squash for UI bits that just changed (can refilled, coin pile grew).
+func _pulse_ui(ctrl: Control) -> void:
+	if not ctrl:
+		return
+	ctrl.pivot_offset = ctrl.size * 0.5
+	var tw := ctrl.create_tween()
+	tw.tween_property(ctrl, "scale", Vector2(1.14, 0.9), 0.07)
+	tw.tween_property(ctrl, "scale", Vector2(0.95, 1.06), 0.09)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _ui_part(key: String) -> AtlasTexture:
@@ -4161,8 +4218,12 @@ func _update_ui_daylight() -> void:
 	var lip := get_node_or_null("GrassLip") as CanvasItem
 	if lip:
 		lip.modulate = tint
-	if _sun_icon:
-		_sun_icon.modulate.a = 1.0 - smoothstep(0.2, 0.6, night)
+	if _sun_icon and _moon_icon:
+		var moon_up := smoothstep(0.25, 0.55, night)
+		_sun_icon.modulate.a = 1.0 - moon_up
+		_sky_day.modulate.a = 1.0 - moon_up
+		_moon_icon.modulate.a = moon_up
+		_sky_night.modulate.a = moon_up
 
 
 func _refresh_mat_inventory() -> void:
@@ -4300,24 +4361,38 @@ func _animate_unlock(cell: FarmCell) -> void:
 
 func _spawn_coin_float(cell: FarmCell, amount: int) -> void:
 	var lbl := Label.new()
-	lbl.text = "+" + str(amount) + "c"
+	lbl.text = "+" + str(amount) + ("" if _ui_icons_tex else "c")
 	lbl.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
 	lbl.add_theme_font_size_override("font_size", 44)
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.2, 1))
 	lbl.add_theme_color_override("font_outline_color", Color(0.12, 0.08, 0.02, 1))
 	lbl.add_theme_constant_override("outline_size", 3)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lbl.z_index = 15
-	lbl.size = Vector2(120, 60)
-	lbl.position = cell.get_global_rect().position \
+	var float_node: Control = lbl
+	if _ui_icons_tex:
+		# "+5 (coin)" — the little coin from ui_icons stands in for the "c"
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 4)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(lbl)
+		var coin := _ui_rect(_ui_icon("coin_small"), Vector2.ZERO, Vector2(32, 32))
+		coin.custom_minimum_size = Vector2(32, 32)
+		coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(coin)
+		float_node = row
+	float_node.z_index = 15
+	float_node.size = Vector2(120, 60)
+	float_node.position = cell.get_global_rect().position \
 		+ Vector2(TILE_SIZE * 0.5 - 60, TILE_SIZE * 0.2)
-	add_child(lbl)
+	add_child(float_node)
 	var tw := create_tween().set_parallel(true)
-	tw.tween_property(lbl, "position:y", lbl.position.y - 88, 1.1) \
+	tw.tween_property(float_node, "position:y", float_node.position.y - 88, 1.1) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(lbl, "modulate:a", 0.0, 1.1) \
+	tw.tween_property(float_node, "modulate:a", 0.0, 1.1) \
 		.set_trans(Tween.TRANS_LINEAR).set_delay(0.35)
-	tw.chain().tween_callback(lbl.queue_free)
+	tw.chain().tween_callback(float_node.queue_free)
 
 
 func _show_status(msg: String) -> void:
