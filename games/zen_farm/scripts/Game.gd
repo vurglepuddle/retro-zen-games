@@ -347,7 +347,10 @@ const UI_PART_REGIONS := {
 	"tab_on": Rect2(324, 108, 100, 36),
 	"sky_day": Rect2(0, 112, 72, 72),
 	"sky_night": Rect2(72, 112, 72, 72),
+	"coin_plate": Rect2(0, 184, 192, 72),   # 9-slice, margins UI_PLATE_MARGIN
 }
+const UI_PLATE_MARGIN := 24
+const UI_CREAM := Color(0.92549, 0.92549, 0.835294)   # #ECECD5
 const UI_CARD_MARGIN := 28
 const TOOL_PLATE_PAD := 10    # symmetric, so glove/shears stay centred; leaves room for the can's "20/20"
 const UI_INK := Color(0.247059, 0.156863, 0.196078)    # #3F2832 dark wood
@@ -4041,6 +4044,22 @@ func _apply_ui_skin() -> void:
 		_well_panel.add_child(well_icon)
 		_well_panel.tooltip_text = "Well - tap to fill the can"
 
+		# coin purse: dark wood plate so the gold pile and the count read on the light bench
+		var purse := NinePatchRect.new()
+		purse.name = "CoinPlate"
+		purse.texture = _ui_parts_tex
+		purse.region_rect = UI_PART_REGIONS["coin_plate"]
+		purse.patch_margin_left = UI_PLATE_MARGIN
+		purse.patch_margin_right = UI_PLATE_MARGIN
+		purse.patch_margin_top = UI_PLATE_MARGIN
+		purse.patch_margin_bottom = UI_PLATE_MARGIN
+		purse.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		purse.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		purse.position = Vector2(16, 0)
+		purse.size = Vector2(192, 72)
+		$TopBar.add_child(purse)
+		$TopBar.move_child(purse, 0)
+		_coins_label.add_theme_color_override("font_color", UI_CREAM)
 		_coin_icon = _ui_rect(_coin_frames[0], Vector2(20, 4), Vector2(64, 64))
 		_coin_icon.pivot_offset = Vector2(32, 32)
 		$TopBar.add_child(_coin_icon)
