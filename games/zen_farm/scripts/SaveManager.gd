@@ -50,7 +50,7 @@ static func save_game(game: Node) -> void:
 		cfg.set_value(sec, "slot_wilt_timers",   cell.slot_wilt_timers)
 		cfg.set_value(sec, "slot_weed_atlas_coords", cell.slot_weed_atlas_coords)
 		cfg.set_value(sec, "slot_decor_ids", cell.slot_decor_ids)
-		cfg.set_value(sec, "bridge_vertical", cell.bridge_vertical)
+		cfg.set_value(sec, "bridge_turn", cell.bridge_turn)
 		for slot in range(FarmCell.SLOT_COUNT):
 			cfg.set_value(sec, "harvest_icon_shown_once_%d" % slot, game._harvest_icon_shown_once.get(Vector3i(cell.grid_col, cell.grid_row, slot), false))
 
@@ -113,7 +113,8 @@ static func load_game(game: Node) -> bool:
 			var wilts: Array = cfg.get_value(sec, "slot_wilt_timers", [])
 			var weed_coords: Array = cfg.get_value(sec, "slot_weed_atlas_coords", [])
 			var decor_ids: Array = cfg.get_value(sec, "slot_decor_ids", [])
-			cell.bridge_vertical = cfg.get_value(sec, "bridge_vertical", false)
+			# saves from before walkways turned stored a vertical flag (shape 1 = up/down)
+			cell.bridge_turn = int(cfg.get_value(sec, "bridge_turn", 1 if cfg.get_value(sec, "bridge_vertical", false) else 0))
 			for slot in range(FarmCell.SLOT_COUNT):
 				cell.slot_states[slot] = int(states[slot]) if slot < states.size() else FarmCell.SlotState.EMPTY
 				cell.slot_crop_ids[slot] = int(crop_ids[slot]) if slot < crop_ids.size() else -1
