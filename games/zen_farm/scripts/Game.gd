@@ -373,7 +373,6 @@ const UI_PART_REGIONS := {
 	"coin_plate": Rect2(0, 184, 192, 72),   # 9-slice, margins UI_PLATE_MARGIN
 }
 const UI_PLATE_MARGIN := 24
-const UI_CREAM := Color(0.92549, 0.92549, 0.835294)   # #ECECD5
 const UI_CARD_MARGIN := 28
 const TOOL_PLATE_PAD := 10    # symmetric, so glove/shears stay centred; leaves room for the can's "20/20"
 const UI_INK := Color(0.247059, 0.156863, 0.196078)    # #3F2832 dark wood
@@ -385,6 +384,8 @@ var _ui_styles: Dictionary = {}           # "key/pad" → shared StyleBoxTexture
 var _coin_icon: TextureRect = null
 var _coin_frames: Array[AtlasTexture] = []
 var _can_frames: Array[AtlasTexture] = []
+var _glove_frames: Array[AtlasTexture] = []   # open / closed
+var _tool_icons: Dictionary = {}              # tool Button → its icon TextureRect
 var _last_can_water: int = 0
 var _sun_icon: TextureRect = null
 var _moon_icon: TextureRect = null
@@ -2701,6 +2702,7 @@ func _on_hand_btn_pressed() -> void:
 	_seed_panel.visible    = false
 	_upgrade_panel.visible = false
 	_refresh_ui()
+	_close_glove()
 
 func _on_can_btn_pressed() -> void:
 	_active_tool   = Tool.WATERING_CAN
@@ -2710,6 +2712,7 @@ func _on_can_btn_pressed() -> void:
 	_seed_panel.visible    = false
 	_upgrade_panel.visible = false
 	_refresh_ui()
+	_shiver_tool_icon(_can_btn)
 
 func _on_shears_btn_pressed() -> void:
 	_active_tool   = Tool.SHEARS
@@ -2719,6 +2722,43 @@ func _on_shears_btn_pressed() -> void:
 	_seed_panel.visible    = false
 	_upgrade_panel.visible = false
 	_refresh_ui()
+	_shiver_tool_icon(_shears_btn)
+
+
+# The glove gives a little squeeze (closed frame) and opens again.
+func _close_glove() -> void:
+	var icon: TextureRect = _tool_icons.get(_hand_btn)
+	if icon == null or _glove_frames.size() < 2:
+		return
+	_reset_tool_icon(icon)
+	icon.texture = _glove_frames[1]
+	var tw := icon.create_tween()
+	icon.set_meta("tween", tw)
+	tw.tween_interval(0.2)
+	tw.tween_callback(func(): icon.texture = _glove_frames[0])
+
+
+# Quick shiver in whole art pixels (4 px) so the icon stays crisp.
+func _shiver_tool_icon(btn: Button) -> void:
+	var icon: TextureRect = _tool_icons.get(btn)
+	if icon == null:
+		return
+	_reset_tool_icon(icon)
+	var base: Vector2 = icon.get_meta("base")
+	var tw := icon.create_tween()
+	icon.set_meta("tween", tw)
+	for dx in [4.0, -4.0, 4.0, -4.0, 0.0]:
+		tw.tween_callback(func(): icon.position.x = base.x + dx)
+		tw.tween_interval(0.04)
+
+
+func _reset_tool_icon(icon: TextureRect) -> void:
+	if icon.has_meta("tween"):
+		var old = icon.get_meta("tween")
+		if old is Tween and old.is_valid():
+			old.kill()
+	if icon.has_meta("base"):
+		icon.position = icon.get_meta("base")
 
 
 # ── well ─────────────────────────────────────────────────────────────────
@@ -3272,7 +3312,6 @@ func _on_back_pressed() -> void:
 
 # ── garden props ─────────────────────────────────────────────────────────────
 const HIVE_ENTRANCE := Vector2(0, -58)   # from a hive's base point to its doorway
-const PROP_LIGHT_OFFSET := Vector2(0, -70)   # lantern window / hut door, from the base point
 
 func _setup_prop_layers() -> void:
 	_prop_layer_under = _make_prop_layer("PropLayerUnder", PROP_Z_UNDER)
@@ -3337,14 +3376,39 @@ func _cell_at_grid(col: int, row: int) -> FarmCell:
 	return null
 
 
-# Neighbouring bridges running the same way link up (end posts become middle planks).
-func _bridge_joins(cell: FarmCell, dx: int, dy: int) -> bool:
-	var along_y := dy != 0
-	if cell.bridge_vertical != along_y:
-		return false
-	var other := _cell_at_grid(cell.grid_col + dx, cell.grid_row + dy)
+# ── walkways: bridges auto-join each other and pavilions, turning corners like lake walkways ──
+const WALK_L := 1
+const WALK_R := 2
+const WALK_U := 4
+const WALK_D := 8
+const WALK_DIRS := [[WALK_L, -1, 0], [WALK_R, 1, 0], [WALK_U, 0, -1], [WALK_D, 0, 1]]
+# A lone bridge cycles these shapes on tap: straight either way, then the four corners.
+const WALK_LONE_SHAPES := [WALK_L | WALK_R, WALK_U | WALK_D, WALK_L | WALK_U, WALK_U | WALK_R, WALK_R | WALK_D, WALK_D | WALK_L]
+# A walkway's end carries on straight, or turns off toward a bank on tap.
+const WALK_END_EXITS := {WALK_L: [WALK_R, WALK_U, WALK_D], WALK_R: [WALK_L, WALK_U, WALK_D],
+	WALK_U: [WALK_D, WALK_L, WALK_R], WALK_D: [WALK_U, WALK_L, WALK_R]}
+
+
+func _is_walkway_at(col: int, row: int) -> bool:
+	var other := _cell_at_grid(col, row)
 	return other != null and other.state != FarmCell.TileState.LOCKED \
-		and other.plot_decor_id() == DecorData.BRIDGE and other.bridge_vertical == along_y
+		and DecorData.is_walkway(other.plot_decor_id())
+
+
+# [sides the planks run to, sides that join another walkway]. Sides that don't join end on posts.
+func _bridge_shape(cell: FarmCell) -> Array:
+	var links := 0
+	var count := 0
+	for d in WALK_DIRS:
+		if _is_walkway_at(cell.grid_col + d[1], cell.grid_row + d[2]):
+			links |= d[0]
+			count += 1
+	var mask := links
+	if count == 0:
+		mask = WALK_LONE_SHAPES[cell.bridge_turn % WALK_LONE_SHAPES.size()]
+	elif count == 1:
+		mask = links | WALK_END_EXITS[links][cell.bridge_turn % 3]
+	return [mask, links]
 
 
 # What a cell's prop key should currently show; "" = nothing. Unchanged
@@ -3357,10 +3421,8 @@ func _prop_signature(cell: FarmCell, slot_key: int) -> String:
 		if plot_id < 0:
 			return ""
 		if plot_id == DecorData.BRIDGE:
-			var v := cell.bridge_vertical
-			var a := _bridge_joins(cell, 0, -1) if v else _bridge_joins(cell, -1, 0)
-			var b := _bridge_joins(cell, 0, 1) if v else _bridge_joins(cell, 1, 0)
-			return "B%d%d%d" % [int(v), int(a), int(b)]
+			var shape := _bridge_shape(cell)
+			return "B%d_%d" % [shape[0], shape[1]]
 		return "P%d" % plot_id
 	if plot_id >= 0:
 		return ""
@@ -3446,7 +3508,7 @@ func _build_prop_sprites(key: Vector3i, id: int, base: Vector2, sig: String) -> 
 			var add_mat := CanvasItemMaterial.new()
 			add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 			halo.material = add_mat
-			halo.position = base + PROP_LIGHT_OFFSET
+			halo.position = base + DecorData.light_offset(id)
 			halo.scale = Vector2.ONE * (1.3 if id == DecorData.LANTERN else 2.2)
 			halo.modulate = Color(1.0, 0.82, 0.36, 0.0)
 			_prop_layer_glow.add_child(halo)
@@ -3454,23 +3516,29 @@ func _build_prop_sprites(key: Vector3i, id: int, base: Vector2, sig: String) -> 
 	_prop_nodes[key] = entry
 
 
+# Centre landing (64 px, corner posts) + a half-arm (32 px) toward each side the planks run to.
+# Arms that join another walkway are plain planks; the rest stand on the bank with posts.
 func _build_bridge(cell: FarmCell, key: Vector3i, sig: String) -> void:
-	var vertical := cell.bridge_vertical
-	var tex := _prop_texture(DecorData.bridge_texture_path(vertical))
+	var tex := _prop_texture(DecorData.WALKWAY_TEXTURE)
 	if tex == null:
 		return
+	var shape := _bridge_shape(cell)
+	var mask: int = shape[0]
+	var links: int = shape[1]
 	var origin := _cell_origin(cell)
 	var entry := _new_prop_entry(DecorData.BRIDGE, sig, origin + Vector2(64, 96))
 	var parts: Array = entry["parts"]
-	# sheet pieces: 0 = end (left/top), 1 = middle, 2 = end (right/bottom)
-	var first := 1 if sig[2] == "1" else 0
-	var second := 1 if sig[3] == "1" else 2
-	if vertical:
-		parts.append(_new_prop_sprite(tex, Rect2(0, first * 64, 64, 64), Vector2(-32, -64), origin + Vector2(64, 64), _prop_layer_under))
-		parts.append(_new_prop_sprite(tex, Rect2(0, second * 64, 64, 64), Vector2(-32, -64), origin + Vector2(64, 128), _prop_layer_under))
-	else:
-		parts.append(_new_prop_sprite(tex, Rect2(first * 64, 0, 64, 64), Vector2(-32, -64), origin + Vector2(32, 96), _prop_layer_under))
-		parts.append(_new_prop_sprite(tex, Rect2(second * 64, 0, 64, 64), Vector2(-32, -64), origin + Vector2(96, 96), _prop_layer_under))
+	var at := func(region: Rect2, pos: Vector2):
+		parts.append(_new_prop_sprite(tex, region, Vector2.ZERO, origin + pos, _prop_layer_under))
+	at.call(Rect2(mask * 64, 0, 64, 64), Vector2(32, 32))
+	if mask & WALK_L:
+		at.call(Rect2(0 if links & WALK_L else 32, 64, 32, 64), Vector2(0, 32))
+	if mask & WALK_R:
+		at.call(Rect2(0 if links & WALK_R else 64, 64, 32, 64), Vector2(96, 32))
+	if mask & WALK_U:
+		at.call(Rect2(128, 64 if links & WALK_U else 96, 64, 32), Vector2(32, 0))
+	if mask & WALK_D:
+		at.call(Rect2(128 if links & WALK_D else 192, 64, 64, 32), Vector2(32, 96))
 	_prop_nodes[key] = entry
 
 
@@ -3513,7 +3581,8 @@ func _clear_decor_under_props(cell: FarmCell) -> void:
 
 
 func _squash_prop(entry: Dictionary, pop_in: bool = false) -> void:
-	if entry.is_empty():
+	# walkway pieces tile edge to edge; squashing them separately would open gaps
+	if entry.is_empty() or entry["id"] == DecorData.BRIDGE:
 		return
 	var old_tw = entry.get("tween")
 	if old_tw and is_instance_valid(old_tw):
@@ -3560,7 +3629,7 @@ func _tick_props(delta: float) -> void:
 			entry["flash"] = maxf(0.0, flash - delta * 0.7)
 		var light := maxf(_lamp_amount, flash)
 		# cosy lights come on when it rains, and a soft glow lingers through a full bloom
-		light = maxf(light, _prop_rain_light * (0.55 if id == DecorData.TEA_HUT else 0.4))
+		light = maxf(light, _prop_rain_light * (0.4 if id == DecorData.LANTERN else 0.55))
 		light = maxf(light, _bloom_amount * 0.3)
 		if id == DecorData.LANTERN:
 			light *= 0.88 + 0.12 * sin(now * 4.7 + key.x * 1.9 + key.y * 1.3)
@@ -3680,14 +3749,29 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			Haptics.pulse(Haptics.TAP)
 			_show_status("The kettle's on.")
 		DecorData.BRIDGE:
-			cell.bridge_vertical = not cell.bridge_vertical
-			_sync_cell_props(cell)
-			_sync_neighbor_props(cell)
-			_squash_prop(_prop_entry_for(cell, slot), true)
+			var links: int = _bridge_shape(cell)[1]
+			var joined := 0
+			for d in WALK_DIRS:
+				if links & d[0]:
+					joined += 1
 			_play(_sfx_water_plop)
+			if joined >= 2:
+				# held on both sides: nothing to turn, the planks just creak underfoot
+				Haptics.pulse(Haptics.TICK)
+				_show_status("The walkway creaks softly.")
+				return
+			cell.bridge_turn = (cell.bridge_turn + 1) % WALK_LONE_SHAPES.size()
+			_sync_cell_props(cell)
 			Haptics.pulse(Haptics.THUNK)
 			_show_status("Bridge turned.")
 			SaveManager.save_game(self)
+		DecorData.PAVILION:
+			_squash_prop(entry)
+			if not entry.is_empty():
+				entry["flash"] = 1.0
+			_play(_sfx_water_plop)
+			Haptics.pulse(Haptics.TAP)
+			_show_status("Lanterns sway over the water.")
 
 
 func _start_decor_placement(id: int) -> void:
@@ -3709,7 +3793,7 @@ func _start_decor_placement(id: int) -> void:
 		DecorData.Footprint.PLOT:
 			_show_status("Tap an empty plot for the " + DecorData.prop_name(id) + ".")
 		_:
-			_show_status("Tap an empty water plot for the bridge.")
+			_show_status("Tap an empty water plot for the " + DecorData.prop_name(id) + ".")
 
 
 func _decor_place_problem(cell: FarmCell, slot: int, id: int) -> String:
@@ -3728,7 +3812,7 @@ func _decor_place_problem(cell: FarmCell, slot: int, id: int) -> String:
 				return "Clear the whole plot first."
 		DecorData.Footprint.WATER_PLOT:
 			if not cell.is_water_plot:
-				return "Bridges go over water plots."
+				return "That goes over a water plot."
 			if cell.empty_slot_count() != FarmCell.SLOT_COUNT:
 				return "Clear the water first."
 	return ""
@@ -3757,9 +3841,9 @@ func _try_place_decor(cell: FarmCell, slot: int) -> void:
 		for s in range(FarmCell.SLOT_COUNT):
 			cell.slot_states[s] = FarmCell.SlotState.DECOR
 			cell.slot_decor_ids[s] = id
-		cell.bridge_vertical = false
+		cell.bridge_turn = 0
 	cell.refresh_visual()
-	if id == DecorData.BRIDGE:
+	if DecorData.is_walkway(id):
 		_sync_neighbor_props(cell)
 	_squash_prop(_prop_entry_for(cell, slot), true)
 	_play(_sfx_buy)
@@ -3780,10 +3864,10 @@ func _pack_decor(cell: FarmCell, slot: int) -> void:
 	else:
 		for s in range(FarmCell.SLOT_COUNT):
 			cell.clear_slot(s)
-		cell.bridge_vertical = false
+		cell.bridge_turn = 0
 	_coins += refund
 	cell.refresh_visual()
-	if id == DecorData.BRIDGE:
+	if DecorData.is_walkway(id):
 		_sync_neighbor_props(cell)
 	_play(_sfx_soil_toggle)
 	Haptics.pulse(Haptics.TAP)
@@ -3798,8 +3882,8 @@ func _prop_light_points() -> Array[Vector2]:
 	var points: Array[Vector2] = []
 	for entry in _prop_nodes.values():
 		var id: int = entry["id"]
-		if id == DecorData.LANTERN or id == DecorData.TEA_HUT:
-			points.append((entry["base"] as Vector2) + PROP_LIGHT_OFFSET)
+		if DecorData.lit_frame(id) > 0:
+			points.append((entry["base"] as Vector2) + DecorData.light_offset(id))
 	return points
 
 
@@ -4157,7 +4241,9 @@ func _refresh_ui() -> void:
 	# can button text shows current water level
 	_can_btn.text = str(_can_water) + "/" + str(cmax)
 	if not _can_frames.is_empty():
-		_can_btn.icon = _can_frames[1] if _can_water > 0 else _can_frames[0]
+		var can_icon: TextureRect = _tool_icons.get(_can_btn)
+		if can_icon:
+			can_icon.texture = _can_frames[1] if _can_water > 0 else _can_frames[0]
 		if _can_water > _last_can_water and _game_active:
 			_pulse_ui(_can_btn)
 	_last_can_water = _can_water
@@ -4262,10 +4348,20 @@ func _apply_ui_skin() -> void:
 	if _ui_icons_tex:
 		_can_frames = [_ui_icon("can", 0), _ui_icon("can", 1)]
 		_coin_frames = [_ui_icon("coin", 0), _ui_icon("coin", 1), _ui_icon("coin", 2)]
-		_hand_btn.icon = _ui_icon("glove")
-		_can_btn.icon = _can_frames[0]
-		_shears_btn.icon = _ui_icon("shears")
+		_glove_frames = [_ui_icon("glove", 0), _ui_icon("glove", 1)]
+		# Tool icons are their own TextureRects over the plates so they can move on their own
+		# (glove closes, can/shears shiver). The buttons keep an invisible 64 px icon so the
+		# can's charge count keeps its place.
+		var spacer := ImageTexture.create_from_image(Image.create(64, 64, false, Image.FORMAT_RGBA8))
 		_can_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		for pair in [[_hand_btn, _glove_frames[0]], [_can_btn, _can_frames[0]], [_shears_btn, _ui_icon("shears")]]:
+			var btn: Button = pair[0]
+			btn.icon = spacer
+			var x := float(TOOL_PLATE_PAD) if btn == _can_btn else (btn.size.x - 64.0) * 0.5
+			var icon := _ui_rect(pair[1], Vector2(x, (btn.size.y - 64.0) * 0.5).round(), Vector2(64, 64))
+			icon.set_meta("base", icon.position)
+			btn.add_child(icon)
+			_tool_icons[btn] = icon
 		_hand_btn.text = ""
 		_shears_btn.text = ""
 		_hand_btn.tooltip_text = "Hand"
@@ -4294,7 +4390,7 @@ func _apply_ui_skin() -> void:
 		_well_panel.add_child(well_icon)
 		_well_panel.tooltip_text = "Well - tap to fill the can"
 
-		# coin purse: dark wood plate so the gold pile and the count read on the light bench
+		# coin purse: the stake buttons' peach board, so the gold pile and count stand off the bench
 		var purse := NinePatchRect.new()
 		purse.name = "CoinPlate"
 		purse.texture = _ui_parts_tex
@@ -4309,7 +4405,7 @@ func _apply_ui_skin() -> void:
 		purse.size = Vector2(192, 72)
 		$TopBar.add_child(purse)
 		$TopBar.move_child(purse, 0)
-		_coins_label.add_theme_color_override("font_color", UI_CREAM)
+		_coins_label.add_theme_color_override("font_color", UI_INK)
 		_coin_icon = _ui_rect(_coin_frames[0], Vector2(20, 4), Vector2(64, 64))
 		_coin_icon.pivot_offset = Vector2(32, 32)
 		$TopBar.add_child(_coin_icon)
@@ -4589,8 +4685,8 @@ func _build_shop_garden() -> void:
 func _decor_icon(id: int) -> Texture2D:
 	var tex := AtlasTexture.new()
 	if id == DecorData.BRIDGE:
-		tex.atlas = _prop_texture(DecorData.bridge_texture_path(false))
-		tex.region = Rect2(64, 0, 64, 64)
+		tex.atlas = _prop_texture(DecorData.WALKWAY_TEXTURE)
+		tex.region = Rect2((WALK_L | WALK_R) * 64, 0, 64, 64)   # a straight landing
 	else:
 		tex.atlas = _prop_texture(DecorData.texture_path(id))
 		var fs := DecorData.frame_size(id)

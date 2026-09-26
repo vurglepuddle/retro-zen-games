@@ -36,7 +36,8 @@ var slot_wilt_timers: Array[float] = []
 var slot_weed_atlas_coords: Array[Vector2i] = []
 # DECOR — DecorData id per slot (-1 = none). Plot-sized props fill all four slots with the same id.
 var slot_decor_ids: Array[int] = []
-var bridge_vertical: bool = false
+# Tap-to-turn state of a bridge: picks its shape when alone, or its exit when it ends a walkway.
+var bridge_turn: int = 0
 
 # LOCKED
 var unlock_cost: int = 0
@@ -66,7 +67,7 @@ func reset_slots() -> void:
 	slot_wilt_timers = []
 	slot_weed_atlas_coords = []
 	slot_decor_ids = []
-	bridge_vertical = false
+	bridge_turn = 0
 	for i in range(SLOT_COUNT):
 		slot_states.append(SlotState.EMPTY)
 		slot_crop_ids.append(-1)
