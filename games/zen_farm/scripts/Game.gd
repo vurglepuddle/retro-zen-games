@@ -1869,11 +1869,6 @@ func _start_water_poke(pos: Vector2) -> void:
 	if _water_poke_tween and is_instance_valid(_water_poke_tween):
 		_water_poke_tween.kill()
 		_water_poke_tween = null
-	# a soft touch as the finger meets the water, then only a sparse ripple while it trails through
-	if not _water_poke_active:
-		Haptics.pulse(Haptics.TICK, 150)
-	else:
-		Haptics.pulse(Haptics.TICK, 950)
 	_water_poke_active = true
 	_set_water_poke_shader_param(&"poke_pos", pos)
 	_set_water_poke_shader_param(&"poke_amount", 1.0)
