@@ -9,12 +9,16 @@ signal back_to_menu
 const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen", "mystery"]
 const SAVE_PATH := "user://alch_sort_save.cfg"
 
-const VIAL_SPACING := 14  # pixels between vials
+const VIAL_SPACING := 15  # pixels between vials
+const ROW_EXTRA_SPACING := 38  # extra vertical gap between shelf rows
 
 ## Locks the vertical position of the vial grid to match the shelf art.
 ## Set in the Inspector once the Hard layout looks right; leave at -1 to auto-centre.
 ## X is always re-centred per difficulty so fewer vials stay centred on each shelf row.
 @export var shelf_origin_y: float = -1.0
+
+## Moves the third shelf row independently of the first two (negative = up).
+@export var third_row_y_offset: float = 0.0
 
 # Alchemical color palette — sampled from liquid_colors_all.png (7x2 atlas),
 # one entry per color id so pour droplets match the hand-painted liquids.
@@ -283,7 +287,9 @@ func _build_vials() -> void:
 	var row_w    := _vials_per_row * vial_w + (_vials_per_row - 1) * VIAL_SPACING
 	var vp       := get_viewport_rect().size
 	var num_rows := ceili(float(total) / float(_vials_per_row))
-	var board_h  := num_rows * vial_h + (num_rows - 1) * (VIAL_SPACING + 16)
+	var board_h: float = num_rows * vial_h + (num_rows - 1) * (VIAL_SPACING + ROW_EXTRA_SPACING)
+	if num_rows >= 3:
+		board_h += third_row_y_offset
 	var ui_top   := 90.0
 
 	# X always centres the current difficulty's vials on screen.
@@ -300,6 +306,9 @@ func _build_vials() -> void:
 	for i in range(total):
 		var col := i % _vials_per_row
 		var row := floori(i / float(_vials_per_row))
+		var row_y: float = origin_y + row * (vial_h + VIAL_SPACING + ROW_EXTRA_SPACING)
+		if row >= 2:
+			row_y += third_row_y_offset
 		var vial := Vial.new()
 		var layers: Array[int] = []
 		layers.assign(assignments[i] if i < assignments.size() else [])
@@ -309,7 +318,7 @@ func _build_vials() -> void:
 			vial.enable_fog()
 		vial.position = Vector2(
 			origin_x + col * (vial_w + VIAL_SPACING),
-			origin_y + row * (vial_h + VIAL_SPACING + 16)
+			row_y
 		)
 		vial.tapped.connect(_on_vial_tapped)
 		add_child(vial)
@@ -325,9 +334,11 @@ func _build_vials() -> void:
 		cauldron.setup(no_layers, _palette)
 		cauldron.set_tints(_active_tints)
 		cauldron.scale = Vector2(0.62, 0.62)
-		cauldron.position = Vector2(
-			vp.x - cauldron.VIAL_W - 20.0,
-			vp.y - cauldron.VIAL_H - 26.0
+		# Put the helper after the last vial, with its scaled base on the same shelf.
+		var last_vial: Vial = _vials.back()
+		cauldron.position = last_vial.position + Vector2(
+			vial_w + VIAL_SPACING - (vial_w - vial_w * cauldron.scale.x) * 0.5,
+			(vial_h - vial_h * cauldron.scale.y) * 0.5
 		)
 		cauldron.tapped.connect(_on_vial_tapped)
 		add_child(cauldron)
