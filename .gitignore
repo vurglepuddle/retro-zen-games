@@ -52,3 +52,5 @@ mono_crash.*.json
 #random MD
 *.md
 !README.md
+art_src/
+tests/
