@@ -221,7 +221,7 @@ const TM_WATER        := 2
 # DecorMapLayer — terrain set 0
 const DM_SOURCE       := 1
 const DM_TERRAIN_SET  := 0
-const DM_DECOR        := 0   # 16 random decor items
+const DM_DECOR        := 0   # natural grass decor, including the compact blossom tree
 # Atlas coords of rock tiles — these go on the static layer (no sway)
 const ROCK_ATLAS_COORDS := [Vector2i(11, 5), Vector2i(12, 5), Vector2i(13, 5)]
 const WATER_ROCK_ATLAS_COORDS := [Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3)]
@@ -229,12 +229,14 @@ const WATER_ONLY_DECOR_ATLAS_COORDS := [
 	Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3),
 	Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4), Vector2i(18, 4),
 	Vector2i(17, 5),
+	Vector2i(10, 7), Vector2i(11, 7), Vector2i(12, 7), Vector2i(13, 7), Vector2i(14, 7),
 ]
 const WATER_WEED_ATLAS_COORDS := [
 	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5),
 	Vector2i(15, 3), Vector2i(16, 3), Vector2i(17, 3),
 	Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4), Vector2i(18, 4),
 	Vector2i(17, 5),
+	Vector2i(10, 7), Vector2i(11, 7), Vector2i(12, 7), Vector2i(13, 7), Vector2i(14, 7),
 ]
 # PlantMapLayer — source id 0 (objects.png)
 # atlas coords: col = crop_id (0-4), row = stage row
@@ -340,6 +342,7 @@ var _idle_sigh_at: float = 50.0
 var _sigh_tween: Tween = null
 var _garden_btns: Dictionary = {}         # DecorData id → Button
 var _shop_tab_btns: Array[Button] = []
+var _garden_scroll: ScrollContainer = null
 
 # ── UI skin (ui_*.png, sources in art_src/zen_farm) ──────────────────────────
 const UI_TEX_ICONS := "res://games/zen_farm/assets/ui_icons.png"
@@ -495,6 +498,7 @@ func _ready() -> void:
 	decor_mat.set_shader_parameter("wind_strength", 5.0)
 	decor_mat.set_shader_parameter("wind_speed",    1.0)
 	decor_mat.set_shader_parameter("wind_spread",   0.038)
+	decor_mat.set_shader_parameter("tall_decor_atlas_coord", Vector2(9, 6))
 	_configure_poke_material(decor_mat)
 	_apply_atlas_layout_params(decor_mat, _decor_map)
 	_decor_map.material = decor_mat
@@ -717,6 +721,7 @@ func _update_grid_size() -> void:
 	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
 	_position_prop_layers(pos)
+	_position_petal_emitters(pos)
 
 
 func _apply_scroll(delta: int) -> void:
@@ -740,6 +745,7 @@ func _apply_scroll(delta: int) -> void:
 	if _insect_container:   _insect_container.position   = pos
 	if _moisture_map:       _moisture_map.position       = pos
 	_position_prop_layers(pos)
+	_position_petal_emitters(pos)
 
 
 # ── tilemap refresh ───────────────────────────────────────────────────────────
@@ -3472,6 +3478,7 @@ func _new_prop_sprite(tex: Texture2D, region: Rect2, offset: Vector2, pos: Vecto
 	sprite.centered = false
 	sprite.region_enabled = true
 	sprite.region_rect = region
+	sprite.region_filter_clip_enabled = true
 	sprite.offset = offset
 	sprite.position = pos
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -3480,8 +3487,8 @@ func _new_prop_sprite(tex: Texture2D, region: Rect2, offset: Vector2, pos: Vecto
 
 
 func _new_prop_entry(id: int, sig: String, base: Vector2) -> Dictionary:
-	return {"id": id, "sig": sig, "base": base, "parts": [], "glow": null, "halo": null,
-		"flash": 0.0, "tween": null}
+	return {"id": id, "sig": sig, "base": base, "parts": [], "glow": null, "halos": [],
+		"flash": 0.0, "tween": null, "anim_time": 0.0, "anim_frame": 0}
 
 
 # Sprites share their origin at the prop's base point (bottom-centre of its footprint),
@@ -3492,27 +3499,31 @@ func _build_prop_sprites(key: Vector3i, id: int, base: Vector2, sig: String) -> 
 		return
 	var fs := Vector2(DecorData.frame_size(id))
 	var top_h := fs.y - PROP_BASE_ROWS
+	var region := DecorData.frame_region(id)
 	var entry := _new_prop_entry(id, sig, base)
 	var parts: Array = entry["parts"]
-	parts.append(_new_prop_sprite(tex, Rect2(0, 0, fs.x, top_h), Vector2(-fs.x * 0.5, -fs.y), base, _prop_layer_over))
-	parts.append(_new_prop_sprite(tex, Rect2(0, top_h, fs.x, PROP_BASE_ROWS), Vector2(-fs.x * 0.5, -PROP_BASE_ROWS), base, _prop_layer_under))
+	if top_h > 0.0:
+		parts.append(_new_prop_sprite(tex, Rect2(region.position, Vector2(fs.x, top_h)), Vector2(-fs.x * 0.5, -fs.y), base, _prop_layer_over))
+	parts.append(_new_prop_sprite(tex, Rect2(region.position + Vector2(0, top_h), Vector2(fs.x, PROP_BASE_ROWS)), Vector2(-fs.x * 0.5, -PROP_BASE_ROWS), base, _prop_layer_under))
 	var glow_tex := _prop_glow_texture(id)
 	if glow_tex:
 		var glow := _new_prop_sprite(glow_tex, Rect2(Vector2.ZERO, fs), Vector2(-fs.x * 0.5, -fs.y), base, _prop_layer_glow)
 		glow.modulate.a = 0.0
 		entry["glow"] = glow
 		parts.append(glow)
-		if _firefly_texture:
+		for light_offset in DecorData.light_offsets(id):
+			if not _firefly_texture:
+				break
 			var halo := Sprite2D.new()
 			halo.texture = _firefly_texture
 			var add_mat := CanvasItemMaterial.new()
 			add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 			halo.material = add_mat
-			halo.position = base + DecorData.light_offset(id)
-			halo.scale = Vector2.ONE * (1.3 if id == DecorData.LANTERN else 2.2)
+			halo.position = base + light_offset
+			halo.scale = Vector2.ONE * DecorData.light_scale(id)
 			halo.modulate = Color(1.0, 0.82, 0.36, 0.0)
 			_prop_layer_glow.add_child(halo)
-			entry["halo"] = halo
+			entry["halos"].append(halo)
 	_prop_nodes[key] = entry
 
 
@@ -3553,9 +3564,9 @@ func _free_prop(key: Vector3i) -> void:
 	for node in entry["parts"]:
 		if is_instance_valid(node):
 			node.queue_free()
-	var halo = entry.get("halo")
-	if halo and is_instance_valid(halo):
-		halo.queue_free()
+	for halo in entry["halos"]:
+		if is_instance_valid(halo):
+			halo.queue_free()
 
 
 func _clear_all_props() -> void:
@@ -3582,7 +3593,7 @@ func _clear_decor_under_props(cell: FarmCell) -> void:
 
 func _squash_prop(entry: Dictionary, pop_in: bool = false) -> void:
 	# walkway pieces tile edge to edge; squashing them separately would open gaps
-	if entry.is_empty() or entry["id"] == DecorData.BRIDGE:
+	if entry.is_empty() or entry["id"] == DecorData.BRIDGE or DecorData.is_path(entry["id"]):
 		return
 	var old_tw = entry.get("tween")
 	if old_tw and is_instance_valid(old_tw):
@@ -3619,6 +3630,7 @@ func _tick_props(delta: float) -> void:
 	for key in _prop_nodes:
 		var entry: Dictionary = _prop_nodes[key]
 		var id: int = entry["id"]
+		_tick_prop_animation(entry, delta)
 		if id == DecorData.BEEHIVE:
 			hives.append(entry)
 		var glow = entry.get("glow")
@@ -3634,9 +3646,9 @@ func _tick_props(delta: float) -> void:
 		if id == DecorData.LANTERN:
 			light *= 0.88 + 0.12 * sin(now * 4.7 + key.x * 1.9 + key.y * 1.3)
 		glow.modulate.a = clampf(light, 0.0, 1.0)
-		var halo = entry.get("halo")
-		if halo and is_instance_valid(halo):
-			halo.modulate.a = clampf(light * (0.55 if id == DecorData.LANTERN else 0.4), 0.0, 1.0)
+		for halo in entry["halos"]:
+			if is_instance_valid(halo):
+				halo.modulate.a = clampf(light * (0.55 if id == DecorData.LANTERN else 0.32), 0.0, 1.0)
 
 	# hives send out a lone forager now and then on fair days
 	_hive_bee_timer -= delta
@@ -3645,6 +3657,23 @@ func _tick_props(delta: float) -> void:
 		if not hives.is_empty() and _game_active and not _is_raining and _night_amount < 0.3:
 			var hive: Dictionary = hives[randi() % hives.size()]
 			_release_hive_bee(hive["base"])
+
+
+func _tick_prop_animation(entry: Dictionary, delta: float) -> void:
+	var id: int = entry["id"]
+	var frames := DecorData.animation_frames(id)
+	if frames <= 1:
+		return
+	var frame_seconds := DecorData.animation_frame_seconds(id)
+	entry["anim_time"] = fmod(float(entry["anim_time"]) + delta, frame_seconds * frames)
+	var frame := int(float(entry["anim_time"]) / frame_seconds)
+	if frame == int(entry["anim_frame"]):
+		return
+	entry["anim_frame"] = frame
+	for sprite: Sprite2D in entry["parts"]:
+		var region := sprite.region_rect
+		region.position.x = frame * DecorData.frame_size(id).x
+		sprite.region_rect = region
 
 
 func _release_hive_bee(hive_base: Vector2) -> void:
@@ -3772,6 +3801,9 @@ func _interact_decor(cell: FarmCell, slot: int) -> void:
 			_play(_sfx_water_plop)
 			Haptics.pulse(Haptics.TAP)
 			_show_status("Lanterns sway over the water.")
+		DecorData.STONE_PATH, DecorData.MOSSY_PATH:
+			_play(_sfx_rock_hit_1)
+			Haptics.pulse(Haptics.TICK)
 
 
 func _start_decor_placement(id: int) -> void:
@@ -3883,7 +3915,8 @@ func _prop_light_points() -> Array[Vector2]:
 	for entry in _prop_nodes.values():
 		var id: int = entry["id"]
 		if DecorData.lit_frame(id) > 0:
-			points.append((entry["base"] as Vector2) + DecorData.light_offset(id))
+			for light_offset in DecorData.light_offsets(id):
+				points.append((entry["base"] as Vector2) + light_offset)
 	return points
 
 
@@ -3920,7 +3953,10 @@ func _make_petal_emitter(tex: Texture2D, amount: int) -> CPUParticles2D:
 	p.emitting = false
 	p.amount = amount
 	p.lifetime = 7.0
-	p.local_coords = false
+	# The field pans by moving its layers, not a Camera2D. Keep airborne petals
+	# in that same field space, so existing particles and new births move together.
+	p.local_coords = true
+	p.position = _grid_container.position
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
 	p.emission_points = PackedVector2Array([Vector2.ZERO])
 	p.direction = Vector2(0.55, -1.0)
@@ -3968,19 +4004,24 @@ func _petal_color(crop_id: int) -> Color:
 	return best
 
 
-# [points, colours] for every open flower head, in FarmScroll space (where the emitters live).
+func _position_petal_emitters(pos: Vector2) -> void:
+	for emitter in [_bloom_petals, _sigh_petals]:
+		if emitter:
+			emitter.position = pos
+
+
+# [points, colours] for every open flower head, in field-local emitter space.
 func _bloom_flower_points() -> Array:
 	var points := PackedVector2Array()
 	var colors := PackedColorArray()
 	var half := TILE_SIZE * 0.5
-	var origin := _grid_container.position
 	for c in _cells:
 		var cell := c as FarmCell
 		for slot in range(FarmCell.SLOT_COUNT):
 			if cell.slot_states[slot] != FarmCell.SlotState.CROP \
 					or cell.slot_growth_stages[slot] != CropData.STAGE_MATURE:
 				continue
-			points.append(origin + _cell_origin(cell) + Vector2((slot % 2) * half + half * 0.5, (slot >> 1) * half - 20.0))
+			points.append(_cell_origin(cell) + Vector2((slot % 2) * half + half * 0.5, (slot >> 1) * half - 20.0))
 			colors.append(_petal_color(cell.slot_crop_ids[slot]))
 	return [points, colors]
 
@@ -4653,16 +4694,27 @@ func _build_shop_garden() -> void:
 		tab.pressed.connect(func(): _set_shop_tab(idx))
 		_upgrade_panel.add_child(tab)
 		_shop_tab_btns.append(tab)
-	var col := 0
-	var row := 0
+	_garden_scroll = ScrollContainer.new()
+	_garden_scroll.position = Vector2(15, 43)
+	_garden_scroll.size = Vector2(434, 141)
+	_garden_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_upgrade_panel.add_child(_garden_scroll)
+	var garden_grid := GridContainer.new()
+	garden_grid.columns = 2
+	garden_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	garden_grid.add_theme_constant_override("h_separation", 10)
+	garden_grid.add_theme_constant_override("v_separation", 2)
+	_garden_scroll.add_child(garden_grid)
 	for id in DecorData.all_ids():
 		var btn := Button.new()
-		btn.position = Vector2(15 + col * 222, 43 + row * 47)
-		btn.size = Vector2(212, 45)
+		btn.custom_minimum_size = Vector2(202, 45)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.clip_text = true
 		btn.flat = true
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		btn.expand_icon = true
+		btn.add_theme_constant_override("icon_max_width", 32)
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.icon = _decor_icon(id)
@@ -4673,12 +4725,8 @@ func _build_shop_garden() -> void:
 			btn.add_theme_color_override(color_name, UI_INK)
 		var decor_id: int = id
 		btn.pressed.connect(func(): _start_decor_placement(decor_id))
-		_upgrade_panel.add_child(btn)
+		garden_grid.add_child(btn)
 		_garden_btns[id] = btn
-		col += 1
-		if col == 2:
-			col = 0
-			row += 1
 	_set_shop_tab(_shop_tab)
 
 
@@ -4689,8 +4737,7 @@ func _decor_icon(id: int) -> Texture2D:
 		tex.region = Rect2((WALK_L | WALK_R) * 64, 0, 64, 64)   # a straight landing
 	else:
 		tex.atlas = _prop_texture(DecorData.texture_path(id))
-		var fs := DecorData.frame_size(id)
-		tex.region = Rect2(0, 0, fs.x, fs.y)
+		tex.region = DecorData.frame_region(id)
 	return tex
 
 
@@ -4704,6 +4751,8 @@ func _set_shop_tab(tab: int) -> void:
 		btn.visible = tab == 0
 	for btn: Button in _garden_btns.values():
 		btn.visible = tab == 1
+	if _garden_scroll:
+		_garden_scroll.visible = tab == 1
 
 
 func _refresh_shop_garden() -> void:
@@ -4711,6 +4760,13 @@ func _refresh_shop_garden() -> void:
 		var btn: Button = _garden_btns[id]
 		var cost := DecorData.cost(id)
 		btn.text = DecorData.prop_name(id) + "  " + str(cost) + "c"
+		# Keep the full name and price visible beside the icon, including Pavilion.
+		var font := btn.get_theme_font("font")
+		var font_size := 30
+		var text_width := btn.custom_minimum_size.x - 44.0
+		while font_size > 20 and font.get_string_size(btn.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > text_width:
+			font_size -= 1
+		btn.add_theme_font_size_override("font_size", font_size)
 		btn.modulate = Color.WHITE if _coins >= cost else Color(1, 1, 1, 0.45)
 
 

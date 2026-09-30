@@ -16,6 +16,8 @@ uniform float poke_radius : hint_range(1.0, 300.0) = 90.0;
 uniform float poke_strength : hint_range(0.0, 60.0) = 18.0;
 uniform float tile_size = 64.0;
 uniform bool use_tall_tiles = false;
+// One compact blossom tree spans two atlas rows in the decor sheet.
+uniform vec2 tall_decor_atlas_coord = vec2(-1.0);
 
 // Runtime-atlas layout, set from Game.gd (_apply_atlas_layout_params).
 // With Godot's default use_texture_padding every tile is copied into the
@@ -40,6 +42,11 @@ void vertex() {
 	vec2 cell = floor(atlas_pos / atlas_pitch);
 
 	float visual_height = tile_size;
+	if (tall_decor_atlas_coord.x >= 0.0 && abs(cell.x - tall_decor_atlas_coord.x) < 0.1
+			&& (abs(cell.y - tall_decor_atlas_coord.y) < 0.1 || abs(cell.y - tall_decor_atlas_coord.y - 1.0) < 0.1)) {
+		cell.y = tall_decor_atlas_coord.y;
+		visual_height = tile_size * 2.0;
+	}
 	if (use_tall_tiles) {
 		// Tall plants sit on atlas rows 4 and 6 and span two rows; the
 		// bottom vertices of their quads land in padded rows 5 / 7 —

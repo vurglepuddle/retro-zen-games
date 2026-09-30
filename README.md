@@ -7,10 +7,10 @@ Just tap-tap, clink-clink and some music.
 
 <table>
   <tr>
-    <td><img height="400" src="https://github.com/user-attachments/assets/f65a8d5b-5be2-4686-910d-7ff362334bbf" /></td>
-    <td><img height="400" src="https://github.com/user-attachments/assets/14f833a6-0c76-4628-81e6-ee99657c7d95" /></td>
+    <td><img height="400" src="assets/screenshots/match-3.png" /></td>
+    <td><img height="400" src="assets/screenshots/alchemical_sort.png" /></td>
     <td><img height="400" src="assets/screenshots/goods_match_3.png"></td>
-    <td><img height="400" src="https://github.com/user-attachments/assets/ca7a2794-f5af-47d2-89e9-dd22b269f47a" /></td>
+    <td><img height="400" src="assets/screenshots/zen_garden.png" /></td>
   </tr>
 </table>
 
