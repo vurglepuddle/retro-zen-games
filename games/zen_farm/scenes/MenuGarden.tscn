@@ -1,0 +1,8 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://games/zen_farm/scenes/Game.tscn" id="1"]
+[ext_resource type="Script" path="res://games/zen_farm/scripts/MenuGarden.gd" id="2"]
+
+[node name="MenuGarden" instance=ExtResource("1")]
+script = ExtResource("2")
+menu_preview = true

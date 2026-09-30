@@ -1,6 +1,9 @@
 #Game.gd (zen_farm)
 extends Control
 
+# Inherited menu gardens use the renderer and wildlife, never the save lifecycle.
+@export var menu_preview := false
+
 signal back_to_menu
 signal rain_changed(is_raining: bool)
 signal day_night_changed(night_amount: float)
@@ -5210,8 +5213,14 @@ func _butterfly_flee_one(bfly: Dictionary) -> void:
 
 # ── app background save ───────────────────────────────────────────────────
 func _notification(what: int) -> void:
+	if menu_preview:
+		return
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if not is_visible_in_tree():
+			return
 		_game_active = false
 		back_to_menu.emit()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
-		SaveManager.save_game(self)
+		# Main instantiates Game behind the menu before a farm has been loaded.
+		if not _cells.is_empty():
+			SaveManager.save_game(self)
