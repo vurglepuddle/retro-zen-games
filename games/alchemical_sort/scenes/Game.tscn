@@ -1,10 +1,12 @@
-[gd_scene load_steps=12 format=3 uid="uid://bkuuewmvl1iiu"]
+[gd_scene load_steps=14 format=3 uid="uid://bkuuewmvl1iiu"]
 
 [ext_resource type="Script" path="res://games/alchemical_sort/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
 [ext_resource type="Texture2D" uid="uid://dq3mi4tdibma6" path="res://games/alchemical_sort/assets/alchemy_bg3.png" id="3_0hd8l"]
 [ext_resource type="Texture2D" uid="uid://cv6wgmx8qr3bg" path="res://games/alchemical_sort/assets/1772305215676-019ca59e-ee62-7b80-a838-0e85021bc714.png" id="4_26njo"]
 [ext_resource type="Texture2D" uid="uid://cv5bovdrqewfc" path="res://games/alchemical_sort/assets/colors_anim.png" id="5_gkxpu"]
+[ext_resource type="Texture2D" uid="uid://qu0pa703h2n2" path="res://games/alchemical_sort/assets/alchbg2.png" id="6_1w0n8"]
+[ext_resource type="Script" path="res://games/alchemical_sort/scripts/LampGlow.gd" id="7_lamp"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_dgmch"]
 atlas = ExtResource("5_gkxpu")
@@ -57,7 +59,8 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
-shelf_origin_y = 311.0
+shelf_origin_y = 274.0
+third_row_y_offset = -10.0
 
 [node name="Bg" type="ColorRect" parent="."]
 visible = false
@@ -73,42 +76,38 @@ color = Color(0.05, 0.07, 0.1, 1)
 [node name="MoveLabel" type="Label" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 20.0
-offset_top = 17.0
-offset_right = 145.0
-offset_bottom = 54.0
-theme_override_colors/font_color = Color(0.9, 0.85, 0.6, 1)
-theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.02, 1)
-theme_override_constants/outline_size = 4
+offset_left = 48.0
+offset_top = 33.0
+offset_right = 173.0
+offset_bottom = 70.0
+theme_override_colors/font_color = Color(0.0980392, 0.0705882, 0.0745098, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 38
 text = "Moves: 0"
 
 [node name="BestLabel" type="Label" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 20.0
+offset_left = 48.0
 offset_top = 65.0
-offset_right = 145.0
+offset_right = 173.0
 offset_bottom = 110.0
-theme_override_colors/font_color = Color(0.901961, 0.85098, 0.6, 1)
-theme_override_colors/font_outline_color = Color(0.05, 0.05, 0.08, 1)
-theme_override_constants/outline_size = 4
+theme_override_colors/font_color = Color(0.0980392, 0.0705882, 0.0745098, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 38
 text = "Best: –"
 
 [node name="UndoButton" type="Button" parent="."]
 modulate = Color(1, 1, 1, 0.35)
 z_index = 10
 layout_mode = 0
-offset_left = 405.0
-offset_top = 20.0
-offset_right = 487.0
-offset_bottom = 62.0
-theme_override_colors/font_color = Color(0.6, 0.6, 0.65, 1)
+offset_left = 421.0
+offset_top = 33.0
+offset_right = 503.0
+offset_bottom = 79.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 40
 text = "UNDO"
 flat = true
 
@@ -147,14 +146,14 @@ flat = true
 [node name="BackButton" type="Button" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 55.0
-offset_top = 1081.0
-offset_right = 128.0
-offset_bottom = 1118.0
+offset_left = 75.0
+offset_top = 1046.0
+offset_right = 189.0
+offset_bottom = 1091.0
 theme_override_colors/font_color = Color(0.901961, 0.85098, 0.6, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 24
-text = "< BACK"
+theme_override_font_sizes/font_size = 38
+text = "BACK"
 flat = true
 
 [node name="WinPanel" type="Control" parent="."]
@@ -264,11 +263,13 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="AlchemyBg3" type="Sprite2D" parent="."]
+visible = false
 position = Vector2(268.5, 608.234)
 scale = Vector2(0.753906, 0.914461)
 texture = ExtResource("3_0hd8l")
 
 [node name="1772305215676-019Ca59e-ee62-7b80-a838-0e85021Bc714" type="Sprite2D" parent="."]
+visible = false
 position = Vector2(269, 661)
 scale = Vector2(0.699219, 0.699219)
 texture = ExtResource("4_26njo")
@@ -279,6 +280,15 @@ z_index = 9
 position = Vector2(-132, 255)
 sprite_frames = SubResource("SpriteFrames_s7u5f")
 animation = &"liquid_anim"
+
+[node name="Alchbg2" type="Sprite2D" parent="."]
+position = Vector2(270.5, 601.704)
+scale = Vector2(0.80988, 0.80988)
+texture = ExtResource("6_1w0n8")
+
+[node name="LampGlow" type="Node2D" parent="."]
+position = Vector2(358, 57)
+script = ExtResource("7_lamp")
 
 [connection signal="pressed" from="UndoButton" to="." method="_on_undo_pressed"]
 [connection signal="pressed" from="ReshuffleButton" to="." method="_on_reshuffle_pressed"]
