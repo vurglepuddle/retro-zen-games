@@ -7,7 +7,7 @@ extends Control
 
 # --- Layout constants ---
 # 5 cols × 108 = 540px; 18px between adjacent items (9px each side inside cell).
-# 3 rows × 270 + 2 × 9 gap = 828px board height → 372px left for UI.
+# 3 rows × 270 + 2 × 6 gap = 822px board height → 378px left for UI.
 const ITEM_SIZE    := 90
 const SLOTS        := 3
 const SIDE_PAD     := 9     # (CELL_W - ITEM_SIZE) / 2
@@ -18,6 +18,7 @@ const SLOT_OVERLAP  := 12    # each slot nudged this many px into the one above 
 const SLOT_Y_OFFSET   := 16    # shift the whole stack down inside the cell
 const DISP_BG_PAD_H  := 2     # dispenser bg: px trimmed on each side horizontally
 const DISP_BG_PAD_V  := -4     # dispenser bg: px trimmed on top and bottom
+const LOCK_FONT_SIZE := 48     # locked-cell counter
 
 # --- State ---
 var _slots: Array[int] = [0, 0, 0]   # current visible items (0 = empty)
@@ -40,6 +41,7 @@ var _bg:           Panel = null
 var _lock_overlay: Panel = null    # dark overlay drawn over a locked cell
 var _lock_label:   Label = null    # shows remaining-match count on the overlay
 var _lock_seal:    Node2D = null   # rotating arcane circle around the counter
+var _unlock_tween: Tween = null    # overlay fade-out; killed if undo re-locks mid-fade
 var _disp_dots:    Array[ColorRect] = []   # indicator dots for dispenser depth
 var _disp_total:   int = 0                 # total items at dispenser creation time
 
@@ -55,6 +57,16 @@ static func _get_mystery_mat() -> ShaderMaterial:
 		_mystery_mat_top = ShaderMaterial.new()
 		_mystery_mat_top.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
 	return _mystery_mat_top
+
+static var _preview_mat: ShaderMaterial = null
+
+# Next-layer preview: darkened + faded but SOLID (preview_item.gdshader), so
+# previews that overlap never show through each other.
+static func _get_preview_mat() -> ShaderMaterial:
+	if _preview_mat == null:
+		_preview_mat = ShaderMaterial.new()
+		_preview_mat.shader = load("res://games/potion_3/assets/preview_item.gdshader")
+	return _preview_mat
 
 static func _get_mystery_mat_prev() -> ShaderMaterial:
 	if _mystery_mat_prev == null:
@@ -244,15 +256,29 @@ func get_z_stack_copy() -> Array:
 	return copy
 
 
+func get_snapshot() -> Dictionary:
+	## Full logical state for undo — items, hidden layers, mystery flags, lock.
+	return {
+		slots           = get_slots_array(),
+		z_stack         = get_z_stack_copy(),
+		slot_mystery    = _slot_mystery.duplicate(),
+		z_stack_mystery = _z_stack_mystery.duplicate(true),
+		is_locked       = _is_locked,
+		unlock_counter  = _unlock_counter,
+	}
+
+
 func restore(snap: Dictionary) -> void:
 	_slots = [snap.slots[0] as int, snap.slots[1] as int, snap.slots[2] as int]
 	_z_stack = []
 	for layer in snap.z_stack:
 		_z_stack.append(layer.duplicate())
-	if snap.has("is_locked"):
-		_is_locked       = snap.is_locked
-		_unlock_counter  = snap.unlock_counter
-		_update_lock_visual()
+	var mys: Array = snap.slot_mystery
+	_slot_mystery = [mys[0] as bool, mys[1] as bool, mys[2] as bool]
+	_z_stack_mystery = (snap.z_stack_mystery as Array).duplicate(true)
+	_is_locked      = snap.is_locked
+	_unlock_counter = snap.unlock_counter
+	_update_lock_visual()
 	_refresh_all()
 
 
@@ -328,8 +354,7 @@ func set_as_dispenser() -> void:
 			_z_stack.append([all_items[i], 0, 0])
 
 	# Collapse to single-slot height.
-	custom_minimum_size = Vector2(CELL_W, ITEM_SIZE)
-	size                = Vector2(CELL_W, ITEM_SIZE)
+	size = Vector2(CELL_W, ITEM_SIZE)
 
 	# Resize and restyle the background panel.
 	if _bg != null:
@@ -405,11 +430,15 @@ func set_as_locked(unlock_count: int) -> void:
 	_lock_label = Label.new()
 	_lock_label.text = str(_unlock_counter)
 	_lock_label.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
-	_lock_label.add_theme_font_size_override("font_size", 32)
-	_lock_label.add_theme_color_override("font_color", Color(0.65, 0.65, 0.85, 0.9))
+	_lock_label.add_theme_font_size_override("font_size", LOCK_FONT_SIZE)
+	_lock_label.add_theme_color_override("font_color", Color.WHITE)
 	_lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_lock_label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	_lock_label.size         = _lock_overlay.size
+	# vetka's digits sit high and a little left inside their line box, so plain
+	# centring leaves the ink off the seal's centre. Nudge it back (ratios of the
+	# font size, measured from rendered glyphs, so they hold if the size changes).
+	_lock_label.position     = Vector2(roundf(LOCK_FONT_SIZE * 0.06), roundf(LOCK_FONT_SIZE * 0.15))
 	_lock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_lock_overlay.add_child(_lock_label)
 	# Magical seal: a slowly rotating arcane circle around the counter.
@@ -481,6 +510,10 @@ func set_scroll_row_visual() -> void:
 func _update_lock_visual() -> void:
 	if _lock_overlay == null:
 		return
+	# An undo right after an unlock must not let the fade finish and hide the
+	# overlay of a cell that is locked again.
+	if _unlock_tween != null and _unlock_tween.is_valid():
+		_unlock_tween.kill()
 	_lock_overlay.visible  = _is_locked
 	_lock_overlay.modulate = Color.WHITE
 	if _lock_label != null:
@@ -490,14 +523,13 @@ func _update_lock_visual() -> void:
 func _animate_unlock() -> void:
 	if _lock_overlay == null:
 		return
-	var tw := create_tween()
-	tw.tween_property(_lock_overlay, "modulate:a", 0.0, 0.45) \
+	_unlock_tween = create_tween()
+	_unlock_tween.tween_property(_lock_overlay, "modulate:a", 0.0, 0.45) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	await tw.finished
-	if is_instance_valid(_lock_overlay):
+	_unlock_tween.tween_callback(func():
 		_lock_overlay.visible    = false
 		_lock_overlay.modulate.a = 1.0   # reset so undo can re-show it
-		_refresh_preview()               # show any previews now that we're unlocked
+		_refresh_preview())              # show any previews now that we're unlocked
 
 
 # ============================================================================
@@ -505,8 +537,13 @@ func _animate_unlock() -> void:
 # ============================================================================
 
 func _build_visuals() -> void:
-	custom_minimum_size = Vector2(CELL_W, CELL_H)
+	# No custom_minimum_size: it is cached while the node is outside the tree,
+	# so set_as_dispenser() could never shrink the rect below 270 px — the
+	# invisible bottom 180 px swallowed taps meant for the BACK button.
 	size = Vector2(CELL_W, CELL_H)
+	# Game._input does all hit-testing; the cell itself must never eat GUI
+	# clicks (it sits above the BACK / UNDO / RESTART buttons in tree order).
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# 1. Background panel — subtle dark shelf.
 	_bg = Panel.new()
@@ -533,7 +570,7 @@ func _build_visuals() -> void:
 		prect.size           = Vector2(ITEM_SIZE, ITEM_SIZE)
 		prect.position       = Vector2(SIDE_PAD - 2, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 10)
 		prect.pivot_offset   = Vector2(ITEM_SIZE * 0.5, ITEM_SIZE * 0.5)
-		prect.modulate       = Color(0.2, 0.2, 0.2, 0.85)  # overwritten by _refresh_preview() — tweak there
+		prect.material       = _get_preview_mat()   # look is set in _refresh_preview() / the shaders
 		prect.mouse_filter   = Control.MOUSE_FILTER_IGNORE
 		add_child(prect)
 		_preview_rects.append(prect)
@@ -655,8 +692,9 @@ func _refresh_preview() -> void:
 		var is_mys: bool = next_mystery[i] as bool
 		if item_id != 0 and _item_textures.has(item_id):
 			prect.texture  = _item_textures[item_id]
-			prect.modulate = Color(1.0, 1.0, 1.0, 0.85) if is_mys else Color(0.15, 0.15, 0.15, 0.50)
-			prect.material = _get_mystery_mat_prev() if is_mys else null
+			# Darkening/fade lives in the shaders (opaque output) — tweak there.
+			prect.modulate = Color.WHITE
+			prect.material = _get_mystery_mat_prev() if is_mys else _get_preview_mat()
 			prect.visible  = true
 		else:
 			prect.material = null

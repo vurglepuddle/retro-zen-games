@@ -21,5 +21,7 @@ void fragment() {
 	         + sin(p.y * 0.9 - TIME * 0.34 + sin(p.x * 1.05 - TIME * 0.22));
 	sw = floor((sw * 0.25 + 0.5) * 3.0) / 3.0;
 	vec3 col = mix(base_color.rgb, swirl_color.rgb, sw);
-	COLOR = vec4(col, step(0.5, a));
+	// × COLOR.a keeps node/cell modulate fades (drop-in, conveyor) working —
+	// overwriting COLOR outright drops modulate, so silhouettes used to pop.
+	COLOR = vec4(col, step(0.5, a) * COLOR.a);
 }
