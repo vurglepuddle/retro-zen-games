@@ -8,17 +8,50 @@ extends Control
 # --- Layout constants ---
 # 5 cols × 108 = 540px; 18px between adjacent items (9px each side inside cell).
 # 3 rows × 270 + 2 × 6 gap = 822px board height → 378px left for UI.
+# The art is drawn on the items' pixel grid: 1 art px = 3 game px (items are
+# 30 px drawn at 90), so offsets below are kept to multiples of 3.
 const ITEM_SIZE    := 90
 const SLOTS        := 3
 const SIDE_PAD     := 9     # (CELL_W - ITEM_SIZE) / 2
 const CELL_W       := 108
 const CELL_H        := 270   # 3 × ITEM_SIZE
-const VISUAL_INSET  := 4     # bg panel shrunk on all sides; items stay put
 const SLOT_OVERLAP  := 12    # each slot nudged this many px into the one above (perspective)
-const SLOT_Y_OFFSET   := 16    # shift the whole stack down inside the cell
-const DISP_BG_PAD_H  := 2     # dispenser bg: px trimmed on each side horizontally
-const DISP_BG_PAD_V  := -4     # dispenser bg: px trimmed on top and bottom
+const SLOT_Y_OFFSET   := 15    # shift the whole stack down inside the cell
+const DISP_BG_Y      := -3     # dispenser crate sits 1 art px higher so its rim shows above the item
+const DISP_PIP_Y     := 81     # depth pips on the dispenser crate's front lip
+const BELT_PIP_Y     := 69     # …and on the hazard-belt crate's lip (it sits on a belt)
 const LOCK_FONT_SIZE := 48     # locked-cell counter
+
+# --- Art (games/potion_3/assets/ui, sources in art_src/potion_3) ---
+const TEX_BOX       := preload("res://games/potion_3/assets/ui/box_shelf.png")       # 108×270
+const TEX_BOX_CONV  := preload("res://games/potion_3/assets/ui/box_conveyor.png")    # 108×270, belt along the bottom
+const TEX_BOX_SMALL := preload("res://games/potion_3/assets/ui/box_small.png")       # 108×96 dispenser crate
+const TEX_BOX_BELT  := preload("res://games/potion_3/assets/ui/box_small_belt.png")  # 108×96 hazard-belt crate
+const TEX_LOCK      := preload("res://games/potion_3/assets/ui/lock_cover.png")      # 108×270 sealed lid
+const TEX_SELECT    := preload("res://games/potion_3/assets/ui/select_frame.png")    # 96×96 corner brackets
+
+# Velvet lining of each box style. Next-layer previews are mixed toward it so
+# they read as sunk into the box (see _get_preview_mat).
+const LINING_SHELF    := Color("183f39")   # teal velvet   (box_shelf, box_small)
+const LINING_CONVEYOR := Color("121238")   # indigo velvet (box_conveyor)
+const LINING_BELT     := Color("550f0a")   # red velvet    (box_small_belt)
+const PIP_LIT   := Color("efac28")
+const PIP_EMPTY := Color("2a1d0d")
+
+# Box art switch. false = the original flat rounded panels (playtest build
+# while the box sprites get finished); true = the drawn boxes above. The shop
+# backdrop, signs, candle and selection brackets don't depend on it.
+const USE_BOX_ART := false
+
+enum Box { SHELF, CONVEYOR, CRATE, BELT_CRATE }
+const BOX_TEXTURES := [TEX_BOX, TEX_BOX_CONV, TEX_BOX_SMALL, TEX_BOX_BELT]
+const BOX_LININGS  := [LINING_SHELF, LINING_CONVEYOR, LINING_SHELF, LINING_BELT]
+# Flat panels (USE_BOX_ART off): fill colour per Box, and the colour that fill
+# makes over the shop wall — the preview fog, so previews sit in the panel.
+const FLAT_FILLS := [Color(0.12, 0.14, 0.18, 0.6), Color(0.16, 0.14, 0.10, 0.6),
+	Color(0.10, 0.12, 0.26, 0.72), Color(0.16, 0.14, 0.10, 0.6)]
+const FLAT_FOGS  := [Color(0.138, 0.130, 0.128), Color(0.162, 0.130, 0.080),
+	Color(0.118, 0.118, 0.202), Color(0.162, 0.130, 0.080)]
 
 # --- State ---
 var _slots: Array[int] = [0, 0, 0]   # current visible items (0 = empty)
@@ -35,12 +68,13 @@ var _unlock_counter: int = 0       # matches remaining to unlock this cell
 # --- Visual nodes ---
 var _slot_rects:      Array[TextureRect] = []
 var _preview_rects:   Array[TextureRect] = []
-var _slot_highlights: Array[Panel]       = []
+var _slot_highlights: Array[TextureRect] = []
 var _mystery_panels:  Array[Panel]       = []
-var _bg:           Panel = null
-var _lock_overlay: Panel = null    # dark overlay drawn over a locked cell
-var _lock_label:   Label = null    # shows remaining-match count on the overlay
-var _lock_seal:    Node2D = null   # rotating arcane circle around the counter
+var _bg:           Control = null   # box art (TextureRect), or a flat Panel with USE_BOX_ART off
+var _lining:       Color = LINING_SHELF if USE_BOX_ART else FLAT_FOGS[Box.SHELF]
+var _lock_overlay: Control = null   # sealed lid (or dark panel) drawn over a locked cell
+var _lock_label:   Label = null    # remaining-match count, printed on the wax seal
+var _lock_seal:    Node2D = null   # rotating arcane circle around the wax seal
 var _unlock_tween: Tween = null    # overlay fade-out; killed if undo re-locks mid-fade
 var _disp_dots:    Array[ColorRect] = []   # indicator dots for dispenser depth
 var _disp_total:   int = 0                 # total items at dispenser creation time
@@ -58,15 +92,33 @@ static func _get_mystery_mat() -> ShaderMaterial:
 		_mystery_mat_top.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
 	return _mystery_mat_top
 
-static var _preview_mat: ShaderMaterial = null
+static var _preview_mats: Dictionary = {}   # lining colour (html) → ShaderMaterial
 
-# Next-layer preview: darkened + faded but SOLID (preview_item.gdshader), so
-# previews that overlap never show through each other.
-static func _get_preview_mat() -> ShaderMaterial:
-	if _preview_mat == null:
-		_preview_mat = ShaderMaterial.new()
-		_preview_mat.shader = load("res://games/potion_3/assets/preview_item.gdshader")
-	return _preview_mat
+# Next-layer preview: darkened and mixed toward the box's velvet lining
+# (preview_item.gdshader) but SOLID, so previews that overlap never show
+# through each other. One shared material per lining colour.
+static func _get_preview_mat(lining: Color = LINING_SHELF) -> ShaderMaterial:
+	var key := lining.to_html()
+	if not _preview_mats.has(key):
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://games/potion_3/assets/preview_item.gdshader")
+		mat.set_shader_parameter("fog_color", lining)
+		_preview_mats[key] = mat
+	return _preview_mats[key]
+
+
+static func _make_art_rect(tex: Texture2D) -> TextureRect:
+	## Pixel-art TextureRect at the texture's own size. EXPAND_IGNORE_SIZE keeps
+	## the texture out of the minimum size — Control caches that while outside
+	## the tree, which would stop set_as_dispenser() from shrinking the rect.
+	var r := TextureRect.new()
+	r.texture        = tex
+	r.expand_mode    = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode   = TextureRect.STRETCH_SCALE
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	r.mouse_filter   = Control.MOUSE_FILTER_IGNORE
+	r.size           = tex.get_size()
+	return r
 
 static func _get_mystery_mat_prev() -> ShaderMaterial:
 	if _mystery_mat_prev == null:
@@ -356,25 +408,17 @@ func set_as_dispenser() -> void:
 	# Collapse to single-slot height.
 	size = Vector2(CELL_W, ITEM_SIZE)
 
-	# Resize and restyle the background panel.
+	# Swap the tall box for a small crate.
 	if _bg != null:
-		_bg.size     = Vector2(CELL_W - DISP_BG_PAD_H * 2, ITEM_SIZE - DISP_BG_PAD_V * 2)
-		_bg.position = Vector2(DISP_BG_PAD_H, DISP_BG_PAD_V)
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.10, 0.12, 0.26, 0.72)
-		style.corner_radius_top_left     = 6
-		style.corner_radius_top_right    = 6
-		style.corner_radius_bottom_left  = 6
-		style.corner_radius_bottom_right = 6
-		_bg.add_theme_stylebox_override("panel", style)
+		_dress_box(Box.CRATE)
 
 	# Remove SLOT_Y_OFFSET from slot 0 — the single item fills the 90px cell flush.
 	if not _slot_rects.is_empty():
 		_slot_rects[0].position      = Vector2(SIDE_PAD, 0)
 	if not _preview_rects.is_empty():
-		_preview_rects[0].position   = Vector2(SIDE_PAD - 10, -4)
+		_preview_rects[0].position   = Vector2(SIDE_PAD - 9, -3)
 	if not _slot_highlights.is_empty():
-		_slot_highlights[0].position = Vector2(SIDE_PAD - 2, -2)
+		_slot_highlights[0].position = Vector2(SIDE_PAD - 3, -3)
 
 	# Hide slots 1 and 2 — only slot 0 is the live dispensing slot.
 	for i in range(1, SLOTS):
@@ -387,18 +431,18 @@ func set_as_dispenser() -> void:
 
 	_refresh_all()
 
-	# Depth indicator — a row of small dots at the bottom of the cell.
+	# Depth indicator — amber pips on the crate's front lip; one goes dark per
+	# item taken. Sized and placed on the 3-px art grid.
 	_disp_total = _z_stack.size() + (1 if _slots[0] != 0 else 0)
-	const DOT_W := 7
-	const DOT_H := 5
-	const DOT_GAP := 3
-	var bar_w := _disp_total * DOT_W + (_disp_total - 1) * DOT_GAP
-	var start_x := int((CELL_W - bar_w) / 2.0)
+	const PIP := 6       # 2×2 art px
+	const PIP_GAP := 3
+	var bar_w := _disp_total * PIP + (_disp_total - 1) * PIP_GAP
+	var start_x := int(roundf((CELL_W - bar_w) / 6.0)) * 3
 	for di in range(_disp_total):
 		var dot := ColorRect.new()
-		dot.size         = Vector2(DOT_W, DOT_H)
-		dot.position     = Vector2(start_x + di * (DOT_W + DOT_GAP), ITEM_SIZE - DOT_H - 3)
-		dot.color        = Color(0.55, 0.72, 1.0, 0.85)
+		dot.size         = Vector2(PIP, PIP)
+		dot.position     = Vector2(start_x + di * (PIP + PIP_GAP), DISP_PIP_Y)
+		dot.color        = PIP_LIT
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(dot)
 		_disp_dots.append(dot)
@@ -411,27 +455,30 @@ func set_as_locked(unlock_count: int) -> void:
 	# Hide previews — they'd poke out from under the overlay otherwise.
 	for pr in _preview_rects:
 		pr.visible = false
-	# Dark overlay covers the FULL cell so no item graphics bleed out.
-	_lock_overlay = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.05, 0.10, 0.92)
-	style.corner_radius_top_left     = 6
-	style.corner_radius_top_right    = 6
-	style.corner_radius_bottom_left  = 6
-	style.corner_radius_bottom_right = 6
-	style.border_color = Color(0.45, 0.45, 0.65, 0.55)
-	style.set_border_width_all(1)
-	_lock_overlay.add_theme_stylebox_override("panel", style)
-	_lock_overlay.size         = Vector2(CELL_W, CELL_H)
-	_lock_overlay.position     = Vector2.ZERO
-	_lock_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Sealed lid covers the FULL cell so no item graphics bleed out: planks tied
+	# with twine under a red wax seal (lock_cover.png) — or, with USE_BOX_ART
+	# off, the original dark panel.
+	if USE_BOX_ART:
+		_lock_overlay = _make_art_rect(TEX_LOCK)
+	else:
+		_lock_overlay = Panel.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.05, 0.05, 0.10, 0.92)
+		style.set_corner_radius_all(6)
+		style.border_color = Color(0.45, 0.45, 0.65, 0.55)
+		style.set_border_width_all(1)
+		_lock_overlay.add_theme_stylebox_override("panel", style)
+		_lock_overlay.size         = Vector2(CELL_W, CELL_H)
+		_lock_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_lock_overlay)
-	# Remaining-match counter in the centre of the overlay.
+	# Remaining-match counter, printed on the wax seal at the cell's centre.
 	_lock_label = Label.new()
 	_lock_label.text = str(_unlock_counter)
 	_lock_label.add_theme_font_override("font", load("res://assets/font/vetka.ttf"))
 	_lock_label.add_theme_font_size_override("font_size", LOCK_FONT_SIZE)
 	_lock_label.add_theme_color_override("font_color", Color.WHITE)
+	_lock_label.add_theme_color_override("font_outline_color", LINING_BELT)
+	_lock_label.add_theme_constant_override("outline_size", 6)
 	_lock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_lock_label.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	_lock_label.size         = _lock_overlay.size
@@ -439,36 +486,48 @@ func set_as_locked(unlock_count: int) -> void:
 	# centring leaves the ink off the seal's centre. Nudge it back (ratios of the
 	# font size, measured from rendered glyphs, so they hold if the size changes).
 	_lock_label.position     = Vector2(roundf(LOCK_FONT_SIZE * 0.06), roundf(LOCK_FONT_SIZE * 0.15))
+	_lock_label.pivot_offset = Vector2(CELL_W, CELL_H) * 0.5 - _lock_label.position   # = the seal's centre
 	_lock_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_lock_overlay.add_child(_lock_label)
-	# Magical seal: a slowly rotating arcane circle around the counter.
+	# Magical seal: a slowly rotating arcane circle around the wax seal. Added
+	# before the label so the number stays on top.
 	_lock_seal = Node2D.new()
 	_lock_seal.position = Vector2(CELL_W * 0.5, CELL_H * 0.5)
-	_lock_seal.modulate.a = 0.55
 	_lock_seal.draw.connect(_draw_lock_seal)
 	_lock_overlay.add_child(_lock_seal)
+	_lock_overlay.add_child(_lock_label)
 	var seal_tw := _lock_seal.create_tween().set_loops()
 	seal_tw.tween_property(_lock_seal, "rotation", TAU, 14.0).from(0.0)
 
 
 # Arcane seal: outer ring, rotating inner dashes, diamonds at the cardinal
-# points — drawn around the unlock counter.
+# points — gilt (amber/cream from the item palette) drawn around the wax seal,
+# with 3 px strokes so it matches the art's pixel weight.
 func _draw_lock_seal() -> void:
 	if _lock_seal == null:
 		return
-	var faint  := Color(0.62, 0.58, 0.95, 0.5)
-	var bright := Color(0.78, 0.72, 1.0, 0.8)
-	_lock_seal.draw_arc(Vector2.ZERO, 38.0, 0.0, TAU, 40, faint, 2.0, false)
+	var faint  := Color(0.937, 0.675, 0.157, 0.55)   # #efac28
+	var bright := Color(0.937, 0.847, 0.631, 0.9)    # #efd8a1
+	_lock_seal.draw_arc(Vector2.ZERO, 38.0, 0.0, TAU, 48, faint, 3.0, false)
 	for i in range(8):
 		var a0 := float(i) * TAU / 8.0
-		_lock_seal.draw_arc(Vector2.ZERO, 31.0, a0, a0 + TAU / 16.0, 6, bright, 2.0, false)
+		_lock_seal.draw_arc(Vector2.ZERO, 34.0, a0, a0 + TAU / 16.0, 6, bright, 3.0, false)
 	for i in range(4):
 		var ang := float(i) * TAU / 4.0
 		var p := Vector2(cos(ang), sin(ang)) * 38.0
 		_lock_seal.draw_colored_polygon(PackedVector2Array([
-			p + Vector2(0, -5), p + Vector2(5, 0),
-			p + Vector2(0, 5), p + Vector2(-5, 0),
+			p + Vector2(0, -6), p + Vector2(6, 0),
+			p + Vector2(0, 6), p + Vector2(-6, 0),
 		]), bright)
+
+
+func _thump_lock_label() -> void:
+	## The seal's number gives a small press when a match counts it down.
+	if _lock_label == null:
+		return
+	_lock_label.scale = Vector2(1.3, 1.3)
+	var tw := _lock_label.create_tween()
+	tw.tween_property(_lock_label, "scale", Vector2.ONE, 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func notify_match() -> bool:
@@ -483,6 +542,7 @@ func notify_match() -> bool:
 		return true
 	if _lock_label != null:
 		_lock_label.text = str(_unlock_counter)
+		_thump_lock_label()
 	return false
 
 
@@ -491,20 +551,46 @@ func _refresh_dispenser_indicator() -> void:
 		return
 	var remaining := _z_stack.size() + (1 if _slots[0] != 0 else 0)
 	for i in range(_disp_dots.size()):
-		_disp_dots[i].visible = i < remaining
+		_disp_dots[i].color = PIP_LIT if i < remaining else PIP_EMPTY
 
 
 func set_scroll_row_visual() -> void:
-	## Called by Game to tint cells that belong to a scrolling row.
+	## Called by Game for cells that ride a conveyor: a copper-trimmed,
+	## indigo-lined box (scrolling grid row) or a red-lined crate (hazard belt
+	## dispensers). Both art pieces carry a belt segment along the bottom that
+	## joins up with the neighbouring cells into one continuous belt.
 	if _bg == null:
 		return
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.16, 0.14, 0.10, 0.60)   # warm amber tint
-	style.corner_radius_top_left     = 6
-	style.corner_radius_top_right    = 6
-	style.corner_radius_bottom_left  = 6
-	style.corner_radius_bottom_right = 6
-	_bg.add_theme_stylebox_override("panel", style)
+	if _is_dispenser:
+		_dress_box(Box.BELT_CRATE)
+		if USE_BOX_ART:
+			for dot in _disp_dots:
+				dot.position.y = BELT_PIP_Y
+	else:
+		_dress_box(Box.CONVEYOR)
+	_refresh_preview()
+
+
+func _dress_box(kind: Box) -> void:
+	## Styles the cell background for a Box kind: the drawn box texture, or
+	## (USE_BOX_ART off) the original flat rounded panel. Also picks the colour
+	## next-layer previews fade toward.
+	var small := kind == Box.CRATE or kind == Box.BELT_CRATE
+	if USE_BOX_ART:
+		var art := _bg as TextureRect
+		art.texture  = BOX_TEXTURES[kind]
+		art.size     = art.texture.get_size()
+		art.position = Vector2(0, DISP_BG_Y if small else 0)
+		_lining      = BOX_LININGS[kind]
+	else:
+		var style := StyleBoxFlat.new()
+		style.bg_color = FLAT_FILLS[kind]
+		style.set_corner_radius_all(6)
+		_bg.add_theme_stylebox_override("panel", style)
+		# Old insets: 4 px all round for shelves; crates 2 px in, 4 px proud top/bottom.
+		_bg.size     = Vector2(CELL_W - 4, ITEM_SIZE + 8) if small else Vector2(CELL_W - 8, CELL_H - 8)
+		_bg.position = Vector2(2, -4) if small else Vector2(4, 4)
+		_lining      = FLAT_FOGS[kind]
 
 
 func _update_lock_visual() -> void:
@@ -545,22 +631,18 @@ func _build_visuals() -> void:
 	# clicks (it sits above the BACK / UNDO / RESTART buttons in tree order).
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	# 1. Background panel — subtle dark shelf.
-	_bg = Panel.new()
-	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.12, 0.14, 0.18, 0.6)
-	bg_style.corner_radius_top_left     = 6
-	bg_style.corner_radius_top_right    = 6
-	bg_style.corner_radius_bottom_left  = 6
-	bg_style.corner_radius_bottom_right = 6
-	_bg.add_theme_stylebox_override("panel", bg_style)
-	_bg.size     = Vector2(CELL_W - VISUAL_INSET * 2, CELL_H - VISUAL_INSET * 2)
-	_bg.position = Vector2(VISUAL_INSET, VISUAL_INSET)
-	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 1. The box — a wooden display box lined with teal velvet (box_shelf.png).
+	#    Conveyor / dispenser / belt cells swap the texture later.
+	if USE_BOX_ART:
+		_bg = _make_art_rect(TEX_BOX)
+	else:
+		_bg = Panel.new()
+		_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dress_box(Box.SHELF)
 	add_child(_bg)
 
 	# 2. Preview (next z-layer) — added first so it renders behind main items.
-	#    Offset slightly right+down to suggest depth.
+	#    Offset slightly left+up (one art px, three) to suggest depth.
 	_preview_rects.clear()
 	for i in range(SLOTS):
 		var prect := TextureRect.new()
@@ -568,9 +650,9 @@ func _build_visuals() -> void:
 		prect.stretch_mode   = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		prect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		prect.size           = Vector2(ITEM_SIZE, ITEM_SIZE)
-		prect.position       = Vector2(SIDE_PAD - 2, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 10)
+		prect.position       = Vector2(SIDE_PAD - 3, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 9)
 		prect.pivot_offset   = Vector2(ITEM_SIZE * 0.5, ITEM_SIZE * 0.5)
-		prect.material       = _get_preview_mat()   # look is set in _refresh_preview() / the shaders
+		prect.material       = _get_preview_mat(_lining)   # look is set in _refresh_preview() / the shaders
 		prect.mouse_filter   = Control.MOUSE_FILTER_IGNORE
 		add_child(prect)
 		_preview_rects.append(prect)
@@ -590,17 +672,9 @@ func _build_visuals() -> void:
 		add_child(rect)
 		_slot_rects.append(rect)
 
-		# Golden selection highlight.
-		var highlight := Panel.new()
-		var h_style := StyleBoxFlat.new()
-		h_style.bg_color     = Color(0, 0, 0, 0)
-		h_style.border_color = Color(1.0, 0.85, 0.3, 0.9)
-		h_style.set_border_width_all(2)
-		h_style.set_corner_radius_all(4)
-		highlight.add_theme_stylebox_override("panel", h_style)
-		highlight.size     = Vector2(ITEM_SIZE + 4, ITEM_SIZE + 4)
-		highlight.position = Vector2(SIDE_PAD - 2, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 2)
-		highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Golden corner-bracket selection highlight (select_frame.png, 1 art px outside the item).
+		var highlight := _make_art_rect(TEX_SELECT)
+		highlight.position = Vector2(SIDE_PAD - 3, SLOT_Y_OFFSET + i * (ITEM_SIZE - SLOT_OVERLAP) - 3)
 		highlight.visible  = false
 		add_child(highlight)
 		_slot_highlights.append(highlight)
@@ -694,7 +768,7 @@ func _refresh_preview() -> void:
 			prect.texture  = _item_textures[item_id]
 			# Darkening/fade lives in the shaders (opaque output) — tweak there.
 			prect.modulate = Color.WHITE
-			prect.material = _get_mystery_mat_prev() if is_mys else _get_preview_mat()
+			prect.material = _get_mystery_mat_prev() if is_mys else _get_preview_mat(_lining)
 			prect.visible  = true
 		else:
 			prect.material = null

@@ -97,6 +97,16 @@ var _pressing: bool        = false
 
 func _ready() -> void:
 	_setup_combo_players()
+	_layout_backdrop()
+	get_viewport().size_changed.connect(_layout_backdrop)
+
+
+func _layout_backdrop() -> void:
+	## The shop counter's top edge lines up with the bottom of the dispenser
+	## row, so the little crates stand on it (−3: the counter art's outline row
+	## sits just above the lit edge).
+	var counter := $Backdrop/Counter as Control
+	counter.position.y = _board_origin_y() + _board_height() + DISP_GAP + PotionCell.ITEM_SIZE - 3
 
 
 func _setup_combo_players() -> void:
@@ -1288,7 +1298,7 @@ func _update_ui() -> void:
 		#_best_label.visible = true
 	else:
 		_best_label.visible = false
-	_undo_button.text = "UNDO" if not _undo_stack.is_empty() else ""
+	# The UNDO sign always hangs there; it just dims while there's nothing to undo.
 	_undo_button.disabled = _undo_stack.is_empty()
 
 
