@@ -12,7 +12,15 @@ const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen"]
 const ITEMS_BASE_PATH := "res://games/potion_3/assets/items/"
 
 const COL_SPACING     := 0    # padding is built into CELL_W (9px each side)
-const ROW_SPACING     := 9    # gap between rows: 3×270 + 2×9 = 828px board
+const ROW_SPACING     := 6    # gap between rows: 3×270 + 2×6 = 822px board
+# Vertical layout: the board is centred between a top band (UNDO, hazard belt)
+# and a slightly taller bottom band (dispensers, BACK). The asymmetry keeps the
+# hazard belt where it has always been while every gap below it is tightened,
+# freeing ~12 px above the BACK button.
+const TOP_BAND        := 84.0
+const BOTTOM_BAND     := 96.0
+const BELT_GAP        := 15   # hazard belt ↔ board
+const DISP_GAP        := 15   # board ↔ dispenser row
 const DRAG_THRESHOLD  := 10.0
 const SCROLL_INTERVAL := 2.5  # seconds between conveyor ticks on scrolling rows
 const SCROLL_ROW_MAX   := 1   # max scrolling rows per game; bump to 2 to re-enable dizzy mode
@@ -36,6 +44,7 @@ var _empty_cell_count:  int = 2
 
 # ---- game state --------------------------------------------------------------
 var _game_generation: int  = 0     # incremented on every prepare_board(); stale scroll lambdas bail out
+var _started_generation: int = -1  # generation start_game() last ran for; blocks double starts
 var _cells: Array          = []    # 2D: [row][col] → PotionCell
 var _selected_cell: PotionCell = null
 var _selected_slot: int    = -1
@@ -64,6 +73,8 @@ var _board_origin_x:   int  = 0                 # left x of the board grid (for 
 var _hazard_disp_scroll: bool      = false
 var _disp_scroll_cells: Array[PotionCell] = []
 var _disp_scroll_buffer: PotionCell = null
+var _scroll_strips: Dictionary     = {}   # scrolling row index → strip Control holding its cells
+var _belt_strip: Control           = null # strip holding the hazard belt cells
 var _scroll_tweens: Array[Tween]   = []   # killed in _clear_cells() to stop tween_method lambdas
 
 # ---- drag state --------------------------------------------------------------
@@ -216,6 +227,13 @@ func start_game() -> void:
 	# Any await that resumes after a new prepare_board() exits immediately,
 	# preventing two concurrent start_game() runs from both arming scroll timers.
 	var gen := _game_generation
+	# One start per prepared board. A second call (e.g. a double-tapped
+	# difficulty button) would re-run the drop-in from mid-flight positions —
+	# shoving cells ~160 px too low — and start duplicate scroll loops that
+	# leave conveyor cells stacked or stuck invisible.
+	if _started_generation == gen:
+		return
+	_started_generation = gen
 	_board_active = false
 	_undo_stack.clear()
 	_update_ui()
@@ -361,7 +379,7 @@ func _load_textures() -> void:
 
 
 func _clear_cells() -> void:
-	# Kill all active scroll tweens first — their tween_method lambdas capture cell
+	# Kill all active scroll tweens first — their tween_method lambdas capture strip
 	# nodes, and those nodes are about to be queue_free()d. Without this, Godot fires
 	# "lambda capture at index 0 was freed" errors for every remaining tween frame.
 	for tw in _scroll_tweens:
@@ -381,6 +399,12 @@ func _clear_cells() -> void:
 		(dc as PotionCell).queue_free()
 	_disp_scroll_cells.clear()
 	_disp_scroll_buffer = null
+	for strip in _scroll_strips.values():
+		(strip as Control).get_parent().queue_free()   # the holder; frees the strip too
+	_scroll_strips.clear()
+	if _belt_strip != null:
+		_belt_strip.get_parent().queue_free()
+		_belt_strip = null
 
 
 func _build_cells() -> void:
@@ -388,11 +412,12 @@ func _build_cells() -> void:
 	var items: Array = board_data.items
 
 	var board_w: int = _cols_per_row * PotionCell.CELL_W   # COL_SPACING=0; padding inside CELL_W
-	var board_h: int = _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
 	var origin_x := int((540.0 - board_w) / 2.0)
-	var vp_h := get_viewport_rect().size.y
-	var origin_y := int(90.0 + (vp_h - 180.0 - board_h) / 2.0)
+	var origin_y := _board_origin_y()
 	_board_origin_x = origin_x
+
+	for r in _scrolling_rows:
+		_scroll_strips[r] = _make_strip()
 
 	var cell_idx := 0
 	for row in range(_rows):
@@ -412,7 +437,7 @@ func _build_cells() -> void:
 				origin_x + col * PotionCell.CELL_W,
 				origin_y + row * (PotionCell.CELL_H + ROW_SPACING)
 			)
-			add_child(cell)
+			(_scroll_strips.get(row, self) as Node).add_child(cell)
 			row_arr.append(cell)
 			cell_idx += 1
 		_cells.append(row_arr)
@@ -435,7 +460,7 @@ func _build_cells() -> void:
 				origin_y + row_idx * (PotionCell.CELL_H + ROW_SPACING)
 			)
 			buf_cell.modulate.a = 0.0   # invisible until its first scroll-in
-			add_child(buf_cell)
+			(_scroll_strips[row_idx] as Control).add_child(buf_cell)
 			_cells[row_idx].append(buf_cell)
 			_buffer_cells.append(buf_cell)   # tracked separately to skip drop-in
 			extra_idx += 1
@@ -444,6 +469,44 @@ func _build_cells() -> void:
 	_create_dispenser_cells(board_data.dispenser_groups)
 	if _hazard_disp_scroll:
 		_create_disp_scroll_belt(board_data.disp_scroll_groups)
+
+
+func _make_strip() -> Control:
+	## Holder for one conveyor's cells; returns the strip the cells go in.
+	## The strip slides, never the cells: moved one by one, cells snap to screen
+	## pixels on different frames at non-integer window scales (e.g. the 456-wide
+	## desktop preview), so the gaps between them flicker — the conveyor "shimmer".
+	## Two levels so the strip can step by whole SCREEN pixels: the project's
+	## snap_2d_transforms_to_pixel rounds a node's own position in its parent's
+	## units, so the outer holder is scaled 1/s (s = screen px per game px) and the
+	## strip scales back by s. On a 2× phone that means 1 px steps instead of 2.
+	var holder := Control.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(holder)
+	var strip := Control.new()
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(strip)
+	_place_strip(strip, 0.0)
+	return strip
+
+
+func _place_strip(strip: Control, offset_x: float) -> void:
+	## Shifts a conveyor strip offset_x game px from home, snapped to whole screen pixels.
+	## Re-reads the scale every call so a resized desktop window stays correct.
+	var s := get_viewport().get_final_transform().get_scale().x
+	(strip.get_parent() as Control).scale = Vector2.ONE / s
+	strip.scale = Vector2(s, s)
+	strip.position.x = roundf(offset_x * s)
+	strip.set_meta("offset_x", offset_x)
+
+
+func _board_height() -> int:
+	return _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
+
+
+func _board_origin_y() -> int:
+	var vp_h := get_viewport_rect().size.y
+	return int(TOP_BAND + (vp_h - TOP_BAND - BOTTOM_BAND - _board_height()) / 2.0)
 
 
 func _generate_board_data() -> Dictionary:
@@ -612,6 +675,12 @@ func _input(event: InputEvent) -> void:
 	var is_motion := false
 
 	var is_mobile := OS.has_feature("mobile")
+
+	# Only the first finger plays. A second finger used to re-select mid-drag,
+	# stranding the dragged slot hidden (an "invisible" item that reappeared
+	# only when swiped) or stranding the drag sprite on screen.
+	if (event is InputEventScreenTouch or event is InputEventScreenDrag) and event.index != 0:
+		return
 
 	if event is InputEventScreenTouch:
 		pos = event.position
@@ -858,13 +927,12 @@ func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_sl
 	_selected_slot = -1
 
 	if animate_fly:
-		await _animate_item_move(from_cell, from_slot, to_cell, to_slot, item_id)
+		await _animate_item_move(from_cell, from_slot, to_cell, to_slot, item_id, is_mystery)
 
 	from_cell.set_slot_mystery(from_slot, false)
 	from_cell.remove_item(from_slot)
 	to_cell.set_item(to_slot, item_id)
-	if is_mystery:
-		to_cell.set_slot_mystery(to_slot, true)
+	to_cell.set_slot_mystery(to_slot, is_mystery)
 	_sfx_put_down.play()
 
 	_move_count += 1
@@ -940,7 +1008,7 @@ func _process_match(cell: PotionCell) -> void:
 
 
 func _animate_item_move(from_cell: PotionCell, from_slot: int,
-		to_cell: PotionCell, to_slot: int, item_id: int) -> void:
+		to_cell: PotionCell, to_slot: int, item_id: int, is_mystery := false) -> void:
 	var start_pos := from_cell.global_position + from_cell.get_slot_center(from_slot)
 	var end_pos   := to_cell.global_position   + to_cell.get_slot_center(to_slot)
 
@@ -951,6 +1019,8 @@ func _animate_item_move(from_cell: PotionCell, from_slot: int,
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.size = Vector2(PotionCell.ITEM_SIZE, PotionCell.ITEM_SIZE)
 	sprite.pivot_offset = Vector2(PotionCell.ITEM_SIZE * 0.5, PotionCell.ITEM_SIZE * 0.5)
+	if is_mystery:
+		sprite.material = PotionCell._get_mystery_mat()   # don't reveal it mid-flight
 	#sprite.rotation = -PI / 4.0  # uncomment for 45° CCW tilt
 	sprite.position = start_pos - Vector2(PotionCell.ITEM_SIZE * 0.5, PotionCell.ITEM_SIZE * 0.5)
 	sprite.z_index = 50
@@ -988,14 +1058,6 @@ func _check_win() -> bool:
 func _on_win() -> void:
 	_board_active = false
 	_save_progress()
-	# Disable cell mouse input so WinPanel buttons can be clicked.
-	for row in _cells:
-		for cell in row:
-			(cell as PotionCell).mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for dc in _dispenser_cells:
-		(dc as PotionCell).mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for dc in _disp_scroll_cells:
-		(dc as PotionCell).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_win_moves_lbl.text = "in %d moves" % _move_count
 	_win_panel.visible = true
 
@@ -1146,27 +1208,25 @@ func _reshuffle_board() -> void:
 #  Undo
 # ===========================================================================
 
-func _save_undo_snapshot() -> void:
-	var grid_snap: Array = []
+func _all_cells() -> Array[PotionCell]:
+	## Every cell that can hold items: grid (incl. scroll buffers), dispensers, hazard belt.
+	var out: Array[PotionCell] = []
 	for row in _cells:
-		var row_snap: Array = []
 		for cell in row:
-			var c := cell as PotionCell
-			row_snap.append({
-				slots          = c.get_slots_array(),
-				z_stack        = c.get_z_stack_copy(),
-				is_locked      = c.is_locked(),
-				unlock_counter = c.get_unlock_counter(),
-			})
-		grid_snap.append(row_snap)
-	var disp_snap: Array = []
-	for dc in _dispenser_cells:
-		var c := dc as PotionCell
-		disp_snap.append({
-			slots   = c.get_slots_array(),
-			z_stack = c.get_z_stack_copy(),
-		})
-	_undo_stack.push_back({ grid = grid_snap, dispensers = disp_snap })
+			out.append(cell as PotionCell)
+	out.append_array(_dispenser_cells)
+	out.append_array(_disp_scroll_cells)
+	return out
+
+
+func _save_undo_snapshot() -> void:
+	# Keyed by cell identity, not array index: scrolling rows and the hazard
+	# belt rotate their arrays, and the belt must be included — leaving it out
+	# meant undoing a take-from-belt deleted that item for good.
+	var snap: Array = []
+	for c in _all_cells():
+		snap.append([c, c.get_snapshot()])
+	_undo_stack.push_back(snap)
 
 
 func _on_undo_pressed() -> void:
@@ -1176,17 +1236,14 @@ func _on_undo_pressed() -> void:
 	if in_dead_board:
 		_reshuffle_lbl.visible = false
 		_reshuffle_btn.visible = false
+	_cancel_drag()   # restore() below re-shows any slot hidden by the drag
 	if _selected_cell:
 		_selected_cell.hide_all_highlights()
 		_selected_cell = null
 		_selected_slot = -1
-	var snap: Dictionary = _undo_stack.pop_back()
-	for r in range(_rows):
-		for c in range(_cells[r].size()):   # includes scroll buffer cells
-			(_cells[r][c] as PotionCell).restore(snap.grid[r][c])
-	for i in range(_dispenser_cells.size()):
-		if i < snap.dispensers.size():
-			(_dispenser_cells[i] as PotionCell).restore(snap.dispensers[i])
+	var snap: Array = _undo_stack.pop_back()
+	for entry in snap:
+		(entry[0] as PotionCell).restore(entry[1])
 	_move_count = maxi(0, _move_count - 1)
 	_update_ui()
 	_board_active = true
@@ -1323,10 +1380,7 @@ func _create_dispenser_cells(groups: Array) -> void:
 	if groups.is_empty():
 		return
 
-	var board_h: int = _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
-	var vp_h    := get_viewport_rect().size.y
-	var origin_y := int(90.0 + (vp_h - 180.0 - board_h) / 2.0)
-	var disp_y   := origin_y + board_h + 18   # 18 px gap below the board
+	var disp_y := _board_origin_y() + _board_height() + DISP_GAP
 
 	var n := groups.size()
 	var disp_origin_x := int((540.0 - n * PotionCell.CELL_W) / 2.0)
@@ -1352,7 +1406,7 @@ func _create_dispenser_cells(groups: Array) -> void:
 # ===========================================================================
 
 func _advance_scroll(row_idx: int) -> void:
-	## Slides all cells in a scrolling row one position to the left at constant speed.
+	## Slides a scrolling row's strip one cell to the left at constant speed.
 	## Fades the departing cell out and the entering buffer cell in.
 	## Uses tween.finished.connect (no await) so freeing the scene mid-scroll
 	## never causes a "lambda capture freed" coroutine crash.
@@ -1363,22 +1417,17 @@ func _advance_scroll(row_idx: int) -> void:
 
 	var row_cells: Array = _cells[row_idx]
 	var n := row_cells.size()
-	# Off-screen holding position: exactly one CELL_W past the board's right edge.
-	var off_x := float(_board_origin_x + _cols_per_row * PotionCell.CELL_W)
+	var strip := _scroll_strips[row_idx] as Control
 
 	var tween := create_tween()
 	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
-	for i in range(n):
-		var c := row_cells[i] as PotionCell
-		var start_x := c.position.x
-		var end_x   := float(_board_origin_x + (i - 1) * PotionCell.CELL_W)
-		# tween_method with roundf() keeps position.x on whole pixels every frame,
-		# preventing the sub-pixel wobble that makes the cell bg gap appear to shift.
-		tween.tween_method(
-			func(x: float): if is_instance_valid(c): c.position.x = roundf(x),
-			start_x, end_x, SCROLL_INTERVAL
-		).set_trans(Tween.TRANS_LINEAR)
+	# The whole strip moves (see _make_strip), in whole screen-pixel steps.
+	var start_x: float = strip.get_meta("offset_x")
+	tween.tween_method(
+		func(x: float): if is_instance_valid(strip): _place_strip(strip, x),
+		start_x, start_x - PotionCell.CELL_W, SCROLL_INTERVAL
+	).set_trans(Tween.TRANS_LINEAR)
 	# Fade the departing cell out during the last 20% of the slide.
 	tween.tween_property(row_cells[0] as PotionCell, "modulate:a", 0.0,
 		SCROLL_INTERVAL * 0.20).set_delay(SCROLL_INTERVAL * 0.80)
@@ -1402,7 +1451,8 @@ func _advance_scroll(row_idx: int) -> void:
 		var departing := row_cells[0] as PotionCell
 		if not is_instance_valid(departing):
 			return
-		departing.position.x = off_x
+		# Re-enter one slot past the last cell (off-screen right), inside the strip.
+		departing.position.x += n * PotionCell.CELL_W
 		departing.modulate.a  = 0.0
 		row_cells.remove_at(0)
 		row_cells.append(departing)
@@ -1413,14 +1463,12 @@ func _advance_scroll(row_idx: int) -> void:
 
 func _create_disp_scroll_belt(groups: Array) -> void:
 	## Creates a rightward-scrolling row of dispenser cells below the board (Hard hazard).
-	## Array layout after creation: [buffer(off-left), vis0, vis1, ..., vis4]
-	## so _advance_disp_scroll can use end_x = board_origin_x + i * CELL_W per index.
-	var board_h: int = _rows * PotionCell.CELL_H + (_rows - 1) * ROW_SPACING
-	var vp_h := get_viewport_rect().size.y
-	var origin_y := int(90.0 + (vp_h - 180.0 - board_h) / 2.0)
-	var belt_y := origin_y - PotionCell.ITEM_SIZE - 18
+	## Array layout after creation: [buffer(off-left), vis0, vis1, ..., vis5];
+	## all cells live in _belt_strip, which _advance_disp_scroll slides.
+	var belt_y := _board_origin_y() - PotionCell.ITEM_SIZE - BELT_GAP
 
 	var off_x_left := float(_board_origin_x - PotionCell.CELL_W)
+	_belt_strip = _make_strip()
 
 	for i in range(DISP_SCROLL_CELLS):
 		var grp: Array = groups[i]
@@ -1433,7 +1481,7 @@ func _create_disp_scroll_belt(groups: Array) -> void:
 		cell.position = Vector2(_board_origin_x + i * PotionCell.CELL_W, belt_y)
 		cell.set_as_dispenser()
 		cell.set_scroll_row_visual()
-		add_child(cell)
+		_belt_strip.add_child(cell)
 		_disp_scroll_cells.append(cell)
 
 	# Buffer cell — off-screen left, invisible until first scroll tick.
@@ -1448,31 +1496,28 @@ func _create_disp_scroll_belt(groups: Array) -> void:
 	_disp_scroll_buffer.set_as_dispenser()
 	_disp_scroll_buffer.set_scroll_row_visual()
 	_disp_scroll_buffer.modulate.a = 0.0
-	add_child(_disp_scroll_buffer)
+	_belt_strip.add_child(_disp_scroll_buffer)
 	_disp_scroll_cells.push_front(_disp_scroll_buffer)   # [buffer, vis0..vis4]
 
 
 func _advance_disp_scroll() -> void:
-	## Slides the hazard belt one step to the RIGHT (opposite the main conveyor).
-	## Cell at index i targets x = board_origin_x + i * CELL_W.
+	## Slides the hazard belt strip one step to the RIGHT (opposite the main conveyor).
 	## The rightmost cell wraps to the off-screen left buffer position.
 	if not is_instance_valid(self) or not visible or _disp_scroll_cells.is_empty():
 		return
 
 	var cells := _disp_scroll_cells
 	var n := cells.size()
-	var off_x_left := float(_board_origin_x - PotionCell.CELL_W)
+	var strip := _belt_strip
 
 	var tween := create_tween()
 	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
-	for i in range(n):
-		var c := cells[i] as PotionCell
-		var end_x := float(_board_origin_x + i * PotionCell.CELL_W)
-		tween.tween_method(
-			func(x: float): if is_instance_valid(c): c.position.x = roundf(x),
-			c.position.x, end_x, DISP_SCROLL_INTERVAL
-		).set_trans(Tween.TRANS_LINEAR)
+	var start_x: float = strip.get_meta("offset_x")
+	tween.tween_method(
+		func(x: float): if is_instance_valid(strip): _place_strip(strip, x),
+		start_x, start_x + PotionCell.CELL_W, DISP_SCROLL_INTERVAL
+	).set_trans(Tween.TRANS_LINEAR)
 	# Departing (rightmost) fades out in the last 20%.
 	tween.tween_property(cells[n - 1] as PotionCell, "modulate:a", 0.0,
 		DISP_SCROLL_INTERVAL * 0.20).set_delay(DISP_SCROLL_INTERVAL * 0.80)
@@ -1489,7 +1534,8 @@ func _advance_disp_scroll() -> void:
 		var departing := cells[n - 1] as PotionCell
 		if not is_instance_valid(departing):
 			return
-		departing.position.x = off_x_left
+		# Re-enter one slot left of the first cell (off-screen left), inside the strip.
+		departing.position.x -= n * PotionCell.CELL_W
 		departing.modulate.a = 0.0
 		cells.remove_at(n - 1)
 		cells.push_front(departing)

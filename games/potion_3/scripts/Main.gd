@@ -5,6 +5,8 @@ extends Node
 @onready var _game: Control        = $Game
 @onready var _fade_rect: ColorRect = $FadeLayer/FadeRect
 
+var _transitioning := false   # ignore taps (e.g. a double-tapped START) mid-fade
+
 func _ready() -> void:
 	_game.visible = false
 	# Music — uncomment when a track is available:
@@ -18,23 +20,34 @@ func _ready() -> void:
 
 
 func _on_start_game(difficulty: int) -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	await _fade_to_black()
 	_menu.visible = false
 	_game.visible = true
 	_game.set_difficulty(difficulty)
 	_game.prepare_board()
 	await _fade_from_black()
+	_transitioning = false
 	_game.start_game()
 
 
 func _on_back_to_menu() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	await _fade_to_black()
 	_game.visible = false
 	_menu.visible = true
 	await _fade_from_black()
+	_transitioning = false
 
 
 func _on_back_to_master() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
 

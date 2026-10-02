@@ -48,12 +48,12 @@ modulate = Color(1, 1, 1, 0.35)
 z_index = 10
 layout_mode = 0
 offset_left = 405.0
-offset_top = 20.0
-offset_right = 520.0
+offset_top = 8.0
+offset_right = 530.0
 offset_bottom = 62.0
 theme_override_colors/font_color = Color(0.6, 0.6, 0.65, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 42
 text = "UNDO"
 flat = true
 
@@ -94,11 +94,11 @@ z_index = 10
 layout_mode = 0
 offset_left = 24.0
 offset_top = 1150.0
-offset_right = 136.0
-offset_bottom = 1187.0
+offset_right = 172.0
+offset_bottom = 1199.0
 theme_override_colors/font_color = Color(0.9, 0.85, 0.6, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 42
 text = "< BACK"
 flat = true
 
@@ -170,7 +170,7 @@ layout_mode = 0
 offset_right = 554.0
 offset_bottom = 1237.0
 mouse_filter = 2
-color = Color(0.427451, 0.419608, 0.419608, 1)
+color = Color(0, 0, 0, 1)
 
 [node name="SfxPutDown" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_sfx_put")
