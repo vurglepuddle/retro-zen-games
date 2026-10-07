@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="zen_splash_background">#261438</color>
+
+    <style name="GodotAppMainTheme" parent="@android:style/Theme.Black.NoTitleBar" />
+
+    <style name="GodotAppSplashTheme" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/zen_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/zen_splash</item>
+        <item name="postSplashScreenTheme">@style/GodotAppMainTheme</item>
+    </style>
+</resources>

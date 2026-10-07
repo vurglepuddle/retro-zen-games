@@ -1,5 +1,5 @@
 #Main.gd  (gem_match orchestrator)
-extends Node
+extends "res://scripts/GameNavigation.gd"
 
 # Handles switching between the gem_match sub-menu and the game itself.
 # Also handles navigation back to the master app menu.
@@ -37,6 +37,7 @@ func _ready() -> void:
 	if game.has_signal("play_again"):
 		game.connect("play_again", Callable(self, "_on_play_again"))
 
+	_fade_from_black()
 
 func _fade_to_black() -> void:
 	var tw := create_tween()
@@ -45,10 +46,13 @@ func _fade_to_black() -> void:
 
 
 func _fade_from_black() -> void:
+	_transitioning = true
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 0.0, 0.38) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	_finish_transition(_fade_rect)
 
 
 func _apply_game_mode(mode: int) -> void:
@@ -65,6 +69,8 @@ func _apply_game_mode(mode: int) -> void:
 
 
 func _on_start_game(mode: int) -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	_last_mode = mode
 	await _fade_to_black()
 	menu.visible = false
@@ -78,6 +84,9 @@ func _on_start_game(mode: int) -> void:
 
 
 func _on_back_to_menu() -> void:
+	if not _begin_transition(_fade_rect):
+		return
+	game.stop_game()
 	await _fade_to_black()
 	game.visible = false
 	menu.visible = true
@@ -85,11 +94,15 @@ func _on_back_to_menu() -> void:
 
 
 func _on_back_to_master() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
 
 
 func _on_play_again() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	_apply_game_mode(_last_mode)
 	if game.has_method("prepare_board"):

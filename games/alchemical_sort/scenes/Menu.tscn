@@ -1,9 +1,33 @@
-[gd_scene load_steps=5 format=3 uid="uid://bk1ygemvl1iiu"]
+[gd_scene load_steps=15 format=3 uid="uid://bk1ygemvl1iiu"]
 
 [ext_resource type="Script" path="res://games/alchemical_sort/scripts/Menu.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
-[ext_resource type="Texture2D" uid="uid://drastdcmvxgeq" path="res://games/alchemical_sort/assets/20260223_190246_nano-pro_This is a nice retro 90s pixel art background with.png" id="3_3lult"]
-[ext_resource type="Texture2D" uid="uid://dp35rhbfojs51" path="res://games/alchemical_sort/assets/alchemy_bg2.png" id="4_iouw8"]
+; Cozy pass active; original textures kept below for switching back.
+; [ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/menu_bg.png" id="3_bg"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/cozy_pass/menu_bg.png" id="3_bg"]
+; [ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/name_tag.png" id="4_tag"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/cozy_pass/name_tag.png" id="4_tag"]
+; [ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/back_plaque_normal.png" id="5_back"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/cozy_pass/back_plaque_normal.png" id="5_back"]
+; [ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/back_plaque_pressed.png" id="6_back_p"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/cozy_pass/back_plaque_pressed.png" id="6_back_p"]
+[ext_resource type="Script" path="res://games/alchemical_sort/scripts/LampGlow.gd" id="7_lamp"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/bottle_apprentice.png" id="8_b_apprentice"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/bottle_adept.png" id="9_b_adept"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/bottle_arcane.png" id="10_b_arcane"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/bottle_zen.png" id="11_b_zen"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_none"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_back"]
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+texture = ExtResource("5_back")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_back_p"]
+content_margin_top = 10.0
+content_margin_bottom = 6.0
+texture = ExtResource("6_back_p")
 
 [node name="Menu" type="Control"]
 layout_mode = 3
@@ -14,98 +38,216 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
 
-[node name="Title" type="Label" parent="."]
-visible = false
+[node name="Bg" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.212, 0.09, 0.047, 1)
+
+[node name="Background" type="TextureRect" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_top = 110.0
 offset_right = 540.0
-offset_bottom = 285.0
-theme_override_colors/font_color = Color(0.9, 0.85, 0.6, 1)
-theme_override_colors/font_outline_color = Color(0.1, 0.05, 0.02, 1)
-theme_override_constants/outline_size = 12
+offset_bottom = 1280.0
+mouse_filter = 2
+texture = ExtResource("3_bg")
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 248.0
+offset_right = 472.0
+offset_bottom = 416.0
+theme_override_colors/font_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_outline_color = Color(0.165, 0.114, 0.051, 1)
+theme_override_constants/line_spacing = -8
+theme_override_constants/outline_size = 10
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 72
+theme_override_font_sizes/font_size = 64
 text = "ALCHEMICAL
 SORT"
 horizontal_alignment = 1
-
-[node name="DiffLabel" type="Label" parent="."]
-visible = false
-layout_mode = 0
-offset_top = 317.0
-offset_right = 540.0
-offset_bottom = 342.0
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 4
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
-text = "Choose your difficulty"
-horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="EasyButton" type="Button" parent="."]
 layout_mode = 0
-offset_left = 206.0
-offset_top = 360.0
-offset_right = 334.0
-offset_bottom = 402.0
-theme_override_colors/font_color = Color(0.45, 0.85, 0.5, 1)
-theme_override_colors/font_outline_color = Color(0.05, 0.1, 0.05, 1)
-theme_override_constants/outline_size = 2
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
-text = "Apprentice"
+offset_left = 94.0
+offset_top = 506.0
+offset_right = 182.0
+offset_bottom = 734.0
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
 flat = true
+
+[node name="Bottle" type="TextureRect" parent="EasyButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 8.0
+offset_right = 80.0
+offset_bottom = 176.0
+mouse_filter = 2
+texture = ExtResource("8_b_apprentice")
+
+[node name="Tag" type="NinePatchRect" parent="EasyButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = -6.0
+offset_top = 192.0
+offset_right = 94.0
+offset_bottom = 228.0
+mouse_filter = 2
+texture = ExtResource("4_tag")
+patch_margin_left = 12
+patch_margin_right = 12
+
+[node name="Name" type="Label" parent="EasyButton/Tag"]
+layout_mode = 0
+offset_top = 8.0
+offset_right = 100.0
+offset_bottom = 34.0
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "Apprentice"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="MediumButton" type="Button" parent="."]
 layout_mode = 0
-offset_left = 207.0
-offset_top = 421.0
-offset_right = 333.0
-offset_bottom = 468.0
-theme_override_colors/font_color = Color(0.9, 0.85, 0.6, 1)
-theme_override_colors/font_outline_color = Color(0.1, 0.08, 0.02, 1)
-theme_override_constants/outline_size = 2
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
-text = "Adept"
+offset_left = 182.0
+offset_top = 506.0
+offset_right = 270.0
+offset_bottom = 734.0
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
 flat = true
+
+[node name="Bottle" type="TextureRect" parent="MediumButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 8.0
+offset_right = 80.0
+offset_bottom = 176.0
+mouse_filter = 2
+texture = ExtResource("9_b_adept")
+
+[node name="Tag" type="NinePatchRect" parent="MediumButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 16.0
+offset_top = 192.0
+offset_right = 72.0
+offset_bottom = 228.0
+mouse_filter = 2
+texture = ExtResource("4_tag")
+patch_margin_left = 12
+patch_margin_right = 12
+
+[node name="Name" type="Label" parent="MediumButton/Tag"]
+layout_mode = 0
+offset_top = 8.0
+offset_right = 56.0
+offset_bottom = 34.0
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "Adept"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="HardButton" type="Button" parent="."]
 layout_mode = 0
-offset_left = 202.0
-offset_top = 489.0
-offset_right = 335.0
-offset_bottom = 535.0
-theme_override_colors/font_color = Color(0.9, 0.38, 0.32, 1)
-theme_override_colors/font_outline_color = Color(0.12, 0.04, 0.02, 1)
-theme_override_constants/outline_size = 2
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
-text = "Arcane"
+offset_left = 270.0
+offset_top = 506.0
+offset_right = 358.0
+offset_bottom = 734.0
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
 flat = true
+
+[node name="Bottle" type="TextureRect" parent="HardButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 8.0
+offset_right = 80.0
+offset_bottom = 176.0
+mouse_filter = 2
+texture = ExtResource("10_b_arcane")
+
+[node name="Tag" type="NinePatchRect" parent="HardButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 10.0
+offset_top = 192.0
+offset_right = 78.0
+offset_bottom = 228.0
+mouse_filter = 2
+texture = ExtResource("4_tag")
+patch_margin_left = 12
+patch_margin_right = 12
+
+[node name="Name" type="Label" parent="HardButton/Tag"]
+layout_mode = 0
+offset_top = 8.0
+offset_right = 68.0
+offset_bottom = 34.0
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "Arcane"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="ZenButton" type="Button" parent="."]
 layout_mode = 0
-offset_left = 204.0
-offset_top = 556.0
-offset_right = 336.0
-offset_bottom = 603.0
-theme_override_colors/font_color = Color(0.72, 0.5, 0.92, 1)
-theme_override_colors/font_outline_color = Color(0.08, 0.04, 0.12, 1)
-theme_override_constants/outline_size = 2
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 28
-text = "Zen"
+offset_left = 358.0
+offset_top = 506.0
+offset_right = 446.0
+offset_bottom = 734.0
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
 flat = true
+
+[node name="Bottle" type="TextureRect" parent="ZenButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 8.0
+offset_right = 80.0
+offset_bottom = 176.0
+mouse_filter = 2
+texture = ExtResource("11_b_zen")
+
+[node name="Tag" type="NinePatchRect" parent="ZenButton"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 16.0
+offset_top = 192.0
+offset_right = 72.0
+offset_bottom = 228.0
+mouse_filter = 2
+texture = ExtResource("4_tag")
+patch_margin_left = 12
+patch_margin_right = 12
+
+[node name="Name" type="Label" parent="ZenButton/Tag"]
+layout_mode = 0
+offset_top = 8.0
+offset_right = 56.0
+offset_bottom = 34.0
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 24
+text = "Zen"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="MysteryButton" type="Button" parent="."]
 visible = false
 layout_mode = 0
 offset_left = 150.0
-offset_top = 553.0
+offset_top = 880.0
 offset_right = 390.0
-offset_bottom = 607.0
+offset_bottom = 920.0
 theme_override_colors/font_color = Color(0.45, 0.75, 0.9, 1)
 theme_override_colors/font_outline_color = Color(0.03, 0.06, 0.14, 1)
 theme_override_constants/outline_size = 2
@@ -115,27 +257,30 @@ text = "Mystery"
 flat = true
 
 [node name="BackButton" type="Button" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 222.0
-offset_top = 626.0
-offset_right = 316.0
-offset_bottom = 661.0
-theme_override_colors/font_color = Color(0.6, 0.6, 0.65, 1)
+offset_left = 66.0
+offset_top = 942.0
+offset_right = 170.0
+offset_bottom = 990.0
+theme_override_colors/font_hover_pressed_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_hover_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_pressed_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_focus_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 22
-text = "< BACK"
-flat = true
+theme_override_font_sizes/font_size = 32
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
+theme_override_styles/hover_pressed = SubResource("StyleBoxTexture_back_p")
+theme_override_styles/hover = SubResource("StyleBoxTexture_back")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_back_p")
+theme_override_styles/normal = SubResource("StyleBoxTexture_back")
+text = "BACK"
 
-[node name="20260223190246Nano-proThisIsANiceRetro90sPixelArtBackgroundWith" type="Sprite2D" parent="."]
-z_index = -99
-position = Vector2(269, 480.583)
-scale = Vector2(0.703125, 0.703125)
-texture = ExtResource("3_3lult")
-
-[node name="AlchemyBg2" type="Sprite2D" parent="."]
-position = Vector2(268.5, 479.269)
-scale = Vector2(0.299665, 0.299665)
-texture = ExtResource("4_iouw8")
+[node name="LampGlow" type="Node2D" parent="."]
+; position = Vector2(270, 94) ; Original lantern placement.
+position = Vector2(318, 94)
+script = ExtResource("7_lamp")
 
 [connection signal="pressed" from="EasyButton" to="." method="_on_easy_pressed"]
 [connection signal="pressed" from="MediumButton" to="." method="_on_medium_pressed"]

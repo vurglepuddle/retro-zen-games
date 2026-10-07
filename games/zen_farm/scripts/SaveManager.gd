@@ -2,8 +2,19 @@
 class_name SaveManager
 
 const SAVE_PATH := "user://zen_farm_save.cfg"
+const PREVIOUS_PATH := "user://zen_farm_previous.cfg"
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
 
-static func save_game(game: Node) -> void:
+static func save_game(game: Node) -> bool:
+	if game.menu_preview or game._cells.is_empty():
+		return false
+	var result := _SaveFile.save_config(_make_config(game), SAVE_PATH, "meta", ["coins", "cols"])
+	if result != OK:
+		game._show_status("Couldn't save your farm. Please try again.")
+	return result == OK
+
+
+static func _make_config(game: Node) -> ConfigFile:
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "timestamp", Time.get_unix_time_from_system())
 	cfg.set_value("meta", "coins",     game._coins)
@@ -54,13 +65,13 @@ static func save_game(game: Node) -> void:
 		for slot in range(FarmCell.SLOT_COUNT):
 			cfg.set_value(sec, "harvest_icon_shown_once_%d" % slot, game._harvest_icon_shown_once.get(Vector3i(cell.grid_col, cell.grid_row, slot), false))
 
-	cfg.save(SAVE_PATH)
+	return cfg
 
 
 # Returns true if a save file was found and loaded.
 static func load_game(game: Node) -> bool:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) != OK:
+	if not _load_config(cfg):
 		return false
 
 	game._coins           = cfg.get_value("meta", "coins",     10)
@@ -86,6 +97,7 @@ static func load_game(game: Node) -> bool:
 				continue
 			game._static_decor_tiles[entry[0]] = [String(entry[1]), int(entry[2]), entry[3], int(entry[4])]
 
+	game._inventory.clear()
 	for cid in CropData.all_ids():
 		var count: int = cfg.get_value("inventory", str(cid), 0)
 		if count > 0:
@@ -156,14 +168,53 @@ static func load_game(game: Node) -> bool:
 
 static func load_cols() -> int:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) != OK:
+	if not _load_config(cfg):
 		return 4
 	return cfg.get_value("meta", "cols", 4)
 
 
 static func save_exists() -> bool:
-	return FileAccess.file_exists(SAVE_PATH)
+	return FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(SAVE_PATH + ".bak")
+
+
+static func _load_config(cfg: ConfigFile) -> bool:
+	for path in [SAVE_PATH, SAVE_PATH + ".bak"]:
+		cfg.clear()
+		if cfg.load(path) == OK and cfg.has_section_key("meta", "coins") and cfg.has_section_key("meta", "cols"):
+			return true
+	cfg.clear()
+	return false
+
+
+static func replace_with_new_farm(game: Node) -> bool:
+	if save_exists():
+		var current := ConfigFile.new()
+		var source := SAVE_PATH
+		if current.load(source) != OK or not current.has_section_key("meta", "coins") or not current.has_section_key("meta", "cols"):
+			if FileAccess.file_exists(SAVE_PATH + ".bak"):
+				source = SAVE_PATH + ".bak"
+		if _SaveFile.copy_file(source, PREVIOUS_PATH) != OK:
+			push_warning("Could not keep the previous farm; New Farm was cancelled.")
+			return false
+	return save_game(game)
+
+
+static func previous_exists() -> bool:
+	var cfg := ConfigFile.new()
+	return cfg.load(PREVIOUS_PATH) == OK and cfg.has_section_key("meta", "coins") and cfg.has_section_key("meta", "cols")
+
+
+static func restore_previous_farm() -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(PREVIOUS_PATH) != OK or not cfg.has_section_key("meta", "coins") or not cfg.has_section_key("meta", "cols"):
+		return false
+	return _SaveFile.save_config(cfg, SAVE_PATH, "meta", ["coins", "cols"]) == OK
 
 
 static func delete_save() -> void:
-	DirAccess.remove_absolute(SAVE_PATH)
+	# Explicit reset used by the isolated smoke checks; New Farm keeps a copy.
+	for path in [SAVE_PATH, SAVE_PATH + ".bak", SAVE_PATH + ".tmp"]:
+		if FileAccess.file_exists(path):
+			var result := DirAccess.remove_absolute(path)
+			if result != OK:
+				push_warning("Could not remove farm save %s (error %d)." % [path, result])

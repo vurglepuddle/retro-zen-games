@@ -1,5 +1,5 @@
 #Main.gd (zen_farm)
-extends Node
+extends "res://scripts/GameNavigation.gd"
 
 @onready var _menu:           Control           = $Menu
 @onready var _game:           Control           = $Game
@@ -26,6 +26,7 @@ const _BLOOM_LIFT_DB := 3.0
 
 func _ready() -> void:
 	_game.visible = false
+	_game.process_mode = Node.PROCESS_MODE_DISABLED
 	_menu.start_game.connect(_on_start_game)
 	_menu.back_to_master.connect(_on_back_to_master)
 	_game.back_to_menu.connect(_on_back_to_menu)
@@ -125,18 +126,36 @@ func _apply_ambient_mix() -> void:
 		_ambient2_player.volume_db = _SILENT_DB if _night_mix <= 0.01 else _NIGHT_AMBIENT_DB + linear_to_db(_night_mix) + _rain_duck_db
 
 
-func _on_start_game(_is_new: bool) -> void:
+func _on_start_game(is_new: bool) -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	_menu.visible = false
 	_game.visible = true
-	_game.prepare_farm()
+	_game.process_mode = Node.PROCESS_MODE_INHERIT
+	_game.prepare_farm(is_new)
+	if is_new and not SaveManager.replace_with_new_farm(_game):
+		_game._farm_open = false
+		_game.visible = false
+		_game.process_mode = Node.PROCESS_MODE_DISABLED
+		_menu.visible = true
+		_menu.refresh_state()
+		await _fade_from_black()
+		_menu.show_save_error()
+		return
 	await _fade_from_black()
 	_game.start_game()
 
 
 func _on_back_to_menu() -> void:
+	if not _begin_transition(_fade_rect):
+		return
+	if not _game.stop_game():
+		_finish_transition(_fade_rect)
+		return
 	await _fade_to_black()
 	_game.visible = false
+	_game.process_mode = Node.PROCESS_MODE_DISABLED
 	_menu.visible = true
 	# Refresh continue button visibility
 	_menu.refresh_state()
@@ -144,6 +163,8 @@ func _on_back_to_menu() -> void:
 
 
 func _on_back_to_master() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	_stop_ambients()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
@@ -156,7 +177,10 @@ func _fade_to_black() -> void:
 
 
 func _fade_from_black() -> void:
+	_transitioning = true
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 0.0, 0.38) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	_finish_transition(_fade_rect)

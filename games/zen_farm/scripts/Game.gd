@@ -68,6 +68,7 @@ var _selected_crop: int  = -1   # -1 = nothing selected yet
 
 # ── state ────────────────────────────────────────────────────────────────────
 var _game_active: bool     = false   # true only while the player is in-session
+var _farm_open := false             # only a loaded, open farm may flush on pause/close
 var _cells: Array          = []
 var _coins: int            = 10
 var _inventory: Dictionary = {}
@@ -557,17 +558,18 @@ func _ready() -> void:
 	_update_day_night(0.0)
 
 
-func prepare_farm() -> void:
+func prepare_farm(is_new: bool = false) -> void:
 	_game_active = false
+	_farm_open = true
 	_touch_cell  = null
-	_cols = SaveManager.load_cols()
+	_cols = 4 if is_new else SaveManager.load_cols()
 	_clear_cells()
 	_build_cells()
 	_placing_decor = -1
 	_set_full_bloom(false)
 	_bloom_amount = 0.0
 	_idle_timer = 0.0
-	var loaded := SaveManager.load_game(self)
+	var loaded := false if is_new else SaveManager.load_game(self)
 	if loaded:
 		_restore_static_decor_snapshot()
 		_update_lock_costs()
@@ -3314,9 +3316,8 @@ func _on_sell_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
-	_game_active = false
-	SaveManager.save_game(self)
-	back_to_menu.emit()
+	if stop_game():
+		back_to_menu.emit()
 
 
 # ── garden props ─────────────────────────────────────────────────────────────
@@ -5215,12 +5216,20 @@ func _butterfly_flee_one(bfly: Dictionary) -> void:
 func _notification(what: int) -> void:
 	if menu_preview:
 		return
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if not is_visible_in_tree():
-			return
-		_game_active = false
-		back_to_menu.emit()
-	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		# Main instantiates Game behind the menu before a farm has been loaded.
-		if not _cells.is_empty():
+		if _farm_open and not _cells.is_empty():
 			SaveManager.save_game(self)
+
+
+func stop_game() -> bool:
+	if _farm_open and not SaveManager.save_game(self):
+		return false
+	_game_active = false
+	_farm_open = false
+	_touch_cell = null
+	return true
+
+
+func request_back() -> void:
+	_on_back_pressed()

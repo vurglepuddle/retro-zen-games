@@ -34,6 +34,7 @@ func _on_Level_pressed() -> void:
 	start_game.emit(2)
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		back_to_master.emit()
+
+
+func request_back() -> void:
+	back_to_master.emit()

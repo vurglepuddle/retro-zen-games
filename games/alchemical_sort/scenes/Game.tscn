@@ -1,12 +1,43 @@
-[gd_scene load_steps=14 format=3 uid="uid://bkuuewmvl1iiu"]
+[gd_scene load_steps=24 format=3 uid="uid://bkuuewmvl1iiu"]
 
 [ext_resource type="Script" path="res://games/alchemical_sort/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
 [ext_resource type="Texture2D" uid="uid://dq3mi4tdibma6" path="res://games/alchemical_sort/assets/alchemy_bg3.png" id="3_0hd8l"]
-[ext_resource type="Texture2D" uid="uid://cv6wgmx8qr3bg" path="res://games/alchemical_sort/assets/1772305215676-019ca59e-ee62-7b80-a838-0e85021bc714.png" id="4_26njo"]
 [ext_resource type="Texture2D" uid="uid://cv5bovdrqewfc" path="res://games/alchemical_sort/assets/colors_anim.png" id="5_gkxpu"]
-[ext_resource type="Texture2D" uid="uid://qu0pa703h2n2" path="res://games/alchemical_sort/assets/alchbg2.png" id="6_1w0n8"]
+[ext_resource type="Texture2D" uid="uid://lapmpv5bhstp" path="res://games/alchemical_sort/assets/ui/cozy_pass/game_bg.png" id="6_bg"]
 [ext_resource type="Script" path="res://games/alchemical_sort/scripts/LampGlow.gd" id="7_lamp"]
+[ext_resource type="Texture2D" uid="uid://mbfec68iaakc" path="res://games/alchemical_sort/assets/ui/cozy_pass/undo_sign_normal.png" id="8_undo"]
+[ext_resource type="Texture2D" uid="uid://ejl5s6jhxilq" path="res://games/alchemical_sort/assets/ui/cozy_pass/undo_sign_pressed.png" id="9_undo_p"]
+[ext_resource type="Texture2D" uid="uid://dcq1vet0xyerg" path="res://games/alchemical_sort/assets/ui/cozy_pass/undo_sign_disabled.png" id="10_undo_d"]
+[ext_resource type="Texture2D" uid="uid://bdsxsxqlwng1v" path="res://games/alchemical_sort/assets/ui/cozy_pass/back_plaque_normal.png" id="11_back"]
+[ext_resource type="Texture2D" uid="uid://corjpxxt647qy" path="res://games/alchemical_sort/assets/ui/cozy_pass/back_plaque_pressed.png" id="12_back_p"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_none"]
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_undo_d"]
+content_margin_top = 8.0
+content_margin_bottom = 2.0
+texture = ExtResource("10_undo_d")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_undo_p"]
+content_margin_top = 10.0
+content_margin_bottom = 0.0
+texture = ExtResource("9_undo_p")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_undo"]
+content_margin_top = 8.0
+content_margin_bottom = 2.0
+texture = ExtResource("8_undo")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_back_p"]
+content_margin_top = 10.0
+content_margin_bottom = 6.0
+texture = ExtResource("12_back_p")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_back"]
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+texture = ExtResource("11_back")
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_dgmch"]
 atlas = ExtResource("5_gkxpu")
@@ -59,11 +90,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
-shelf_origin_y = 274.0
-third_row_y_offset = -10.0
+shelf_origin_y = 276.0
 
 [node name="Bg" type="ColorRect" parent="."]
-visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -71,45 +100,68 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.05, 0.07, 0.1, 1)
+color = Color(0.212, 0.09, 0.047, 1)
+
+[node name="Background" type="TextureRect" parent="."]
+texture_filter = 1
+layout_mode = 0
+offset_right = 540.0
+offset_bottom = 1280.0
+mouse_filter = 2
+texture = ExtResource("6_bg")
 
 [node name="MoveLabel" type="Label" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 48.0
-offset_top = 33.0
-offset_right = 173.0
-offset_bottom = 70.0
-theme_override_colors/font_color = Color(0.0980392, 0.0705882, 0.0745098, 1)
+offset_left = 44.0
+offset_top = 54.0
+offset_right = 190.0
+offset_bottom = 92.0
+theme_override_colors/font_color = Color(0.937, 0.847, 0.631, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 34
 text = "Moves: 0"
+vertical_alignment = 1
 
 [node name="BestLabel" type="Label" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 48.0
-offset_top = 65.0
-offset_right = 173.0
-offset_bottom = 110.0
-theme_override_colors/font_color = Color(0.0980392, 0.0705882, 0.0745098, 1)
+offset_left = 44.0
+offset_top = 92.0
+offset_right = 190.0
+offset_bottom = 130.0
+theme_override_colors/font_color = Color(0.937, 0.847, 0.631, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 34
 text = "Best: –"
+vertical_alignment = 1
 
 [node name="UndoButton" type="Button" parent="."]
-modulate = Color(1, 1, 1, 0.35)
 z_index = 10
+texture_filter = 1
 layout_mode = 0
-offset_left = 421.0
-offset_top = 33.0
-offset_right = 503.0
-offset_bottom = 79.0
-theme_override_colors/font_color = Color(1, 1, 1, 1)
+offset_left = 394.0
+offset_top = 40.0
+offset_right = 510.0
+offset_bottom = 94.0
+theme_override_colors/font_disabled_color = Color(0.671, 0.361, 0.11, 1)
+theme_override_colors/font_hover_pressed_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_hover_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_pressed_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_focus_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_color = Color(0.937, 0.847, 0.631, 1)
+theme_override_colors/font_outline_color = Color(0.165, 0.114, 0.051, 1)
+theme_override_constants/outline_size = 6
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 36
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
+theme_override_styles/disabled = SubResource("StyleBoxTexture_undo_d")
+theme_override_styles/hover_pressed = SubResource("StyleBoxTexture_undo_p")
+theme_override_styles/hover = SubResource("StyleBoxTexture_undo")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_undo_p")
+theme_override_styles/normal = SubResource("StyleBoxTexture_undo")
+disabled = true
 text = "UNDO"
-flat = true
 
 [node name="ReshuffleLabel" type="Label" parent="."]
 visible = false
@@ -145,16 +197,25 @@ flat = true
 
 [node name="BackButton" type="Button" parent="."]
 z_index = 10
+texture_filter = 1
 layout_mode = 0
-offset_left = 75.0
-offset_top = 1046.0
-offset_right = 189.0
-offset_bottom = 1091.0
-theme_override_colors/font_color = Color(0.901961, 0.85098, 0.6, 1)
+offset_left = 66.0
+offset_top = 942.0
+offset_right = 170.0
+offset_bottom = 990.0
+theme_override_colors/font_hover_pressed_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_hover_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_pressed_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_focus_color = Color(0.212, 0.09, 0.047, 1)
+theme_override_colors/font_color = Color(0.212, 0.09, 0.047, 1)
 theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 32
+theme_override_styles/focus = SubResource("StyleBoxEmpty_none")
+theme_override_styles/hover_pressed = SubResource("StyleBoxTexture_back_p")
+theme_override_styles/hover = SubResource("StyleBoxTexture_back")
+theme_override_styles/pressed = SubResource("StyleBoxTexture_back_p")
+theme_override_styles/normal = SubResource("StyleBoxTexture_back")
 text = "BACK"
-flat = true
 
 [node name="WinPanel" type="Control" parent="."]
 visible = false
@@ -268,12 +329,6 @@ position = Vector2(268.5, 608.234)
 scale = Vector2(0.753906, 0.914461)
 texture = ExtResource("3_0hd8l")
 
-[node name="1772305215676-019Ca59e-ee62-7b80-a838-0e85021Bc714" type="Sprite2D" parent="."]
-visible = false
-position = Vector2(269, 661)
-scale = Vector2(0.699219, 0.699219)
-texture = ExtResource("4_26njo")
-
 [node name="liquid_anim" type="AnimatedSprite2D" parent="."]
 visible = false
 z_index = 9
@@ -281,13 +336,8 @@ position = Vector2(-132, 255)
 sprite_frames = SubResource("SpriteFrames_s7u5f")
 animation = &"liquid_anim"
 
-[node name="Alchbg2" type="Sprite2D" parent="."]
-position = Vector2(270.5, 601.704)
-scale = Vector2(0.80988, 0.80988)
-texture = ExtResource("6_1w0n8")
-
 [node name="LampGlow" type="Node2D" parent="."]
-position = Vector2(358, 57)
+position = Vector2(318, 94)
 script = ExtResource("7_lamp")
 
 [connection signal="pressed" from="UndoButton" to="." method="_on_undo_pressed"]

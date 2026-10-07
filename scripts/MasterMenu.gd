@@ -4,10 +4,13 @@ extends Control
 # Top-level app hub — shows all available games as tiles.
 # Clicking a tile fades out then loads that game's scene.
 
+var _transitioning := true
+
 var _fade_rect: ColorRect = null
 
 @onready var _sfx_click: AudioStreamPlayer = $SfxClick
 func _ready() -> void:
+	get_tree().quit_on_go_back = false
 	# Ambient music.
 	AudioManager.play_music(load("res://assets/music/999_turbo.mp3"))
 
@@ -25,6 +28,7 @@ func _ready() -> void:
 		await _show_splash()
 	else:
 		await _fade_from_black()
+	_transitioning = false
 
 
 func _show_splash() -> void:
@@ -96,6 +100,7 @@ func _show_splash() -> void:
 
 
 func _fade_to_black() -> void:
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 1.0, 0.22)
 	await tw.finished
@@ -109,30 +114,50 @@ func _fade_from_black() -> void:
 
 
 func _on_gem_match_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/gem_match/scenes/Main.tscn")
 
 
 func _on_tile_chain_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/tile_chain/scenes/Main.tscn")
 
 
 func _on_alch_sort_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/alchemical_sort/scenes/Main.tscn")
 
 
 func _on_potion_3_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/potion_3/scenes/Main.tscn")
 
 
 func _on_zen_farm_pressed() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	if _sfx_click.stream: _sfx_click.play()
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://games/zen_farm/scenes/Main.tscn")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		get_tree().quit()

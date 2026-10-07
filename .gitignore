@@ -54,3 +54,7 @@ mono_crash.*.json
 !README.md
 art_src/
 tests/
+
+# Generated Android Gradle template; splash overrides live in android/splash/.
+android/build/
+android/.build_version

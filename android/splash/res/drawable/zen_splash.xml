@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep the Aseprite pixels sharp when Android scales its native launch image. -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/zen_splash_art"
+    android:gravity="fill"
+    android:filter="false"
+    android:antialias="false"
+    android:dither="false" />

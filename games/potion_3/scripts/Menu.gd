@@ -36,6 +36,7 @@ func _on_zen_pressed()    -> void: start_game.emit(3)
 func _on_quit_pressed()   -> void: back_to_master.emit()
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		back_to_master.emit()
+
+
+func request_back() -> void:
+	back_to_master.emit()

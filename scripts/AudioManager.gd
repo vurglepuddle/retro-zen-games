@@ -12,6 +12,8 @@
 
 extends Node
 
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
+
 signal mute_state_changed(state: int)
 
 const SAVE_PATH := "user://audio_settings.cfg"
@@ -109,7 +111,7 @@ func cycle() -> void:
 
 func _load_state() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, SAVE_PATH) == OK:
 		mute_state = cfg.get_value("audio", "mute_state", 0)
 		_apply_state()
 
@@ -117,7 +119,7 @@ func _load_state() -> void:
 func _save_state() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("audio", "mute_state", mute_state)
-	cfg.save(SAVE_PATH)
+	_SaveFile.save_config(cfg, SAVE_PATH)
 
 
 func _apply_state() -> void:

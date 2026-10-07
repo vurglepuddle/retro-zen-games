@@ -1,6 +1,12 @@
 #Game.gd (alchemical_sort)
 extends Control
 
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
+
+var _operation_tweens: Array[Tween] = []
+
+var _game_generation: int = 0
+
 signal back_to_menu
 
 # ---- difficulty configuration -----------------------------------------------
@@ -9,7 +15,7 @@ signal back_to_menu
 const DIFFICULTY_KEYS := ["easy", "medium", "hard", "zen", "mystery"]
 const SAVE_PATH := "user://alch_sort_save.cfg"
 
-const VIAL_SPACING := 15  # pixels between vials
+const VIAL_SPACING := 16  # pixels between vials (even: vials sit on the 2x art grid)
 const ROW_EXTRA_SPACING := 38  # extra vertical gap between shelf rows
 
 ## Locks the vertical position of the vial grid to match the shelf art.
@@ -86,9 +92,6 @@ var _rune_fired: bool = false
 @onready var _mystery_label: Label   = $MysteryLabel
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_on_back_pressed()
 
 
 # Call before prepare_board(); records the chosen difficulty and loads save.
@@ -192,6 +195,8 @@ func _tinted_palette(cid: int) -> Color:
 
 # Called by Main.gd before the fade-in.
 func prepare_board() -> void:
+	stop_game()
+	_mystery_label.visible = false
 	_apply_difficulty_layout()  # re-roll Zen / Mystery every new game
 	_roll_tints()
 	_board_active = false
@@ -208,6 +213,7 @@ func prepare_board() -> void:
 
 # Called by Main.gd after the fade-in completes.
 func start_game() -> void:
+	var generation := _game_generation
 	_board_active = false
 	_undo_stack.clear()
 	_update_ui()
@@ -222,12 +228,12 @@ func start_game() -> void:
 		v.modulate.a = 0.0
 
 		var delay := i * 0.065
-		var tw := create_tween()
+		var tw := _board_tween()
 		tw.tween_interval(delay)
 		tw.tween_callback(func():
-			if not is_instance_valid(v):
+			if generation != _game_generation or not is_instance_valid(v):
 				return
-			var tw2 := create_tween()
+			var tw2 := _board_tween()
 			tw2.set_parallel(true)
 			tw2.tween_property(v, "position:y", final_y, 0.42) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -237,32 +243,41 @@ func start_game() -> void:
 
 	var total_wait := (_vials.size() - 1) * 0.065 + 0.50
 	await get_tree().create_timer(total_wait).timeout
+	if generation != _game_generation:
+		return
 	_board_active = true
 
 
 # ---- mystery reveal animation -----------------------------------------------
 
 func _show_mystery_reveal() -> void:
+	var generation := _game_generation
 	if not is_instance_valid(_mystery_label):
 		return
 	_mystery_label.scale    = Vector2(0.8, 0.8)
 	_mystery_label.modulate = Color(1, 1, 1, 0)
 	_mystery_label.visible  = true
 
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	tw.tween_property(_mystery_label, "modulate:a", 1.0, 0.4) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_mystery_label, "scale", Vector2.ONE, 0.4) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 	await get_tree().create_timer(0.9).timeout
+	if generation != _game_generation:
+		return
 
-	var tw2 := create_tween()
+	var tw2 := _board_tween()
 	tw2.tween_property(_mystery_label, "modulate:a", 0.0, 0.4) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw2.finished
+	if generation != _game_generation:
+		return
 	_mystery_label.visible = false
 
 
@@ -441,6 +456,7 @@ func _can_pour(src: Vial, dst: Vial) -> bool:
 
 
 func _do_pour(src: Vial, dst: Vial) -> void:
+	var generation := _game_generation
 	_pouring = true
 	src.show_selected(false)
 	_selected = null
@@ -452,6 +468,8 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	_save_undo_snapshot()
 
 	await src.animate_pour_out(amount)
+	if generation != _game_generation:
+		return
 	src.reveal_top()  # expose newly uncovered layer in fog mode (no-op otherwise)
 
 	# Take off from the source's mouth, arc to the destination's mouth, then
@@ -460,8 +478,12 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 	var dst_mouth := _vial_point(dst, Vector2(dst.VIAL_W * 0.5, 0.0))
 	var dst_surface := _vial_point(dst, Vector2(dst.VIAL_W * 0.5, dst.surface_y()))
 	await _animate_droplet(src_top, dst_mouth, dst_surface, color)
+	if generation != _game_generation:
+		return
 
 	await dst.animate_pour_in(color_id, amount)
+	if generation != _game_generation:
+		return
 
 	_move_count += 1
 	_update_ui()
@@ -473,13 +495,19 @@ func _do_pour(src: Vial, dst: Vial) -> void:
 			_rune_fired = true
 			dst.set_rune(false)
 			await _fire_catalyst(dst)
+			if generation != _game_generation:
+				return
 		await get_tree().create_timer(0.13).timeout
+		if generation != _game_generation:
+			return
 
 	_pouring = false
 
 	if _check_win():
 		_queued_vial = null
 		await get_tree().create_timer(0.35).timeout
+		if generation != _game_generation:
+			return
 		_on_win()
 		return
 
@@ -564,6 +592,7 @@ func _apply_reshuffle() -> void:
 # from the rune vial, then grants a gift — Mystery games peel one hidden fog
 # layer everywhere; otherwise a stray layer teleports home to its color family.
 func _fire_catalyst(origin: Vial) -> void:
+	var generation := _game_generation
 	for v: Vial in _vials:
 		var delay := absf(v.position.x - origin.position.x) * 0.0012 \
 			+ absf(v.position.y - origin.position.y) * 0.0008
@@ -574,12 +603,15 @@ func _fire_catalyst(origin: Vial) -> void:
 			v.reveal_one_more()
 		return
 	await _catalyst_merge_stray()
+	if generation != _game_generation:
+		return
 
 
 # Find the most satisfying stray layer (a color appearing exactly once in its
 # vial) and teleport it to the vial holding the most of that color. No-op if
 # nothing qualifies — the sparkle wave alone is the gift then.
 func _catalyst_merge_stray() -> void:
+	var generation := _game_generation
 	var best_src: Vial = null
 	var best_idx := -1
 	var best_dst: Vial = null
@@ -623,7 +655,11 @@ func _catalyst_merge_stray() -> void:
 		_vial_point(best_dst, Vector2(best_dst.VIAL_W * 0.5, 0.0)),
 		_vial_point(best_dst, Vector2(best_dst.VIAL_W * 0.5, best_dst.surface_y())),
 		_tinted_palette(stray_cid))
+	if generation != _game_generation:
+		return
 	await best_dst.animate_pour_in(stray_cid, 1)
+	if generation != _game_generation:
+		return
 	_refresh_completed_states()
 
 
@@ -640,6 +676,7 @@ func _vial_point(v: Vial, local: Vector2) -> Vector2:
 # through the glass wall.
 func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector2,
 		color: Color) -> void:
+	var generation := _game_generation
 	# Shared material: the shader animates via TIME, so all pours can reuse it.
 	if _droplet_mat == null:
 		_droplet_mat = ShaderMaterial.new()
@@ -655,6 +692,7 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 	# Set position before add_child so it never flashes at (0, 0).
 	dot.position = from_pos - Vector2(HALF, HALF)
 	add_child(dot)
+	dot.set_meta("board_effect", true)
 
 	# Shimmer trail: emitter rides the droplet, sparkles linger on the arc.
 	var trail := _make_droplet_sparks(color)
@@ -669,6 +707,7 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 	trail.position = from_pos
 	trail.z_index = 19
 	add_child(trail)
+	trail.set_meta("board_effect", true)
 
 	var ctrl := Vector2(
 		(from_pos.x + mouth_pos.x) * 0.5,
@@ -676,7 +715,7 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 	)
 
 	# Segment 1: bezier arc to the destination's mouth.
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_method(func(t: float):
 		if not is_instance_valid(dot):
 			return
@@ -688,11 +727,13 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 			trail.position = p
 	, 0.0, 1.0, 0.18)
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 	# Segment 2: accelerating fall through the neck onto the liquid.
 	var drop_dist := surface_pos.y - mouth_pos.y
 	if drop_dist > 1.0:
-		var tw2 := create_tween()
+		var tw2 := _board_tween()
 		tw2.tween_method(func(t: float):
 			if not is_instance_valid(dot):
 				return
@@ -703,12 +744,14 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 		, 0.0, 1.0, 0.06 + drop_dist * 0.0007) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		await tw2.finished
+		if generation != _game_generation:
+			return
 
 	if is_instance_valid(dot):
 		dot.queue_free()
 	if is_instance_valid(trail):
 		trail.emitting = false
-		var cleanup := create_tween()
+		var cleanup := _board_tween()
 		cleanup.tween_interval(trail.lifetime)
 		cleanup.tween_callback(trail.queue_free)
 
@@ -726,6 +769,7 @@ func _animate_droplet(from_pos: Vector2, mouth_pos: Vector2, surface_pos: Vector
 	splash.position = surface_pos
 	splash.z_index = 20
 	add_child(splash)
+	splash.set_meta("board_effect", true)
 	splash.emitting = true
 	splash.finished.connect(splash.queue_free)
 
@@ -786,7 +830,7 @@ func _on_win() -> void:
 		_win_best_lbl.add_theme_color_override("font_color", Color(0.7, 0.75, 0.82))
 	_win_panel.modulate.a = 0.0
 	_win_panel.visible = true
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(_win_panel, "modulate:a", 1.0, 0.4).set_ease(Tween.EASE_OUT)
 
 
@@ -815,6 +859,9 @@ func _save_undo_snapshot() -> void:
 
 
 func _on_undo_pressed() -> void:
+	var generation := _game_generation
+	if _pouring:
+		return
 	var in_dead_board := _reshuffle_btn.visible
 	if _undo_stack.is_empty() or (not _board_active and not in_dead_board):
 		return
@@ -852,6 +899,8 @@ func _on_undo_pressed() -> void:
 
 	if src_vial != null and dst_vial != null and pour_amount > 0:
 		await dst_vial.animate_pour_out(pour_amount)
+		if generation != _game_generation:
+			return
 		var color   := _tinted_palette(pour_color_id)
 		# Reversed arc (dst → src): leave dst's mouth, drop into src.
 		var dst_top := _vial_point(dst_vial, Vector2(dst_vial.VIAL_W * 0.5, 0.0))
@@ -859,6 +908,8 @@ func _on_undo_pressed() -> void:
 		var src_surface := _vial_point(src_vial,
 			Vector2(src_vial.VIAL_W * 0.5, src_vial.surface_y()))
 		await _animate_droplet(dst_top, src_mouth, src_surface, color)
+		if generation != _game_generation:
+			return
 
 	for i in range(_vials.size()):
 		(_vials[i] as Vial).restore(snap[i])
@@ -877,7 +928,7 @@ func _save_key() -> String:
 
 func _load_save() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, SAVE_PATH) == OK:
 		_best_moves = cfg.get_value("progress", _save_key(), 0)
 	else:
 		_best_moves = 0
@@ -889,9 +940,9 @@ func _save_progress() -> void:
 	if _best_moves == 0 or _move_count < _best_moves:
 		_best_moves = _move_count
 		var cfg := ConfigFile.new()
-		cfg.load(SAVE_PATH)   # preserve other difficulty keys
+		_SaveFile.load_config(cfg, SAVE_PATH)   # preserve other difficulty keys
 		cfg.set_value("progress", _save_key(), _best_moves)
-		cfg.save(SAVE_PATH)
+		_SaveFile.save_config(cfg, SAVE_PATH)
 
 
 # ---- UI ---------------------------------------------------------------------
@@ -903,7 +954,7 @@ func _update_ui() -> void:
 		_best_label.text = "Best: %s" % ("–" if _best_moves == 0 else str(_best_moves))
 	if _undo_button:
 		var has_undo := not _undo_stack.is_empty()
-		_undo_button.modulate.a = 1.0 if has_undo else 0.35
+		_undo_button.disabled = not has_undo   # the sign shows its dimmed art
 		if has_undo and _max_undo_depth != -1:
 			_undo_button.text = "UNDO ×%d" % _undo_stack.size()
 		else:
@@ -913,7 +964,43 @@ func _update_ui() -> void:
 # ---- navigation -------------------------------------------------------------
 
 func _on_back_pressed() -> void:
+	stop_game()
 	if _selected:
 		_selected.show_selected(false)
 		_selected = null
 	back_to_menu.emit()
+
+
+func _board_tween() -> Tween:
+	var tween := create_tween()
+	_operation_tweens.append(tween)
+	tween.finished.connect(_forget_tween.bind(tween.get_instance_id()), CONNECT_ONE_SHOT)
+	return tween
+
+
+func stop_game() -> void:
+	_game_generation += 1
+	if is_instance_valid(_selected):
+		_selected.show_selected(false)
+	for tween in _operation_tweens:
+		if tween.is_valid():
+			tween.kill()
+	_operation_tweens.clear()
+	for child in get_children():
+		if child.has_meta("board_effect"):
+			child.queue_free()
+	_board_active = false
+	_pouring = false
+	_queued_vial = null
+	_selected = null
+
+
+func request_back() -> void:
+	_on_back_pressed()
+
+
+func _forget_tween(instance_id: int) -> void:
+	for tween in _operation_tweens:
+		if tween.get_instance_id() == instance_id:
+			_operation_tweens.erase(tween)
+			return

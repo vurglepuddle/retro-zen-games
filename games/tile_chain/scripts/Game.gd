@@ -1,6 +1,10 @@
 #Game.gd (tile_chain)
 extends Control
 
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
+
+var _game_generation: int = 0
+
 signal back_to_menu
 
 const ROWS := 8 #8
@@ -64,12 +68,10 @@ func _ready() -> void:
 		new_game_btn.pressed.connect(_on_new_game_pressed)
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_on_back_pressed()
 
 
 func prepare_board() -> void:
+	stop_game()
 	_load_textures()
 	_clear_board()
 	_build_board()
@@ -82,6 +84,7 @@ func prepare_board() -> void:
 
 
 func start_game() -> void:
+	var generation := _game_generation
 	# Bloom cells into existence in a random order — like flowers opening.
 	var cells_flat: Array = []
 	for row in _cells:
@@ -98,6 +101,8 @@ func start_game() -> void:
 	# Activate early — first cells are visible and tappable within ~0.6 s;
 	# the remaining bloom animation plays out in the background.
 	await get_tree().create_timer(0.6).timeout
+	if generation != _game_generation:
+		return
 	if is_inside_tree():
 		_board_active = true
 
@@ -342,6 +347,7 @@ func _has_valid_move() -> bool:
 
 
 func _check_dead_board() -> void:
+	var generation := _game_generation
 	if _is_board_cleared():
 		_on_board_cleared()
 		return
@@ -351,6 +357,8 @@ func _check_dead_board() -> void:
 	_reshuffling = true
 	# Wait for spin-out animations to finish before reshuffling.
 	await get_tree().create_timer(0.6).timeout
+	if generation != _game_generation:
+		return
 
 	# Reshuffle until a valid move exists (statistically instant).
 	var attempts := 0
@@ -442,14 +450,14 @@ func _on_back_from_clear_pressed() -> void:
 
 func _load_save() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, SAVE_PATH) == OK:
 		_longest_combo = cfg.get_value("progress", "longest_combo", 0)
 
 
 func _save_progress() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "longest_combo", _longest_combo)
-	cfg.save(SAVE_PATH)
+	_SaveFile.save_config(cfg, SAVE_PATH)
 
 
 # ----- Border sparkles -------------------------------------------------------
@@ -507,7 +515,18 @@ func _show_milestone(combo: int) -> void:
 # ----- Navigation ------------------------------------------------------------
 
 func _on_back_pressed() -> void:
+	stop_game()
 	if _selected:
 		_selected.show_outline(false)
 		_selected = null
 	back_to_menu.emit()
+
+
+func stop_game() -> void:
+	_game_generation += 1
+	_board_active = false
+	_reshuffling = false
+
+
+func request_back() -> void:
+	_on_back_pressed()

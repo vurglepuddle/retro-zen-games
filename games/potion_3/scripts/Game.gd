@@ -4,6 +4,10 @@
 
 extends Control
 
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
+
+var _operation_tweens: Array[Tween] = []
+
 signal back_to_menu
 
 # ---- constants ---------------------------------------------------------------
@@ -120,9 +124,6 @@ func _setup_combo_players() -> void:
 		_combo_players.append(p)
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_on_back_pressed()
 
 
 # ===========================================================================
@@ -131,7 +132,6 @@ func _notification(what: int) -> void:
 
 func set_difficulty(d: int) -> void:
 	_difficulty = d
-	_load_save()
 
 
 func _apply_difficulty_layout() -> void:
@@ -192,6 +192,7 @@ func _apply_difficulty_layout() -> void:
 
 
 func prepare_board() -> void:
+	stop_game()
 	_board_active = false
 	_animating = false
 	_match_streak = 0
@@ -207,6 +208,7 @@ func prepare_board() -> void:
 	_cancel_drag()
 	_clear_cells()          # clears _scrolling_rows first
 	_apply_difficulty_layout()  # then populates _scrolling_rows so _build_cells can use them
+	_load_save()
 	_load_textures()
 	_build_cells()
 	# Pre-position cells for the drop-in animation so the fade-in doesn't
@@ -260,12 +262,12 @@ func start_game() -> void:
 				continue
 			var final_y := c.position.y + 160.0  # restore to actual target
 			var delay := idx * 0.05
-			var tw := create_tween()
+			var tw := _board_tween()
 			tw.tween_interval(delay)
 			tw.tween_callback(func():
 				if not is_instance_valid(c) or not is_instance_valid(self):
 					return
-				var tw2 := create_tween()
+				var tw2 := _board_tween()
 				tw2.set_parallel(true)
 				tw2.tween_property(c, "position:y", final_y, 0.38) \
 					.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -279,12 +281,12 @@ func start_game() -> void:
 		var c := dc as PotionCell
 		var final_y := c.position.y + 160.0
 		var delay := idx * 0.05
-		var tw := create_tween()
+		var tw := _board_tween()
 		tw.tween_interval(delay)
 		tw.tween_callback(func():
 			if not is_instance_valid(c) or not is_instance_valid(self):
 				return
-			var tw2 := create_tween()
+			var tw2 := _board_tween()
 			tw2.set_parallel(true)
 			tw2.tween_property(c, "position:y", final_y, 0.38) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -300,12 +302,12 @@ func start_game() -> void:
 		var c := dc as PotionCell
 		var final_y := c.position.y + 160.0
 		var delay := idx * 0.05
-		var tw := create_tween()
+		var tw := _board_tween()
 		tw.tween_interval(delay)
 		tw.tween_callback(func():
 			if not is_instance_valid(c) or not is_instance_valid(self):
 				return
-			var tw2 := create_tween()
+			var tw2 := _board_tween()
 			tw2.set_parallel(true)
 			tw2.tween_property(c, "position:y", final_y, 0.38) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -625,6 +627,7 @@ func _generate_board_data() -> Dictionary:
 # ===========================================================================
 
 func _on_slot_tapped(cell: PotionCell, slot_idx: int) -> void:
+	var generation := _game_generation
 	if not _board_active or _animating:
 		return
 
@@ -659,6 +662,8 @@ func _on_slot_tapped(cell: PotionCell, slot_idx: int) -> void:
 			_selected_slot = -1
 			return
 		await _try_move(_selected_cell, _selected_slot, cell, slot_idx)
+		if generation != _game_generation:
+			return
 		return
 
 	# Case 4: tapped a different non-empty slot — switch selection.
@@ -775,6 +780,7 @@ func _update_drag(pos: Vector2) -> void:
 
 
 func _end_drag(pos: Vector2) -> void:
+	var generation := _game_generation
 	_drag_active = false
 	if _drag_sprite:
 		_drag_sprite.queue_free()
@@ -838,6 +844,8 @@ func _end_drag(pos: Vector2) -> void:
 		if to_cell != _selected_cell or to_slot != _selected_slot:
 			_selected_cell.set_slot_visible(_selected_slot, true)
 			await _try_move(_selected_cell, _selected_slot, to_cell, to_slot, false)
+			if generation != _game_generation:
+				return
 			return
 
 	# No valid target — restore visual and deselect.
@@ -926,6 +934,7 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 # ===========================================================================
 
 func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_slot: int, animate_fly := true) -> void:
+	var generation := _game_generation
 	_save_undo_snapshot()
 	_animating = true
 	_board_active = false
@@ -938,6 +947,8 @@ func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_sl
 
 	if animate_fly:
 		await _animate_item_move(from_cell, from_slot, to_cell, to_slot, item_id, is_mystery)
+		if generation != _game_generation:
+			return
 
 	from_cell.set_slot_mystery(from_slot, false)
 	from_cell.remove_item(from_slot)
@@ -951,14 +962,20 @@ func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_sl
 	# Check for match in destination cell.
 	if to_cell.check_match():
 		await _process_match(to_cell)
+		if generation != _game_generation:
+			return
 
 	# If source cell is now empty, keep revealing until we surface a layer
 	# that has items (skips any residual all-zero layers defensively).
 	while not from_cell.has_items() and from_cell.layers_remaining() > 0:
 		from_cell.reveal_next_layer()
 		await get_tree().create_timer(0.2).timeout
+		if generation != _game_generation:
+			return
 		if from_cell.check_match():
 			await _process_match(from_cell)
+			if generation != _game_generation:
+				return
 
 	_animating = false
 	_board_active = true
@@ -1003,22 +1020,32 @@ func _play_match_sfx(cell: PotionCell) -> void:
 
 
 func _process_match(cell: PotionCell) -> void:
+	var generation := _game_generation
 	_match_streak = clampi(_match_streak + 1, 1, 7)
 	_play_match_sfx(cell)
 	await cell.clear_match()
+	if generation != _game_generation:
+		return
 	_notify_locked_cells()
 	await get_tree().create_timer(0.1).timeout
+	if generation != _game_generation:
+		return
 	# Chain: if revealed layer also matches.
 	while cell.check_match():
 		_match_streak = clampi(_match_streak + 1, 1, 7)
 		_play_match_sfx(cell)
 		await cell.clear_match()
+		if generation != _game_generation:
+			return
 		_notify_locked_cells()
 		await get_tree().create_timer(0.1).timeout
+		if generation != _game_generation:
+			return
 
 
 func _animate_item_move(from_cell: PotionCell, from_slot: int,
 		to_cell: PotionCell, to_slot: int, item_id: int, is_mystery := false) -> void:
+	var generation := _game_generation
 	var start_pos := from_cell.global_position + from_cell.get_slot_center(from_slot)
 	var end_pos   := to_cell.global_position   + to_cell.get_slot_center(to_slot)
 
@@ -1035,15 +1062,18 @@ func _animate_item_move(from_cell: PotionCell, from_slot: int,
 	sprite.position = start_pos - Vector2(PotionCell.ITEM_SIZE * 0.5, PotionCell.ITEM_SIZE * 0.5)
 	sprite.z_index = 50
 	add_child(sprite)
+	sprite.set_meta("board_effect", true)
 
 	# Hide the original slot visual during flight.
 	from_cell.remove_item(from_slot)
 
-	var tw := create_tween()
+	var tw := _board_tween()
 	var target_pos := end_pos - Vector2(PotionCell.ITEM_SIZE * 0.5, PotionCell.ITEM_SIZE * 0.5)
 	tw.tween_property(sprite, "position", target_pos, 0.15) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	if generation != _game_generation:
+		return
 	sprite.queue_free()
 
 
@@ -1269,7 +1299,7 @@ func _save_key() -> String:
 
 func _load_save() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, SAVE_PATH) == OK:
 		_best_moves = cfg.get_value("progress", _save_key(), 0)
 	else:
 		_best_moves = 0
@@ -1281,9 +1311,9 @@ func _save_progress() -> void:
 	if _best_moves == 0 or _move_count < _best_moves:
 		_best_moves = _move_count
 		var cfg := ConfigFile.new()
-		cfg.load(SAVE_PATH)  # preserve other keys
+		_SaveFile.load_config(cfg, SAVE_PATH)  # preserve other keys
 		cfg.set_value("progress", _save_key(), _best_moves)
-		cfg.save(SAVE_PATH)
+		_SaveFile.save_config(cfg, SAVE_PATH)
 
 
 # ===========================================================================
@@ -1303,6 +1333,7 @@ func _update_ui() -> void:
 
 
 func _on_back_pressed() -> void:
+	stop_game()
 	back_to_menu.emit()
 
 
@@ -1429,7 +1460,7 @@ func _advance_scroll(row_idx: int) -> void:
 	var n := row_cells.size()
 	var strip := _scroll_strips[row_idx] as Control
 
-	var tween := create_tween()
+	var tween := _board_tween()
 	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
 	# The whole strip moves (see _make_strip), in whole screen-pixel steps.
@@ -1520,7 +1551,7 @@ func _advance_disp_scroll() -> void:
 	var n := cells.size()
 	var strip := _belt_strip
 
-	var tween := create_tween()
+	var tween := _board_tween()
 	_scroll_tweens.append(tween)
 	tween.set_parallel(true)
 	var start_x: float = strip.get_meta("offset_x")
@@ -1564,3 +1595,39 @@ func _notify_locked_cells() -> void:
 	for row_arr in _cells:
 		for cell in row_arr:
 			(cell as PotionCell).notify_match()
+
+
+func _board_tween() -> Tween:
+	var tween := create_tween()
+	_operation_tweens.append(tween)
+	tween.finished.connect(_forget_tween.bind(tween.get_instance_id()), CONNECT_ONE_SHOT)
+	return tween
+
+
+func stop_game() -> void:
+	_game_generation += 1
+	for tween in _operation_tweens:
+		if tween.is_valid():
+			tween.kill()
+	_operation_tweens.clear()
+	for child in get_children():
+		if child.has_meta("board_effect"):
+			child.queue_free()
+	_board_active = false
+	_animating = false
+	_pressing = false
+	_cancel_drag()
+	_selected_cell = null
+	_selected_slot = -1
+	_streak_timer_id += 1
+
+
+func request_back() -> void:
+	_on_back_pressed()
+
+
+func _forget_tween(instance_id: int) -> void:
+	for tween in _operation_tweens:
+		if tween.get_instance_id() == instance_id:
+			_operation_tweens.erase(tween)
+			return

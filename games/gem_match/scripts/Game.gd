@@ -1,6 +1,11 @@
 #Game.gd
 extends Node2D
 
+var _game_generation: int = 0
+var _operation_tweens: Array[Tween] = []
+
+const _SaveFile = preload("res://scripts/SafeConfig.gd")
+
 signal back_to_menu
 signal play_again
 
@@ -317,12 +322,10 @@ func back_button_pressed() -> void:
 	_go_back_to_menu()
 
 
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_go_back_to_menu()
 
 
 func prepare_board() -> void:
+	stop_game()
 	_game_active = false
 	_next_milestone = 1000
 	_busy = false
@@ -364,9 +367,14 @@ func prepare_board() -> void:
 
 
 func start_game() -> void:
+	var generation := _game_generation
 	_play_sfx_delayed(sfx_fall, sfx_fall_delay)
 	await _animate_board_entrance()
+	if generation != _game_generation:
+		return
 	await _check_for_shuffle()
+	if generation != _game_generation:
+		return
 	_game_active = true
 
 
@@ -439,6 +447,7 @@ func _update_all_tile_positions() -> void:
 
 
 func _animate_board_entrance() -> void:
+	var generation := _game_generation
 	var all_tiles: Array = []
 	for c in range(board_cols):
 		for r in range(board_rows):
@@ -457,7 +466,7 @@ func _animate_board_entrance() -> void:
 			-(board_rows + randf_range(1.0, 4.0)) * float(cell_size)
 		)
 
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	var cumulative_delay := 0.0
 
@@ -473,11 +482,14 @@ func _animate_board_entrance() -> void:
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 
 # ----- Input ----------------------------------------------------------------
 
 func _go_back_to_menu() -> void:
+	stop_game()
 	_game_active = false
 	_stop_hints()
 	for child in get_children():
@@ -514,7 +526,7 @@ func _process(delta: float) -> void:
 
 
 func start_drag(tile, press_pos: Vector2) -> void:
-	if _busy:
+	if not _game_active or _busy:
 		return
 	_hint_timer = 0.0
 	_stop_hints()
@@ -632,7 +644,8 @@ func _stop_hints() -> void:
 # ----- Swap (animated) ------------------------------------------------------
 
 func _attempt_swap(tile, dir: Vector2) -> void:
-	if _busy:
+	var generation := _game_generation
+	if not _game_active or _busy:
 		return
 	var r: int = tile.row
 	var c: int = tile.col
@@ -663,17 +676,27 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 		_play_sfx(sfx_swap)
 		_swap_logic(tile, other)
 		await _tween_two(tile, p2, other, p1, 0.15)
+		if generation != _game_generation:
+			return
 		_swap_logic(tile, other)
 		await _tween_two(tile, p1, other, p2, 0.10)
+		if generation != _game_generation:
+			return
 		await _fire_color_bomb(color_bomb, bomb_target)
+		if generation != _game_generation:
+			return
 		if _level_mode:
 			await _check_level_up()
+			if generation != _game_generation:
+				return
 		_busy = false
 		return
 
 	# --- Normal match logic. ---
 	_swap_logic(tile, other)
 	await _tween_two(tile, p2, other, p1, 0.15)
+	if generation != _game_generation:
+		return
 
 	last_swapped_tiles = [tile, other]
 	var matches := _find_matches()
@@ -681,13 +704,19 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 	if matches.size() == 0:
 		_play_sfx(sfx_no_match)
 		await _tween_two(tile, p1, other, p2, 0.15)
+		if generation != _game_generation:
+			return
 		_swap_logic(tile, other)
 		last_swapped_tiles = []
 	else:
 		_play_sfx(sfx_swap)
 		await _resolve_matches_animated(matches)
+		if generation != _game_generation:
+			return
 		if _level_mode:
 			await _check_level_up()
+			if generation != _game_generation:
+				return
 
 	_busy = false
 
@@ -702,16 +731,20 @@ func _swap_logic(t1, t2) -> void:
 
 
 func _tween_two(a, pa: Vector2, b, pb: Vector2, dur: float) -> void:
-	var tw := create_tween()
+	var generation := _game_generation
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	tw.tween_property(a, "position", pa, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_property(b, "position", pb, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 
 # ----- Match resolution (animated) -----------------------------------------
 
 func _resolve_matches_animated(initial_groups: Array) -> void:
+	var generation := _game_generation
 	var groups := initial_groups
 	var cascade := 0
 
@@ -866,12 +899,14 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 								absi(nr - center.r) * 0.03)
 			_play_sfx(sfx_match)
 			_collect_time_bonus(to_remove)
-			var tw := create_tween()
+			var tw := _board_tween()
 			tw.set_parallel(true)
 			for t in to_remove:
 				tw.tween_property(t, "scale", Vector2.ZERO, 0.15) \
 					.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			await tw.finished
+			if generation != _game_generation:
+				return
 			for t in to_remove:
 				if is_instance_valid(t):
 					t.queue_free()
@@ -880,9 +915,13 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 			if had_bomb_det:
 				_play_sfx(sfx_explosion)
 				await _shake_board()
+				if generation != _game_generation:
+					return
 			elif had_cross_det:
 				_play_sfx(sfx_lightning)
 				await _shake_board_faint()
+				if generation != _game_generation:
+					return
 
 		# 2. Apply upgrades + pop animation.
 		var live_upgrades: Array = []
@@ -892,26 +931,34 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				entry[0].set_special(entry[2])
 				live_upgrades.append(entry[0])
 		if live_upgrades.size() > 0:
-			var tw2 := create_tween()
+			var tw2 := _board_tween()
 			tw2.set_parallel(true)
 			for t in live_upgrades:
 				tw2.tween_property(t, "scale", Vector2(1.35, 1.35), 0.1) \
 					.set_trans(Tween.TRANS_QUAD)
 			await tw2.finished
-			var tw3 := create_tween()
+			if generation != _game_generation:
+				return
+			var tw3 := _board_tween()
 			tw3.set_parallel(true)
 			for t in live_upgrades:
 				tw3.tween_property(t, "scale", Vector2.ONE, 0.1) \
 					.set_trans(Tween.TRANS_QUAD)
 			await tw3.finished
+			if generation != _game_generation:
+				return
 
 		last_swapped_tiles = []
 
 		# 3. Collapse + fill.
 		await _animate_collapse()
+		if generation != _game_generation:
+			return
 		if not _game_active:
 			return
 		await _animate_fill()
+		if generation != _game_generation:
+			return
 		if not _game_active:
 			return
 
@@ -919,6 +966,8 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		groups = _find_matches()
 
 	await _check_for_shuffle()
+	if generation != _game_generation:
+		return
 
 
 # ----- Special gem zone collectors ------------------------------------------
@@ -963,6 +1012,7 @@ func _collect_special_zone_at(origin_row: int, origin_col: int, special_type: in
 
 # Fired from _attempt_swap() when either swapped tile is a COLOR_BOMB.
 func _fire_color_bomb(bomb: Tile, target: Tile) -> void:
+	var generation := _game_generation
 	var target_level := 1
 	var target_special := Tile.SPECIAL_NONE
 	if is_instance_valid(target):
@@ -971,6 +1021,8 @@ func _fire_color_bomb(bomb: Tile, target: Tile) -> void:
 
 	if target_special == Tile.SPECIAL_COLOR_BOMB:
 		await _fire_color_bomb_clear_board(bomb)
+		if generation != _game_generation:
+			return
 		return
 
 	# Stars already explode as bombs when matched, so heart + star copies
@@ -980,13 +1032,18 @@ func _fire_color_bomb(bomb: Tile, target: Tile) -> void:
 
 	if target_special == Tile.SPECIAL_BOMB or target_special == Tile.SPECIAL_CROSS:
 		await _fire_color_bomb_special_copy(bomb, target_level, target_special)
+		if generation != _game_generation:
+			return
 		return
 
 	await _fire_color_bomb_level_clear(bomb, target_level)
+	if generation != _game_generation:
+		return
 
 
 # Destroys the bomb itself and every gem at target_level on the board.
 func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
+	var generation := _game_generation
 	var to_remove: Array = []
 	var removed_set       = {}
 
@@ -1023,22 +1080,30 @@ func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
 		max_delay = maxf(max_delay, delay)
 		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
 		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
-		var seq := create_tween()
+		var seq := _board_tween()
 		seq.tween_interval(delay)
 		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		seq.tween_property(t, "scale", Vector2.ZERO, 0.15) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await get_tree().create_timer(max_delay + 0.24).timeout
+	if generation != _game_generation:
+		return
 	for t in to_remove:
 		if is_instance_valid(t):
 			t.queue_free()
 
 	await _shake_board()
+	if generation != _game_generation:
+		return
 	await _animate_collapse()
+	if generation != _game_generation:
+		return
 	if not _game_active:
 		return
 	await _animate_fill()
+	if generation != _game_generation:
+		return
 	if not _game_active:
 		return
 	update_score_display()
@@ -1046,11 +1111,16 @@ func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
 	var matches := _find_matches()
 	if matches.size() > 0:
 		await _resolve_matches_animated(matches)
+		if generation != _game_generation:
+			return
 	else:
 		await _check_for_shuffle()
+		if generation != _game_generation:
+			return
 
 
 func _fire_color_bomb_clear_board(bomb: Tile) -> void:
+	var generation := _game_generation
 	var to_remove: Array = []
 	var removed_set       = {}
 
@@ -1064,10 +1134,15 @@ func _fire_color_bomb_clear_board(bomb: Tile) -> void:
 	_play_sfx(sfx_color_bomb)
 	_collect_time_bonus(to_remove)
 	await _animate_color_bomb_removal(to_remove, bomb, 7.0)
+	if generation != _game_generation:
+		return
 	await _finish_color_bomb_resolution()
+	if generation != _game_generation:
+		return
 
 
 func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special: int) -> void:
+	var generation := _game_generation
 	var to_remove: Array = []
 	var removed_set       = {}
 	var origins: Array = []
@@ -1094,7 +1169,11 @@ func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special
 		_play_sfx(sfx_lightning)
 
 	await _animate_color_bomb_special_copy(to_remove, origins, copied_special, bomb)
+	if generation != _game_generation:
+		return
 	await _finish_color_bomb_resolution()
+	if generation != _game_generation:
+		return
 
 
 func _mark_tile_for_removal(t: Tile, to_remove: Array, removed_set: Dictionary) -> void:
@@ -1108,6 +1187,7 @@ func _mark_tile_for_removal(t: Tile, to_remove: Array, removed_set: Dictionary) 
 
 
 func _animate_color_bomb_removal(to_remove: Array, bomb: Tile, radius_cells: float = 4.5) -> void:
+	var generation := _game_generation
 	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
 	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), radius_cells, 0.6)
@@ -1121,22 +1201,27 @@ func _animate_color_bomb_removal(to_remove: Array, bomb: Tile, radius_cells: flo
 		max_delay = maxf(max_delay, delay)
 		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
 		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
-		var seq := create_tween()
+		var seq := _board_tween()
 		seq.tween_interval(delay)
 		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		seq.tween_property(t, "scale", Vector2.ZERO, 0.15) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await get_tree().create_timer(max_delay + 0.24).timeout
+	if generation != _game_generation:
+		return
 	for t in to_remove:
 		if is_instance_valid(t):
 			t.queue_free()
 
 	await _shake_board()
+	if generation != _game_generation:
+		return
 
 
 func _animate_color_bomb_special_copy(
 		to_remove: Array, origins: Array, copied_special: int, bomb: Tile) -> void:
+	var generation := _game_generation
 	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
 	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.45)
@@ -1166,28 +1251,39 @@ func _animate_color_bomb_special_copy(
 					_flash_cell_in_board(nr, origin.c, Color(0.25, 0.55, 1.0, 0.50),
 							absi(nr - origin.r) * 0.025)
 
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	for t in to_remove:
 		if is_instance_valid(t):
 			tw.tween_property(t, "scale", Vector2.ZERO, 0.18) \
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
+	if generation != _game_generation:
+		return
 	for t in to_remove:
 		if is_instance_valid(t):
 			t.queue_free()
 
 	if copied_special == Tile.SPECIAL_BOMB:
 		await _shake_board()
+		if generation != _game_generation:
+			return
 	elif copied_special == Tile.SPECIAL_CROSS:
 		await _shake_board_faint()
+		if generation != _game_generation:
+			return
 
 
 func _finish_color_bomb_resolution() -> void:
+	var generation := _game_generation
 	await _animate_collapse()
+	if generation != _game_generation:
+		return
 	if not _game_active:
 		return
 	await _animate_fill()
+	if generation != _game_generation:
+		return
 	if not _game_active:
 		return
 	update_score_display()
@@ -1195,13 +1291,18 @@ func _finish_color_bomb_resolution() -> void:
 	var matches := _find_matches()
 	if matches.size() > 0:
 		await _resolve_matches_animated(matches)
+		if generation != _game_generation:
+			return
 	else:
 		await _check_for_shuffle()
+		if generation != _game_generation:
+			return
 
 
 # ----- Gravity & fill -------------------------------------------------------
 
 func _animate_collapse() -> void:
+	var generation := _game_generation
 	for c in range(board_cols):
 		var col_tiles: Array = []
 		for r in range(board_rows):
@@ -1220,7 +1321,7 @@ func _animate_collapse() -> void:
 					idx -= 1
 
 	var any := false
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	for r in range(board_rows):
 		for c in range(board_cols):
@@ -1234,14 +1335,17 @@ func _animate_collapse() -> void:
 				any = true
 	if any:
 		await tw.finished
+		if generation != _game_generation:
+			return
 		_play_sfx(sfx_tink)
 	else:
 		tw.kill()
 
 
 func _animate_fill() -> void:
+	var generation := _game_generation
 	var any := false
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 
 	for c in range(board_cols):
@@ -1272,6 +1376,8 @@ func _animate_fill() -> void:
 
 	if any:
 		await tw.finished
+		if generation != _game_generation:
+			return
 		_play_sfx(sfx_tink)
 	else:
 		tw.kill()
@@ -1306,7 +1412,7 @@ func _collect_time_bonus(tiles: Array) -> void:
 	lbl.z_index = 30
 	lbl.position = at.position + Vector2(-44, -70)
 	board_container.add_child(lbl)
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.set_parallel(true)
 	tw.tween_property(lbl, "position:y", lbl.position.y - 52.0, 0.85) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -1318,26 +1424,32 @@ func _collect_time_bonus(tiles: Array) -> void:
 # ----- Screen shake ---------------------------------------------------------
 
 func _shake_board() -> void:
+	var generation := _game_generation
 	var origin := board_container.position
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(board_container, "position", origin + Vector2(5, -3),  0.04)
 	tw.tween_property(board_container, "position", origin + Vector2(-4, 4),  0.04)
 	tw.tween_property(board_container, "position", origin + Vector2(3, -2),  0.04)
 	tw.tween_property(board_container, "position", origin + Vector2(-2, 1),  0.04)
 	tw.tween_property(board_container, "position", origin,                   0.06)
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 
 # Gentler shake for CROSS (lightning-bolt) detonation.
 func _shake_board_faint() -> void:
+	var generation := _game_generation
 	var origin := board_container.position
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(board_container, "position", origin + Vector2(3, -2),  0.05)
 	tw.tween_property(board_container, "position", origin + Vector2(-2, 2),  0.05)
 	tw.tween_property(board_container, "position", origin + Vector2(2, -1),  0.05)
 	tw.tween_property(board_container, "position", origin + Vector2(-1, 1),  0.05)
 	tw.tween_property(board_container, "position", origin,                   0.08)
 	await tw.finished
+	if generation != _game_generation:
+		return
 
 
 func _cell_pos(r: int, c: int) -> Vector2:
@@ -1521,6 +1633,7 @@ func _shuffle_board() -> void:
 
 
 func _check_for_shuffle() -> void:
+	var generation := _game_generation
 	if _has_possible_matches():
 		return
 
@@ -1530,7 +1643,7 @@ func _check_for_shuffle() -> void:
 	if shuffle_label != null:
 		shuffle_label.modulate.a = 1.0
 		shuffle_label.visible = true
-		var tw_lbl := create_tween()
+		var tw_lbl := _board_tween()
 		tw_lbl.tween_interval(2.2)
 		tw_lbl.tween_property(shuffle_label, "modulate:a", 0.0, 0.5)
 		tw_lbl.tween_callback(func(): shuffle_label.visible = false)
@@ -1541,11 +1654,13 @@ func _check_for_shuffle() -> void:
 		for c in range(board_cols):
 			if board[r][c] != null:
 				all_tiles.append(board[r][c])
-	var tw_shrink := create_tween().set_parallel(true)
+	var tw_shrink := _board_tween().set_parallel(true)
 	for tile in all_tiles:
 		tw_shrink.tween_property(tile, "scale", Vector2.ZERO, 0.42) \
 			.set_ease(Tween.EASE_IN)
 	await tw_shrink.finished
+	if generation != _game_generation:
+		return
 
 	# Shuffle while tiles are invisible (positions teleport at scale=0).
 	var attempts := 0
@@ -1556,11 +1671,13 @@ func _check_for_shuffle() -> void:
 			break
 
 	# Pop tiles back with a springy overshoot.
-	var tw_grow := create_tween().set_parallel(true)
+	var tw_grow := _board_tween().set_parallel(true)
 	for tile in all_tiles:
 		tw_grow.tween_property(tile, "scale", Vector2.ONE, 0.52) \
 			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	await tw_grow.finished
+	if generation != _game_generation:
+		return
 
 
 # ----- Combo label ----------------------------------------------------------
@@ -1579,7 +1696,7 @@ func _show_combo(cascade: int) -> void:
 	combo_label.scale      = Vector2(0.4, 0.4)
 	combo_label.visible    = true
 
-	_combo_tween = create_tween()
+	_combo_tween = _board_tween()
 	_combo_tween.tween_property(combo_label, "scale", Vector2(1.1, 1.1), 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_combo_tween.tween_property(combo_label, "scale", Vector2.ONE, 0.08)
@@ -1599,7 +1716,7 @@ func update_score_display() -> void:
 	_update_score_bar()
 	if _score_tween != null and _score_tween.is_valid():
 		_score_tween.kill()
-	_score_tween = create_tween()
+	_score_tween = _board_tween()
 	_score_tween.tween_method(
 		_set_displayed_score,
 		float(_displayed_score),
@@ -1626,7 +1743,7 @@ func _flash_screen() -> void:
 		return
 	if _flash_overlay.color.a > 0.01:
 		return
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(_flash_overlay, "color:a", 0.28, 0.08)
 	tw.tween_property(_flash_overlay, "color:a", 0.0,  0.55) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -1656,7 +1773,7 @@ func _flash_rect_in_board(rect: Rect2, color: Color, delay: float = 0.0) -> void
 	p.scale    = Vector2(0.55, 0.55)
 	p.z_index  = 10
 	board_container.add_child(p)
-	var tw := create_tween()
+	var tw := _board_tween()
 	if delay > 0.0:
 		tw.tween_interval(delay)
 	tw.set_parallel(true)
@@ -1710,7 +1827,7 @@ func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
 	mat.set_shader_parameter("progress", 0.0)
 	rect.material = mat
 	_fx_layer().add_child(rect)
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(mat, "shader_parameter/progress", 1.0, duration) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(rect.queue_free)
@@ -1728,7 +1845,7 @@ func _spawn_cascade_sparkle(cascade: int) -> void:
 		var c := randi() % board_cols
 		if SHAPE[r][c] == 0:
 			continue
-		var tw := create_tween()
+		var tw := _board_tween()
 		tw.tween_interval(randf() * 0.35)
 		tw.tween_callback(_spawn_sparks.bind(r, c, color, 5, 130.0))
 
@@ -1775,8 +1892,11 @@ func _play_sfx(player: AudioStreamPlayer) -> void:
 
 
 func _play_sfx_delayed(player: AudioStreamPlayer, delay: float) -> void:
+	var generation := _game_generation
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
+		if generation != _game_generation:
+			return
 	_play_sfx(player)
 
 
@@ -1805,7 +1925,7 @@ func _time_up() -> void:
 
 func _load_timed_best() -> int:
 	var cfg := ConfigFile.new()
-	if cfg.load(TIMED_SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, TIMED_SAVE_PATH) == OK:
 		return cfg.get_value("timed", "best_score", 0)
 	return 0
 
@@ -1814,9 +1934,9 @@ func _save_timed_best() -> void:
 	if score <= _load_timed_best():
 		return
 	var cfg := ConfigFile.new()
-	cfg.load(TIMED_SAVE_PATH)
+	_SaveFile.load_config(cfg, TIMED_SAVE_PATH)
 	cfg.set_value("timed", "best_score", score)
-	cfg.save(TIMED_SAVE_PATH)
+	_SaveFile.save_config(cfg, TIMED_SAVE_PATH)
 
 
 func _show_game_over_panel() -> void:
@@ -1845,13 +1965,13 @@ func _show_game_over_panel() -> void:
 			"font_color", Color(1, 0.82, 0.1) if score > prev_best else Color(1, 0.945, 0.627))
 	_game_over_panel.modulate.a = 0.0
 	_game_over_panel.visible    = true
-	var tw := create_tween()
+	var tw := _board_tween()
 	tw.tween_property(_game_over_panel, "modulate:a", 1.0, 0.4).set_ease(Tween.EASE_OUT)
 
 
 func _load_level_best() -> int:
 	var cfg := ConfigFile.new()
-	if cfg.load(TIMED_SAVE_PATH) == OK:
+	if _SaveFile.load_config(cfg, TIMED_SAVE_PATH) == OK:
 		return cfg.get_value("level", "best_level", 0)
 	return 0
 
@@ -1860,9 +1980,9 @@ func _save_level_best(reached: int) -> void:
 	if reached <= _load_level_best():
 		return
 	var cfg := ConfigFile.new()
-	cfg.load(TIMED_SAVE_PATH)
+	_SaveFile.load_config(cfg, TIMED_SAVE_PATH)
 	cfg.set_value("level", "best_level", reached)
-	cfg.save(TIMED_SAVE_PATH)
+	_SaveFile.save_config(cfg, TIMED_SAVE_PATH)
 
 
 # ----- Level mode -----------------------------------------------------------
@@ -1894,7 +2014,7 @@ func _show_level_up_banner() -> void:
 	combo_label.z_index    = 999
 	combo_label.scale      = Vector2(0.4, 0.4)
 	combo_label.visible    = true
-	_combo_tween = create_tween()
+	_combo_tween = _board_tween()
 	_combo_tween.tween_property(combo_label, "scale", Vector2(1.2, 1.2), 0.22) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_combo_tween.tween_property(combo_label, "scale", Vector2.ONE, 0.10)
@@ -1905,6 +2025,7 @@ func _show_level_up_banner() -> void:
 
 
 func _check_level_up() -> void:
+	var generation := _game_generation
 	if not _level_mode or _leveling_up:
 		return
 	if score - _level_score_start < _level_target:
@@ -1919,4 +2040,36 @@ func _check_level_up() -> void:
 	_update_score_bar()
 	# Brief yield so the banner tween kicks off before we unblock.
 	await get_tree().create_timer(0.05).timeout
+	if generation != _game_generation:
+		return
 	_leveling_up = false
+
+
+func _board_tween() -> Tween:
+	var tween := create_tween()
+	_operation_tweens.append(tween)
+	tween.finished.connect(_forget_tween.bind(tween.get_instance_id()), CONNECT_ONE_SHOT)
+	return tween
+
+
+func stop_game() -> void:
+	_game_generation += 1
+	for tween in _operation_tweens:
+		if tween.is_valid():
+			tween.kill()
+	_operation_tweens.clear()
+	_game_active = false
+	_busy = false
+	_drag_tile = null
+	_stop_hints()
+
+
+func request_back() -> void:
+	_go_back_to_menu()
+
+
+func _forget_tween(instance_id: int) -> void:
+	for tween in _operation_tweens:
+		if tween.get_instance_id() == instance_id:
+			_operation_tweens.erase(tween)
+			return

@@ -1,5 +1,5 @@
 #Main.gd (alchemical_sort)
-extends Node
+extends "res://scripts/GameNavigation.gd"
 
 @onready var _menu: Control          = $Menu
 @onready var _game: Control          = $Game
@@ -19,6 +19,8 @@ func _ready() -> void:
 
 
 func _on_start_game(difficulty: int) -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	_menu.visible = false
 	_game.visible = true
@@ -29,6 +31,9 @@ func _on_start_game(difficulty: int) -> void:
 
 
 func _on_back_to_menu() -> void:
+	if not _begin_transition(_fade_rect):
+		return
+	_game.stop_game()
 	await _fade_to_black()
 	_game.visible = false
 	_menu.visible = true
@@ -36,6 +41,8 @@ func _on_back_to_menu() -> void:
 
 
 func _on_back_to_master() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
 
@@ -47,7 +54,10 @@ func _fade_to_black() -> void:
 
 
 func _fade_from_black() -> void:
+	_transitioning = true
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 0.0, 0.38) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	_finish_transition(_fade_rect)

@@ -1,11 +1,10 @@
 # Main.gd (potion_3)
-extends Node
+extends "res://scripts/GameNavigation.gd"
 
 @onready var _menu: Control        = $Menu
 @onready var _game: Control        = $Game
 @onready var _fade_rect: ColorRect = $FadeLayer/FadeRect
 
-var _transitioning := false   # ignore taps (e.g. a double-tapped START) mid-fade
 
 func _ready() -> void:
 	_game.visible = false
@@ -20,34 +19,30 @@ func _ready() -> void:
 
 
 func _on_start_game(difficulty: int) -> void:
-	if _transitioning:
+	if not _begin_transition(_fade_rect):
 		return
-	_transitioning = true
 	await _fade_to_black()
 	_menu.visible = false
 	_game.visible = true
 	_game.set_difficulty(difficulty)
 	_game.prepare_board()
 	await _fade_from_black()
-	_transitioning = false
 	_game.start_game()
 
 
 func _on_back_to_menu() -> void:
-	if _transitioning:
+	if not _begin_transition(_fade_rect):
 		return
-	_transitioning = true
+	_game.stop_game()
 	await _fade_to_black()
 	_game.visible = false
 	_menu.visible = true
 	await _fade_from_black()
-	_transitioning = false
 
 
 func _on_back_to_master() -> void:
-	if _transitioning:
+	if not _begin_transition(_fade_rect):
 		return
-	_transitioning = true
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
 
@@ -59,7 +54,10 @@ func _fade_to_black() -> void:
 
 
 func _fade_from_black() -> void:
+	_transitioning = true
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 0.0, 0.38) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	_finish_transition(_fade_rect)

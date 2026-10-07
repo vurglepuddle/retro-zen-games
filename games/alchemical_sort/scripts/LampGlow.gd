@@ -1,7 +1,14 @@
 extends Node2D
 
-# Soft light over the lantern painted into alchbg2.png. This node's position
-# marks the flame, so the whole effect can be moved in the scene Inspector.
+# Soft light over the brass lantern painted into ui/game_bg.png and
+# ui/menu_bg.png. This node's position marks the flame, so the whole effect
+# can be moved in the scene Inspector.
+
+## Where startled fireflies hide, relative to the flame: the ivy garland on
+## either side of the lantern chain.
+@export var shelter_left := Vector2(-62, -66)
+@export var shelter_right := Vector2(64, -66)
+
 var _rng := RandomNumberGenerator.new()
 var _noise := FastNoiseLite.new()
 var _time := 0.0
@@ -68,8 +75,8 @@ func _ready() -> void:
 	# the board and Undo button alone.
 	_tap_area = Control.new()
 	_tap_area.name = "LampTapArea"
-	_tap_area.position = Vector2(-29, -42)
-	_tap_area.size = Vector2(58, 91)
+	_tap_area.position = Vector2(-26, -56)
+	_tap_area.size = Vector2(52, 98)
 	_tap_area.mouse_filter = Control.MOUSE_FILTER_STOP
 	_tap_area.gui_input.connect(_on_lamp_input)
 	add_child(_tap_area)
@@ -211,7 +218,7 @@ func _add_bug(home: Vector2, halo_texture: Texture2D, bug_texture: Texture2D, gl
 	var flight := Bug.new()
 	flight.node = bug
 	flight.home = home
-	flight.shelter = Vector2(-78, 18) if home.x < 0 else Vector2(87, 89)
+	flight.shelter = shelter_left if home.x < 0 else shelter_right
 	flight.target = home
 	flight.phase = _rng.randf_range(200.0, 2000.0)
 	_bugs.append(flight)

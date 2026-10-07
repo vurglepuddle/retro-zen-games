@@ -1,5 +1,5 @@
 #Main.gd (tile_chain orchestrator)
-extends Node
+extends "res://scripts/GameNavigation.gd"
 
 # Mirrors gem_match/Main.gd: handles Menu <-> Game transitions and
 # navigation back to the master app menu.
@@ -36,13 +36,18 @@ func _fade_to_black() -> void:
 
 
 func _fade_from_black() -> void:
+	_transitioning = true
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP
 	var tw := create_tween()
 	tw.tween_property(_fade_rect, "color:a", 0.0, 0.38) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw.finished
+	_finish_transition(_fade_rect)
 
 
 func _on_start_game() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	menu.visible = false
 	game.visible = true
@@ -54,6 +59,9 @@ func _on_start_game() -> void:
 
 
 func _on_back_to_menu() -> void:
+	if not _begin_transition(_fade_rect):
+		return
+	game.stop_game()
 	await _fade_to_black()
 	game.visible = false
 	menu.visible = true
@@ -61,5 +69,7 @@ func _on_back_to_menu() -> void:
 
 
 func _on_back_to_master() -> void:
+	if not _begin_transition(_fade_rect):
+		return
 	await _fade_to_black()
 	get_tree().change_scene_to_file("res://scenes/MasterMenu.tscn")
