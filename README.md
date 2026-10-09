@@ -26,3 +26,12 @@ More small experiments and quiet mechanics will be added over time.
 *   Godot Engine 4.3
 *   Designed for Android (migrating from 16:9 resolution to normal Android) and Web export
 *   Open source under GNU GPL-3.0
+
+## Potion Sort item artwork
+
+The numbered item sets in `games/potion_3/assets/items/set*/` are third-party
+licensed artwork. They are excluded from this repository and are not covered by
+its GPL-3.0 license. To run Potion Sort with these images, obtain your own license
+and place the files locally at `games/potion_3/assets/items/setN/itemN.png`, keeping
+the original set numbers and filenames. Git ignores these local set folders.
+The other games' assets and Potion Sort's own UI assets remain in the repository.
