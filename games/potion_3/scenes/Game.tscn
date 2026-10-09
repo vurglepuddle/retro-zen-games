@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://by68x6ciar570"]
+[gd_scene load_steps=22 format=3 uid="uid://by68x6ciar570"]
 
 [ext_resource type="Script" path="res://games/potion_3/scripts/Game.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -15,6 +15,8 @@
 [ext_resource type="Texture2D" uid="uid://bl3yqyxd2rpa1" path="res://games/potion_3/assets/ui/hang_string.png" id="13_string"]
 [ext_resource type="Texture2D" uid="uid://con14h4amvpfw" path="res://games/potion_3/assets/ui/parchment.png" id="14_parch"]
 [ext_resource type="Script" path="res://games/potion_3/scripts/CandleGlow.gd" id="15_candle"]
+[ext_resource type="Script" path="res://games/potion_3/scripts/HangingSway.gd" id="33_sway"]
+[ext_resource type="AudioStream" uid="uid://bvj76udjg2igm" path="res://games/zen_farm/assets/sfx/plant_tap.mp3" id="34_plant_tap"]
 
 [sub_resource type="StyleBoxTexture" id="StyleBoxTexture_sign_d"]
 content_margin_left = 12.0
@@ -70,6 +72,17 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
 
+[node name="HerbsSage" type="TextureRect" parent="."]
+visible = false
+z_index = 1
+layout_mode = 0
+offset_left = 477.0
+offset_top = 4.0
+offset_right = 540.0
+offset_bottom = 178.0
+mouse_filter = 2
+texture = ExtResource("9_herb_s")
+
 [node name="Backdrop" type="Control" parent="."]
 z_index = -2
 layout_mode = 1
@@ -105,21 +118,24 @@ stretch_mode = 1
 
 [node name="HerbsLavender" type="TextureRect" parent="Backdrop"]
 layout_mode = 0
-offset_left = 24.0
-offset_top = 8.0
-offset_right = 63.0
-offset_bottom = 80.0
+offset_left = 2.0
+offset_top = 1.0
+offset_right = 71.0
+offset_bottom = 169.0
 mouse_filter = 2
 texture = ExtResource("8_herb_l")
-
-[node name="HerbsSage" type="TextureRect" parent="Backdrop"]
-layout_mode = 0
-offset_left = 75.0
-offset_top = 4.0
-offset_right = 114.0
-offset_bottom = 76.0
-mouse_filter = 2
-texture = ExtResource("9_herb_s")
+script = ExtResource("33_sway")
+pivot = Vector2(37.5, 7.5)
+reach = 160.0
+droop = 0.35
+period = 1.4
+damping = 0.1
+tap_kick = 2.5
+idle_sway = 1.0
+pokeable = false
+celebrates = true
+tap_sound = ExtResource("34_plant_tap")
+tap_volume_db = -7.0
 
 [node name="Counter" type="Control" parent="Backdrop"]
 layout_mode = 1
@@ -154,7 +170,7 @@ expand_mode = 1
 stretch_mode = 1
 
 [node name="Candle" type="Node2D" parent="Backdrop/Counter"]
-position = Vector2(489, -60)
+position = Vector2(460, -65)
 script = ExtResource("15_candle")
 
 [node name="MoveLabel" type="Label" parent="."]
@@ -190,9 +206,9 @@ text = "BEST: –"
 [node name="UndoButton" type="Button" parent="."]
 z_index = 10
 layout_mode = 0
-offset_left = 405.0
+offset_left = 377.0
 offset_top = 26.0
-offset_right = 531.0
+offset_right = 503.0
 offset_bottom = 74.0
 theme_override_colors/font_disabled_color = Color(0.573, 0.494, 0.416, 1)
 theme_override_colors/font_hover_pressed_color = Color(0.937, 0.847, 0.631, 1)
@@ -211,19 +227,34 @@ theme_override_styles/pressed = SubResource("StyleBoxTexture_sign_p")
 theme_override_styles/normal = SubResource("StyleBoxTexture_sign")
 text = "UNDO"
 
-[node name="StringL" type="TextureRect" parent="UndoButton"]
+[node name="UndoStringL" type="TextureRect" parent="." node_paths=PackedStringArray("follower", "linked", "poke_from")]
+z_index = 10
 layout_mode = 0
-offset_left = 18.0
-offset_top = -15.0
-offset_right = 27.0
+offset_left = 395.0
+offset_top = 11.0
+offset_right = 404.0
+offset_bottom = 26.0
 mouse_filter = 2
 texture = ExtResource("13_string")
+script = ExtResource("33_sway")
+pivot = Vector2(4.5, 0)
+reach = 13.5
+period = 0.75
+tap_kick = 1.2
+max_sway = 2.0
+follower = NodePath("../UndoButton")
+linked = [NodePath("../UndoStringR")]
+pokeable = false
+poke_from = NodePath("../UndoButton")
+celebrates = true
 
-[node name="StringR" type="TextureRect" parent="UndoButton"]
+[node name="UndoStringR" type="TextureRect" parent="."]
+z_index = 10
 layout_mode = 0
-offset_left = 99.0
-offset_top = -15.0
-offset_right = 108.0
+offset_left = 476.0
+offset_top = 11.0
+offset_right = 485.0
+offset_bottom = 26.0
 mouse_filter = 2
 texture = ExtResource("13_string")
 

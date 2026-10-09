@@ -34,6 +34,7 @@ const DISP_SCROLL_CELLS    := 6     # visible cells in the hazard belt; 6×108=6
 const DISP_SCROLL_INTERVAL := 2.0   # belt scrolls slightly faster than main conveyor
 
 const STREAK_RESET_DELAY := 4.0   # seconds without a match before combo resets to note_1
+const WIN_PANEL_DELAY := 1.2      # seconds of shop celebration before the win sheet
 const COMBO_VOL_MIN_DB   := -10.0 # volume for note_1 (quiet start)
 const COMBO_VOL_MAX_DB   := -3.0  # volume for note_7 (not too loud)
 
@@ -1099,6 +1100,13 @@ func _on_win() -> void:
 	_board_active = false
 	_save_progress()
 	_win_moves_lbl.text = "in %d moves" % _move_count
+	# The shop celebrates first (the candle flares and its mites dance, the
+	# herbs and the UNDO sign sway); the win sheet follows a beat later.
+	get_tree().call_group(&"potion3_celebrate", "celebrate")
+	var generation := _game_generation
+	await get_tree().create_timer(WIN_PANEL_DELAY).timeout
+	if generation != _game_generation or not is_instance_valid(self):
+		return
 	_win_panel.visible = true
 
 
