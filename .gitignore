@@ -54,3 +54,6 @@ mono_crash.*.json
 !README.md
 art_src/
 tests/
+
+# Licensed Potion Sort item image sets: keep local, never publish to GitHub.
+/games/potion_3/assets/items/set*/
