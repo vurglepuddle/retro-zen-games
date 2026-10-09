@@ -1,7 +1,7 @@
 #Haptics.gd
 # Tiny, sparse touch feedback for phones. Fire-and-forget: calls are safe everywhere.
 #   - desktop builds and the editor: silent
-#   - "all sound off" (AudioManager mute state 2) also quiets haptics
+#   - switching SFX off (AudioManager.sfx_on) also quiets haptics
 #   - a shared cooldown keeps it from ever becoming a buzz
 # Android needs the VIBRATE permission ticked in the export preset. Godot sends these
 # as touch haptics, so Android drops them when the phone's "Touch feedback" is off and
@@ -38,6 +38,6 @@ static func _enabled() -> bool:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree:
 		var audio := tree.root.get_node_or_null("AudioManager")
-		if audio and int(audio.get("mute_state")) == 2:
+		if audio and not bool(audio.get("sfx_on")):
 			return false
 	return true

@@ -20,6 +20,7 @@ config/icon="res://assets/app_icon_bg2.png"
 [autoload]
 
 AudioManager="*res://scripts/AudioManager.gd"
+Pointer="*res://scripts/Pointer.gd"
 
 [display]
 

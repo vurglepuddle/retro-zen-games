@@ -33,7 +33,11 @@ func _ready() -> void:
 	_game.rain_changed.connect(_on_rain_changed)
 	_game.day_night_changed.connect(_on_day_night_changed)
 	_game.bloom_changed.connect(_on_bloom_changed)
+	# Ambience and rain belong to the music switch, not SFX.
+	_ambient_player.bus = AudioManager.MUSIC_BUS
+	_ambient2_player.bus = AudioManager.MUSIC_BUS
 	_rain_player = AudioStreamPlayer.new()
+	_rain_player.bus = AudioManager.MUSIC_BUS
 	add_child(_rain_player)
 	AudioManager.play_music(load("res://games/zen_farm/assets/music/music.mp3"))
 	_start_ambients()

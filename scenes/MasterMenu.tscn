@@ -1,13 +1,15 @@
-[gd_scene load_steps=9 format=3 uid="uid://e7bfq35scdwp"]
+[gd_scene load_steps=11 format=3 uid="uid://e7bfq35scdwp"]
 
 [ext_resource type="Script" path="res://scripts/MasterMenu.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
 [ext_resource type="Texture2D" uid="uid://dl0wetvwuq73w" path="res://games/gem_match/assets/Logo_gem.png" id="3_logo"]
 [ext_resource type="Texture2D" uid="uid://dum8jx465xdsr" path="res://assets/bg_master.png" id="4_jjcy0"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="5_kmhc1"]
-[ext_resource type="Script" path="res://scripts/MuteButton.gd" id="6_2xpdc"]
-[ext_resource type="Texture2D" uid="uid://7rgubd1inwfp" path="res://games/gem_match/assets/btn_back1.png" id="7_k1suq"]
-[ext_resource type="Texture2D" uid="uid://clb5v5ciq5eo6" path="res://games/gem_match/assets/btn_back2.png" id="8_0bjaw"]
+[ext_resource type="Script" path="res://scripts/AudioToggleButton.gd" id="6_toggle"]
+[ext_resource type="Texture2D" uid="uid://b8fp7m6u01ay1" path="res://assets/UI/Music_on_button.png" id="7_music_on"]
+[ext_resource type="Texture2D" uid="uid://dl1mi8mkiobc3" path="res://assets/UI/Music_off_button.png" id="8_music_off"]
+[ext_resource type="Texture2D" uid="uid://bcllrktorsdbf" path="res://assets/UI/SFX_on_button.png" id="9_sfx_on"]
+[ext_resource type="Texture2D" uid="uid://11twb50r57by" path="res://assets/UI/SFX_off_button.png" id="10_sfx_off"]
 
 [node name="MasterMenu" type="Control"]
 layout_mode = 3
@@ -126,7 +128,7 @@ theme_override_constants/line_spacing = -18
 theme_override_constants/outline_size = 6
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 46
-text = "ALCHEMICAL
+text = "LIQUID
 SORT"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -149,7 +151,7 @@ theme_override_constants/line_spacing = -18
 theme_override_constants/outline_size = 6
 theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 46
-text = "POTION
+text = "ITEM
 SORT"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -185,20 +187,30 @@ texture = ExtResource("4_jjcy0")
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_kmhc1")
 
-[node name="TextureButton" type="TextureButton" parent="."]
+[node name="MusicToggle" type="TextureButton" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 441.0
-offset_top = 1097.0
-offset_right = 495.0
-offset_bottom = 1144.0
-scale = Vector2(0.5, 0.5)
-script = ExtResource("6_2xpdc")
-tex_on_normal = ExtResource("7_k1suq")
-tex_on_pressed = ExtResource("8_0bjaw")
-tex_music_off_normal = ExtResource("7_k1suq")
-tex_music_off_pressed = ExtResource("8_0bjaw")
-tex_all_off_normal = ExtResource("7_k1suq")
-tex_all_off_pressed = ExtResource("8_0bjaw")
+offset_left = 372.0
+offset_top = 1071.0
+offset_right = 436.0
+offset_bottom = 1139.0
+scale = Vector2(0.75, 0.75)
+script = ExtResource("6_toggle")
+sheet_on = ExtResource("7_music_on")
+sheet_off = ExtResource("8_music_off")
+
+[node name="SfxToggle" type="TextureButton" parent="."]
+texture_filter = 1
+layout_mode = 0
+offset_left = 429.0
+offset_top = 1071.0
+offset_right = 493.0
+offset_bottom = 1139.0
+scale = Vector2(0.75, 0.75)
+script = ExtResource("6_toggle")
+channel = 1
+sheet_on = ExtResource("9_sfx_on")
+sheet_off = ExtResource("10_sfx_off")
 
 [connection signal="pressed" from="GemMatchTile2" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]
