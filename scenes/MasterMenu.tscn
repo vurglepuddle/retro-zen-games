@@ -67,9 +67,9 @@ vertical_alignment = 1
 [node name="GemMatchTile2" type="TextureButton" parent="."]
 layout_mode = 0
 offset_left = 185.0
-offset_top = 238.0
+offset_top = 266.0
 offset_right = 892.0
-offset_bottom = 777.0
+offset_bottom = 805.0
 scale = Vector2(0.25, 0.25)
 texture_normal = ExtResource("3_logo")
 texture_pressed = ExtResource("3_logo")
@@ -178,12 +178,6 @@ text = "ZEN FARM"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="BgMaster" type="Sprite2D" parent="."]
-z_index = -99
-position = Vector2(269.25, 599.502)
-scale = Vector2(0.299944, 0.373985)
-texture = ExtResource("4_jjcy0")
-
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_kmhc1")
 
@@ -211,6 +205,11 @@ script = ExtResource("6_toggle")
 channel = 1
 sheet_on = ExtResource("9_sfx_on")
 sheet_off = ExtResource("10_sfx_off")
+
+[node name="BgMaster" type="Sprite2D" parent="."]
+z_index = -2
+position = Vector2(270, 660)
+texture = ExtResource("4_jjcy0")
 
 [connection signal="pressed" from="GemMatchTile2" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]

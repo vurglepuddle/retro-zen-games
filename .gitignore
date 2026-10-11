@@ -49,9 +49,11 @@ $RECYCLE.BIN/
 data_*/
 mono_crash.*.json
 
-#random MD
+# Keep development notes private; publish only README and asset credits.
 *.md
 !README.md
+!CREDITS.md
+docs/
 art_src/
 tests/
 

@@ -62,7 +62,7 @@ func _ready() -> void:
 func _ensure_bus(bus_name: StringName) -> void:
 	# default_bus_layout.tres provides both buses from startup. Never add them
 	# here: AudioServer.add_bus() at runtime corrupted the WebAudio driver
-	# before (see TODO.md "Web audio fix"). A missing bus just plays on Master.
+	# before. A missing bus just plays on Master.
 	if AudioServer.get_bus_index(bus_name) == -1:
 		push_warning("AudioManager: bus '%s' missing from default_bus_layout.tres" % bus_name)
 

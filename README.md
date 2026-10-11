@@ -1,37 +1,73 @@
 # Zen Games
-**Zen Games** is an open-source collection of small puzzle games built with Godot for Android and Web.
-Designed as a quiet digital toybox, each game focuses on relaxed mechanics, no lose conditions, and a cohesive modernized 90s-inspired aesthetic. No timers. No energy systems.
-Just tap-tap, clink-clink and some music.
+
+**Zen Games** is a collection of small puzzle and garden games built with
+Godot 4.3, primarily for Android. Web support is incoming.
+
+There are no timers. No energy systems. Just tap-tap, clink-clink and some music. Gem Match also offers
+**optional timed and level modes**; Zen Farm uses growth and weather cycles. All vibes.
 
 ## Screenshots
 
+Potion Sort and Zen Farm show their menus. The gallery excludes Potion Sort's
+third-party item images.
+
 <table>
   <tr>
-    <td><img height="400" src="assets/screenshots/match-3.png" /></td>
-    <td><img height="400" src="assets/screenshots/alchemical_sort.png" /></td>
-    <td><img height="400" src="assets/screenshots/goods_match_3.png"></td>
-    <td><img height="400" src="assets/screenshots/zen_garden.png" /></td>
+    <td align="center"><img height="360" alt="Zen Games hub with five game choices and separate music and sound switches" src="assets/screenshots/master_menu.png" /><br />Hub</td>
+    <td align="center"><img height="360" alt="Gem Match untimed board" src="assets/screenshots/match-3.png" /><br />Gem Match</td>
+    <td align="center"><img height="360" alt="Tile Chain layered-symbol board" src="assets/screenshots/tile_chain.png" /><br />Tile Chain</td>
+  </tr>
+  <tr>
+    <td align="center"><img height="360" alt="Alchemical Sort cabinet and bottles" src="assets/screenshots/alchemical_sort.png" /><br />Alchemical Sort</td>
+    <td align="center"><img height="360" alt="Potion Sort shop menu" src="assets/screenshots/goods_match_3.png" /><br />Potion Sort menu</td>
+    <td align="center"><img height="360" alt="Zen Farm randomized garden menu" src="assets/screenshots/zen_garden.png" /><br />Zen Farm menu</td>
   </tr>
 </table>
 
-## Current Games
-*   **Gem Match** (90% of features implemented, visual polish remaining) – A relaxed match-3 variant where gems merge and go boom. New modes added!
-*   **Tile Chain** (90%, more sets to be added) – A twist on NY-style tile game.
-*   **Alchemical Sort** (80%, most features implemented) – A color-sorting puzzle with light alchemical theming (functional, visual polish in progress).
-*   **Potion Sort** (60%, core loop complete, art to be implemented) – A triple-match shelf-sorting game where players drag items between 3-slot cells and clear sets of three. My favourite!
-*   **Zen Farm** (50%, core loop complete, art & audio to be implemented) – An idle farming game. Unlock land, plant seeds, water crops, and harvest with shears. Weeds, a well, upgradeable watering can, and 5 crops with milestone unlocks.
+## Current games
 
-More small experiments and quiet mechanics will be added over time.
-## Built With
-*   Godot Engine 4.3
-*   Designed for Android (migrating from 16:9 resolution to normal Android) and Web export
-*   Open source under GNU GPL-3.0
+All five core loops are playable. The collection is still in development:
+presentation, sound, instructions, puzzle generation, progression, phone
+validation and release setup all have work remaining.
+
+| Game | Implemented |
+| --- | --- |
+| **Gem Match** | Match-3 cascades, upgrading gems, special gems, hints, automatic shuffling, an untimed mode, optional timed/level modes and their saved records. |
+| **Tile Chain** | Layered-symbol pairing, combo chains, three randomly selected tilesets, selection/removal effects, reshuffling and a saved best combo. |
+| **Alchemical Sort** | Bottle color sorting, Easy/Medium/Hard/Zen layouts, mystery rounds, undo, move records, catalyst/helper mechanics, cabinet art and interactive lamps. |
+| **Potion Sort** | Triple-match shelf sorting, hidden layers, undo, conveyors, dispensers, locks, mystery items, move records and an interactive shop with candle, window, owl and cat. Item artwork requires a separate license; see below. |
+| **Zen Farm** | A persistent, expanding flower garden with nine flowers, land/water plots, tools, upgrades, decor, inventory, offline growth, rain, day/night, wildlife, Full Bloom effects and a randomized garden menu. Pixel art, music and ambience are present. |
+
+
+
+## Run and develop
+
+Open [project.godot](project.godot) in Godot **4.3** and press **F5**. The entry
+scene is [MasterMenu.tscn](scenes/MasterMenu.tscn). The project uses GDScript and a
+540 × 1212 portrait viewport with `canvas_items` / `keep_width` stretching.
+
+Android export uses the Godot build template and Gradle. Native splash setup
+is documented in [android/splash/README.md](android/splash/README.md).
+Export presets and signing settings are local and ignored by Git; a clean
+checkout needs its own configuration.
+
+## Asset credits and reuse
+
+The project's original artwork, music, sound effects, and Vetka pixel font are
+licensed for non-commercial reuse under Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International. Credit `vurglepuddle`, link
+to the license, identify changes, and keep shared adaptations under the same
+license or another license permitted by its ShareAlike terms. See
+[CREDITS.md](CREDITS.md) for the asset scope, sources, attribution example,
+and exclusions. The source code's GPL-3.0 license is in [LICENSE](LICENSE).
 
 ## Potion Sort item artwork
 
 The numbered item sets in `games/potion_3/assets/items/set*/` are third-party
 licensed artwork. They are excluded from this repository and are not covered by
-its GPL-3.0 license. To run Potion Sort with these images, obtain your own license
-and place the files locally at `games/potion_3/assets/items/setN/itemN.png`, keeping
-the original set numbers and filenames. Git ignores these local set folders.
-The other games' assets and Potion Sort's own UI assets remain in the repository.
+its GPL-3.0 license. To run Potion Sort with these images or other images, obtain
+your own license and place the files at
+`games/potion_3/assets/items/setN/itemN.png`.
+Git ignores these local set folders. The other games' assets and Potion Sort's
+own UI assets remain in the repository.
+See [CREDITS.md](CREDITS.md) for the third-party exclusions.

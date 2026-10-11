@@ -1,8 +1,8 @@
 # Android launch artwork (Godot 4.3)
 
-The Android system splash now uses `app_icon_2.aseprite` separately from the
-launcher icon. The PNG is exported at 4x with nearest-neighbor scaling. Its
-`drawable-nodpi` location prevents density resampling when Android loads it,
+The Android system splash uses `res/drawable-nodpi/zen_splash_art.png` separately
+from the launcher icon. The PNG is exported at 4x with nearest-neighbor scaling.
+Its `drawable-nodpi` location prevents density resampling when Android loads it,
 and the bitmap drawable disables filtering when Android draws it.
 
 Run from the project folder in **cmd.exe** after installing/reinstalling the

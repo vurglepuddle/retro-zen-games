@@ -196,9 +196,9 @@ texture = ExtResource("18_mortar")
 [node name="Cat" type="Control" parent="Backdrop/Counter"]
 anchors_preset = 0
 offset_left = 42.0
-offset_top = -78.0
+offset_top = -72.0
 offset_right = 198.0
-offset_bottom = 12.0
+offset_bottom = 18.0
 script = ExtResource("35_cat")
 
 [node name="Candle" type="Node2D" parent="Backdrop/Counter"]
