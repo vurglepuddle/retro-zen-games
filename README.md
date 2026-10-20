@@ -8,8 +8,8 @@ There are no timers. No energy systems. Just tap-tap, clink-clink and some music
 
 ## Screenshots
 
-Potion Sort and Zen Farm show their menus. The gallery excludes Potion Sort's
-third-party item images.
+Captured 20 October 2026 from the current scenes. Potion Sort and Zen Farm show
+their menus. The gallery excludes Potion Sort's third-party item images.
 
 <table>
   <tr>
@@ -32,7 +32,7 @@ validation and release setup all have work remaining.
 
 | Game | Implemented |
 | --- | --- |
-| **Gem Match** | Match-3 cascades, upgrading gems, special gems, hints, automatic shuffling, an untimed mode, optional timed/level modes and their saved records. |
+| **Gem Match** | Match-3 cascades, upgrading gems (topped by star, heart and sun), special gems with pixel-art fire, lightning and moon effects, locked gems, hints, automatic shuffling, an untimed mode, optional timed/level modes and their saved records. |
 | **Tile Chain** | Layered-symbol pairing, combo chains, three randomly selected tilesets, selection/removal effects, reshuffling and a saved best combo. |
 | **Alchemical Sort** | Bottle color sorting, Easy/Medium/Hard/Zen layouts, mystery rounds, undo, move records, catalyst/helper mechanics, cabinet art and interactive lamps. |
 | **Potion Sort** | Triple-match shelf sorting, hidden layers, undo, conveyors, dispensers, locks, mystery items, move records and an interactive shop with candle, window, owl and cat. Item artwork requires a separate license; see below. |
