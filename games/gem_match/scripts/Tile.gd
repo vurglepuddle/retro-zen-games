@@ -14,15 +14,19 @@ var col:          int
 var game:         Node
 var special_type: int = SPECIAL_NONE
 
-# Maps level number to animation name in the SpriteFrames resource.
+# Maps level (tier) to animation name in the SpriteFrames resource. The
+# animation names are historical; with the v3 art the tiers run moonstone ->
+# emerald -> sapphire -> topaz -> teal star -> heart -> sun. Tiers 1-6 spawn;
+# the sun is only reached by upgrading and explodes when matched (max tier),
+# which keeps hearts and suns rarer on the board.
 const ANIM_NAMES := {
-	1: "1_pearl",
-	2: "2_yellow",
-	3: "3_green",
-	4: "4_pink",
-	5: "5_blue",
-	6: "6_red",
-	7: "7_star"
+	1: "1_pearl",    # moonstone diamond
+	2: "3_green",    # emerald drop
+	3: "5_blue",     # sapphire egg
+	4: "6_red",      # fire topaz
+	5: "7_star",     # teal (aqua) star
+	6: "4_pink",     # rose heart
+	7: "2_yellow"    # citrine sun: max tier
 }
 
 # Idle-spin state machine.
@@ -34,11 +38,21 @@ var _spinning:   bool  = false
 var _hinting:    bool  = false
 var _hint_phase: float = 0.0
 
-var _effect_phase: float = 0.0
+const FX_FRAMES := preload("res://games/gem_match/assets/fx/fx_frames.tres")
+var _aura: AnimatedSprite2D = null
+var _star_drift_timer: float = 3.0
 
 # Timed mode: matching this gem adds `time_bonus` seconds to the clock.
 var time_bonus: int = 0
 var _bonus_label: Label = null
+
+# Locked gems: can't be swapped or matched until a neighbouring match or a
+# special blast breaks the lock. Animations "locked", "glint" and "break" live
+# in lock_frames.tres over lock_4x.png. Source art: art_src/gem_match/locks/.
+const LOCK_FRAMES := preload("res://games/gem_match/assets/locks/lock_frames.tres")
+var locked: bool = false
+var _lock_sprite: AnimatedSprite2D = null
+var _lock_glint_timer: float = 0.0
 
 @onready var _anim: AnimatedSprite2D = $Tile
 
@@ -51,15 +65,97 @@ func _ready() -> void:
 		sprite.visible = false
 	_update_animation()
 	_idle_timer = randf_range(3.0, 15.0)
+	if _anim:
+		# End an idle spin exactly when one turn completes, so it lands on
+		# frame 1 instead of flashing frame 2 before a timer snaps it back.
+		_anim.animation_looped.connect(_on_spin_cycle_done)
+		_anim.animation_finished.connect(_on_spin_cycle_done)
+
+
+func _on_spin_cycle_done() -> void:
+	if _spinning and special_type != SPECIAL_COLOR_BOMB:
+		_end_spin()
+
+
+func _end_spin() -> void:
+	_spinning = false
+	_anim.stop()
+	_anim.frame = 0
+	_idle_timer = randf_range(5.0, 20.0)
+
+
+# ----- Lock overlay ---------------------------------------------------------
+
+func set_locked(v: bool) -> void:
+	locked = v
+	if v:
+		if _lock_sprite == null:
+			_lock_sprite = AnimatedSprite2D.new()
+			_lock_sprite.name = "Lock"
+			_lock_sprite.sprite_frames = LOCK_FRAMES
+			_lock_sprite.z_index = 2
+			_lock_sprite.animation_finished.connect(_on_lock_animation_finished)
+			add_child(_lock_sprite)
+		_lock_sprite.visible = true
+		_lock_sprite.rotation = 0.0
+		_lock_sprite.play("locked")
+		_lock_glint_timer = randf_range(2.0, 8.0)
+		if _spinning and _anim:
+			_end_spin()
+		set_time_bonus(0)
+	elif _lock_sprite != null:
+		_lock_sprite.visible = false
+
+
+# The lock breaks with its own animation; the gem is free immediately.
+func unlock_animated() -> void:
+	if not locked:
+		return
+	locked = false
+	if _lock_sprite != null:
+		_lock_sprite.rotation = 0.0
+		_lock_sprite.play("break")
+
+
+# A match close by (but not touching) startles the padlock: a little hop.
+func flinch_lock(delay: float = 0.0) -> void:
+	if _lock_sprite == null or not locked:
+		return
+	var tw := create_tween()
+	if delay > 0.0:
+		tw.tween_interval(delay)
+	tw.tween_property(_lock_sprite, "position:y", -8.0, 0.07) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_lock_sprite, "rotation", -0.12, 0.07)
+	tw.tween_property(_lock_sprite, "position:y", 0.0, 0.18) \
+		.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_lock_sprite, "rotation", 0.0, 0.18)
+
+
+# Feedback when the player tries to move a locked gem.
+func rattle_lock() -> void:
+	if _lock_sprite == null or not locked:
+		return
+	var tw := create_tween()
+	for a in [0.16, -0.13, 0.09, -0.05, 0.0]:
+		tw.tween_property(_lock_sprite, "rotation", a, 0.045)
+
+
+func _on_lock_animation_finished() -> void:
+	if _lock_sprite == null:
+		return
+	if _lock_sprite.animation == &"break":
+		_lock_sprite.visible = false
+	elif locked:
+		_lock_sprite.play("locked")
 
 
 func set_level(v: int) -> void:
 	level = clamp(v, 1, ANIM_NAMES.size())
 	# Upgrading always resets the special type; caller sets it afterwards if needed.
 	special_type  = SPECIAL_NONE
-	_effect_phase = 0.0
-	queue_redraw()
 	_update_animation()
+	_update_aura()
 
 
 func get_level() -> int:
@@ -69,7 +165,7 @@ func get_level() -> int:
 # Stamp the gem as a special and update the visual marker.
 func set_special(type: int) -> void:
 	special_type = type
-	queue_redraw()
+	_update_aura()
 	# COLOR_BOMB shows its own looping animation alongside the void marker.
 	if type == SPECIAL_COLOR_BOMB:
 		var anim: AnimatedSprite2D = _anim if _anim != null \
@@ -113,144 +209,35 @@ func set_time_bonus(v: int) -> void:
 	_bonus_label.visible = true
 
 
-# Draw pixel-art special markers behind the gem sprite.
-func _draw() -> void:
-	# Stars ARE bombs by nature — no aura marker on them; they still
-	# detonate with the full BOOM when matched.
-	if level == 7 and special_type == SPECIAL_BOMB:
+# Special gems wear a looping pixel-art aura drawn behind the gem: flames for
+# BOMB, crackling arcs for CROSS, a violet halo with orbiting stars for the
+# COLOR_BOMB moon. Art: assets/fx/fx_frames.tres (source art_src/gem_match/fx/).
+func _update_aura() -> void:
+	var anim_name := ""
+	# Suns (max tier) ARE bombs by nature: no aura on them, they still detonate when matched.
+	if not (level == 7 and special_type == SPECIAL_BOMB):
+		match special_type:
+			SPECIAL_BOMB:
+				anim_name = "aura_fire"
+			SPECIAL_CROSS:
+				anim_name = "aura_spark"
+			SPECIAL_COLOR_BOMB:
+				anim_name = "aura_void"
+	if anim_name == "":
+		if _aura != null:
+			_aura.visible = false
+			_aura.stop()
 		return
-	match special_type:
-		SPECIAL_BOMB:
-			_draw_bomb_indicator()
-		SPECIAL_CROSS:
-			_draw_cross_indicator()
-		SPECIAL_COLOR_BOMB:
-			_draw_color_bomb_indicator()
-
-
-# Smoldering ember: breathing core, three orbiting sparks with fading
-# tails, and embers drifting up off the gem.
-func _draw_bomb_indicator() -> void:
-	var t := _effect_phase
-	var pulse := sin(t * TAU * 1.1) * 0.5 + 0.5
-
-	var ember := Color(1.0, 0.45, 0.06, 0.20 + pulse * 0.12)
-	_draw_diamond(Vector2.ZERO, 40.0 + pulse * 3.0, ember, true)
-	_draw_diamond_outline(Vector2.ZERO, 44.0, Color(0.62, 0.14, 0.02, 0.55), 3.0)
-
-	for s in range(3):
-		var ang := t * TAU * 0.35 + float(s) * TAU / 3.0
-		for k in range(3):
-			var trail_ang := ang - float(k) * 0.22
-			var p := Vector2(cos(trail_ang), sin(trail_ang)) * 40.0
-			var size := 6.0 - float(k) * 1.5
-			_draw_pixel_rect(p, Vector2(size, size),
-				Color(1.0, 0.8, 0.25, 0.85 - float(k) * 0.3))
-
-	for e in range(3):
-		var cycle := fmod(t * 0.9 + float(e) * 0.33, 1.0)
-		var ex := sin((t + float(e) * 1.7) * 2.1) * 10.0 + (float(e) - 1.0) * 14.0
-		var ey := 30.0 - cycle * 52.0
-		_draw_pixel_rect(Vector2(ex, ey), Vector2(4, 4),
-			Color(1.0, 0.55, 0.1, (1.0 - cycle) * 0.7))
-
-
-# Charged lightning: jagged arcs along both axes that re-roll their shape
-# several times a second, with pulsing diamond caps at the four ends.
-func _draw_cross_indicator() -> void:
-	var t := _effect_phase
-	var pulse := sin(t * TAU * 1.8) * 0.5 + 0.5
-	var tick := floorf(t * 9.0)
-
-	var glow := Color(0.10, 0.45, 1.0, 0.30 + pulse * 0.12)
-	var core := Color(0.85, 0.97, 1.0, 0.85)
-
-	_draw_lightning(Vector2(-46, 0), Vector2(46, 0), tick, glow, core)
-	_draw_lightning(Vector2(0, -46), Vector2(0, 46), tick + 31.0, glow, core)
-
-	for p in [Vector2(-46, 0), Vector2(46, 0), Vector2(0, -46), Vector2(0, 46)]:
-		_draw_diamond(p, 5.0 + pulse * 3.0, Color(0.55, 0.85, 1.0, 0.8), true)
-
-
-# A jagged 5-segment bolt between two points; `seed_t` re-rolls the jitter.
-func _draw_lightning(a: Vector2, b: Vector2, seed_t: float, glow: Color, core: Color) -> void:
-	var points := PackedVector2Array()
-	points.append(a)
-	var dir := b - a
-	var norm := Vector2(-dir.y, dir.x).normalized()
-	for i in range(1, 5):
-		var f := float(i) / 5.0
-		var jitter := (_hash01(Vector2(seed_t, float(i))) - 0.5) * 14.0
-		points.append(a + dir * f + norm * jitter)
-	points.append(b)
-	for i in range(points.size() - 1):
-		draw_line(points[i], points[i + 1], glow, 5.0, false)
-	for i in range(points.size() - 1):
-		draw_line(points[i], points[i + 1], core, 2.0, false)
-
-
-func _hash01(p: Vector2) -> float:
-	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
-
-
-# Void aura: breathing violet glow, a slowly counter-rotating constellation
-# of arcane motes with faint trails, and sparkle pixels drifting upward.
-func _draw_color_bomb_indicator() -> void:
-	var t := _effect_phase
-	var pulse := sin(t * TAU * 0.55) * 0.5 + 0.5
-
-	var void_outer := Color(0.45, 0.10, 0.70, 0.16 + pulse * 0.10)
-	var void_inner := Color(0.72, 0.30, 1.00, 0.20 + pulse * 0.10)
-	_draw_diamond(Vector2.ZERO, 44.0 + pulse * 3.0, void_outer, true)
-	_draw_diamond(Vector2.ZERO, 32.0 + pulse * 4.0, void_inner, true)
-	_draw_diamond_outline(Vector2.ZERO, 46.0, Color(0.55, 0.18, 0.85, 0.5), 2.0)
-
-	# Orbits opposite to the bomb's sparks, with a gentle radius wobble.
-	for s in range(4):
-		var ang := -t * TAU * 0.22 + float(s) * TAU / 4.0
-		var radius := 40.0 + sin(t * TAU * 0.4 + float(s) * 1.3) * 4.0
-		var p := Vector2(cos(ang), sin(ang)) * radius
-		_draw_diamond(p, 4.0 + pulse * 1.5, Color(0.95, 0.7, 1.0, 0.8), true)
-		var trail := Vector2(cos(ang + 0.3), sin(ang + 0.3)) * radius
-		_draw_pixel_rect(trail, Vector2(3, 3), Color(0.8, 0.45, 1.0, 0.45))
-
-	for e in range(4):
-		var cycle := fmod(t * 0.7 + float(e) * 0.25, 1.0)
-		var ex := sin(t * 0.9 + float(e) * 2.3) * 26.0
-		var ey := 24.0 - cycle * 48.0
-		_draw_pixel_rect(Vector2(ex, ey), Vector2(3, 3),
-			Color(0.9, 0.6, 1.0, (1.0 - cycle) * 0.6))
-
-
-func _draw_diamond(center: Vector2, radius: float, color: Color, filled: bool) -> void:
-	var points := PackedVector2Array([
-		center + Vector2(0, -radius),
-		center + Vector2(radius, 0),
-		center + Vector2(0, radius),
-		center + Vector2(-radius, 0)
-	])
-	if filled:
-		draw_colored_polygon(points, color)
-	else:
-		_draw_closed_lines(points, color, 2.0)
-
-
-func _draw_diamond_outline(center: Vector2, radius: float, color: Color, width: float) -> void:
-	_draw_closed_lines(PackedVector2Array([
-		center + Vector2(0, -radius),
-		center + Vector2(radius, 0),
-		center + Vector2(0, radius),
-		center + Vector2(-radius, 0)
-	]), color, width)
-
-
-func _draw_closed_lines(points: PackedVector2Array, color: Color, width: float) -> void:
-	for i in range(points.size()):
-		draw_line(points[i], points[(i + 1) % points.size()], color, width, false)
-
-
-func _draw_pixel_rect(center: Vector2, size: Vector2, color: Color) -> void:
-	draw_rect(Rect2(center - size * 0.5, size), color, true)
+	if _aura == null:
+		_aura = AnimatedSprite2D.new()
+		_aura.name = "Aura"
+		_aura.sprite_frames = FX_FRAMES
+		_aura.z_index = -1          # behind every gem, above the board art
+		add_child(_aura)
+	_aura.visible = true
+	if _aura.animation != anim_name or not _aura.is_playing():
+		_aura.play(anim_name)
+		_aura.frame = randi() % _aura.sprite_frames.get_frame_count(anim_name)
 
 
 func _update_animation() -> void:
@@ -278,13 +265,6 @@ func stop_hint() -> void:
 
 
 func _process(delta: float) -> void:
-	if special_type != SPECIAL_NONE:
-		# Unbounded on purpose: wrapping (the old fmod 4.0) snapped the
-		# orbiting sparks backward every 4 s because the orbit angle isn't
-		# periodic over that window.
-		_effect_phase += delta
-		queue_redraw()
-
 	if _hinting:
 		_hint_phase += delta * TAU * 1.5
 		var p := sin(_hint_phase) * 0.5 + 0.5
@@ -293,24 +273,37 @@ func _process(delta: float) -> void:
 	if _anim == null:
 		return
 
-	# COLOR_BOMB: sp_heart loops continuously. Skip idle-spin logic.
+	# COLOR_BOMB: sp_heart loops continuously. Skip idle-spin logic. Now and
+	# then the moon sheds a star that drifts onto a neighbouring gem.
 	if special_type == SPECIAL_COLOR_BOMB:
 		if not _anim.is_playing():
 			_anim.play()
+		_star_drift_timer -= delta
+		if _star_drift_timer <= 0.0:
+			_star_drift_timer = randf_range(2.5, 6.0)
+			if game != null and game.has_method("moon_star_drift"):
+				game.moon_star_drift(self)
+		return
+
+	# A locked gem holds still; its padlock glints now and then instead.
+	if locked:
+		_lock_glint_timer -= delta
+		if _lock_glint_timer <= 0.0 and _lock_sprite != null:
+			_lock_sprite.play("glint")
+			_lock_glint_timer = randf_range(4.0, 10.0)
 		return
 
 	if _spinning:
+		# Fallback only: the loop/finish signal normally ends the spin first.
 		_spin_timer -= delta
 		if _spin_timer <= 0.0:
-			_spinning = false
-			_anim.stop()
-			_anim.frame = 0
-			_idle_timer = randf_range(5.0, 20.0)
+			_end_spin()
 	else:
 		_idle_timer -= delta
 		if _idle_timer <= 0.0:
 			_spinning  = true
-			_spin_timer = 1.1
+			_spin_timer = 1.6
+			_anim.frame = 0
 			_anim.play()
 
 

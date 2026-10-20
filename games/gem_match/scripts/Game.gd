@@ -68,6 +68,15 @@ const LEVEL_BASE_TARGET   := 1000   # score to beat level 1
 const LEVEL_TARGET_SCALE  := 1.3    # each level needs 30% more than the last
 const LEVEL_TIME_BONUS    := 5.0    # seconds granted on each level-up
 
+# Locked gems: can't be swapped or matched. A match beside one (up/down/left/
+# right) or any special blast that reaches it breaks the lock; the gem stays.
+const LOCK_START_COUNT    := 4      # locked gems on a new board
+const LOCK_SPAWN_CHANCE   := 0.035  # chance a falling replacement gem arrives locked
+const LOCK_MAX_ON_BOARD   := 8      # no new locks while this many are on the board
+const LOCK_LEVEL_BONUS    := 1      # level mode: +1 allowed lock per level reached
+const LOCK_MAX_CAP        := 14
+var _pending_unlocks: Dictionary = {}
+
 # Hint system — after HINT_DELAY seconds of no input, pulse a valid swap pair.
 const HINT_DELAY := 5.0
 var _hint_timer: float = 0.0
@@ -97,9 +106,18 @@ var _level_label:       Label = null
 var _flash_overlay: ColorRect = null
 var _next_milestone: int = 1000
 
-# Explosion FX: clipped layer for shockwaves/sparks + shared spark texture.
+# Explosion FX: clipped layer for shockwaves, sparks and pixel-art FX sprites.
 var _fx_clip: Control = null
-var _spark_texture: ImageTexture = null
+var _dim_rect: ColorRect = null
+const FX_FRAMES := preload("res://games/gem_match/assets/fx/fx_frames.tres")
+const EMBER_TEXTURE := preload("res://games/gem_match/assets/fx/ember_4x.png")
+const VOID_WAVE_LEAD := 0.25   # the moon's eclipse forms before its wave starts eating gems
+# Shard/ring tint per gem tier (v3 colours, order of Tile.ANIM_NAMES):
+# moonstone, emerald, sapphire, topaz, teal star, rose heart, citrine sun.
+const GEM_FX_COLORS := [
+	Color("c2cef4"), Color("5cd84b"), Color("4a95ff"), Color("ff962c"),
+	Color("77ebdf"), Color("ff8ab6"), Color("ffd43c"),
+]
 
 @onready var board_container: Node2D = $Board
 @onready var score_label: Label      = $ScoreLabel
@@ -226,21 +244,30 @@ func _build_game_over_panel() -> void:
 	_game_over_panel.size = vp_size
 	_game_over_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	_game_over_panel.visible = false
-	_game_over_panel.z_index = 900
+	_game_over_panel.z_index = 1100
 
 	var bg := ColorRect.new()
-	bg.color = Color(0.0, 0.0, 0.0, 0.72)
+	bg.color = Color(0.10, 0.08, 0.05, 0.80)
 	bg.position = Vector2.ZERO
 	bg.size = vp_size
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_game_over_panel.add_child(bg)
+	var card := TextureRect.new()
+	card.name = "ResultCard"
+	card.texture = preload("res://games/gem_match/assets/ui/ui_pass/result_card.png")
+	card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	card.position = vp_size * 0.5 - Vector2(216.0, 282.0)
+	card.size = Vector2(432.0, 564.0)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_over_panel.add_child(card)
 
 	var vbox := VBoxContainer.new()
+	vbox.name = "Content"
 	var vp := get_viewport_rect().size
-	vbox.position = Vector2(vp.x / 2.0 - 200.0, vp.y / 2.0 - 220.0)
-	vbox.size = Vector2(400.0, 440.0)
+	vbox.position = Vector2(vp.x / 2.0 - 174.0, vp.y / 2.0 - 218.0)
+	vbox.size = Vector2(348.0, 436.0)
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 18)
+	vbox.add_theme_constant_override("separation", 12)
 	_game_over_panel.add_child(vbox)
 
 	var font := load("res://assets/font/vetka.ttf") as FontFile
@@ -249,49 +276,52 @@ func _build_game_over_panel() -> void:
 	_go_title_label.text = "TIME'S UP!"
 	_go_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_go_title_label.add_theme_font_override("font", font)
-	_go_title_label.add_theme_font_size_override("font_size", 64)
-	_go_title_label.add_theme_color_override("font_color", Color(1, 0.82, 0.1))
+	_go_title_label.add_theme_font_size_override("font_size", 58)
+	_go_title_label.add_theme_color_override("font_color", Color("efcc54"))
 	_go_title_label.add_theme_color_override("font_outline_color", Color(0.15, 0.1, 0.1))
-	_go_title_label.add_theme_constant_override("outline_size", 6)
+	_go_title_label.add_theme_constant_override("outline_size", 2)
 	vbox.add_child(_go_title_label)
 
 	# Level reached — only visible in level mode.
 	_go_level_label = Label.new()
 	_go_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_go_level_label.add_theme_font_override("font", font)
-	_go_level_label.add_theme_font_size_override("font_size", 44)
+	_go_level_label.add_theme_font_size_override("font_size", 38)
 	_go_level_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
 	_go_level_label.add_theme_color_override("font_outline_color", Color(0.15, 0.1, 0.1))
-	_go_level_label.add_theme_constant_override("outline_size", 4)
+	_go_level_label.add_theme_constant_override("outline_size", 2)
 	_go_level_label.visible = false
 	vbox.add_child(_go_level_label)
 
 	_go_score_label = Label.new()
 	_go_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_go_score_label.add_theme_font_override("font", font)
-	_go_score_label.add_theme_font_size_override("font_size", 44)
-	_go_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	_go_score_label.add_theme_font_size_override("font_size", 38)
+	_go_score_label.add_theme_color_override("font_color", Color("fff1a0"))
 	_go_score_label.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.1))
-	_go_score_label.add_theme_constant_override("outline_size", 4)
+	_go_score_label.add_theme_constant_override("outline_size", 2)
 	vbox.add_child(_go_score_label)
 
 	_go_best_label = Label.new()
 	_go_best_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_go_best_label.add_theme_font_override("font", font)
-	_go_best_label.add_theme_font_size_override("font_size", 32)
+	_go_best_label.add_theme_font_size_override("font_size", 34)
 	_go_best_label.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
 	_go_best_label.add_theme_color_override("font_outline_color", Color(0.2, 0.15, 0.1))
-	_go_best_label.add_theme_constant_override("outline_size", 3)
+	_go_best_label.add_theme_constant_override("outline_size", 2)
 	vbox.add_child(_go_best_label)
 
 	var btn_again := Button.new()
+	btn_again.name = "PlayAgainButton"
 	btn_again.text = "PLAY AGAIN"
-	btn_again.flat = true
+	btn_again.theme = preload("res://games/gem_match/assets/ui/ui_pass/action_buttons.tres")
+	btn_again.custom_minimum_size = Vector2(0, 80)
+	btn_again.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	btn_again.add_theme_font_override("font", font)
 	btn_again.add_theme_font_size_override("font_size", 40)
 	btn_again.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
 	btn_again.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
-	btn_again.add_theme_constant_override("outline_size", 3)
+	btn_again.add_theme_constant_override("outline_size", 2)
 	btn_again.pressed.connect(func():
 		if sfx_click and sfx_click.stream: sfx_click.play()
 		_game_over_panel.visible = false
@@ -300,13 +330,16 @@ func _build_game_over_panel() -> void:
 	vbox.add_child(btn_again)
 
 	var btn_menu := Button.new()
-	btn_menu.text = "< MENU"
-	btn_menu.flat = true
+	btn_menu.name = "MenuButton"
+	btn_menu.text = "MENU"
+	btn_menu.theme = preload("res://games/gem_match/assets/ui/ui_pass/action_buttons.tres")
+	btn_menu.custom_minimum_size = Vector2(0, 80)
+	btn_menu.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	btn_menu.add_theme_font_override("font", font)
 	btn_menu.add_theme_font_size_override("font_size", 40)
 	btn_menu.add_theme_color_override("font_color", Color(1, 0.945, 0.627))
 	btn_menu.add_theme_color_override("font_outline_color", Color(0.22, 0.16, 0.15))
-	btn_menu.add_theme_constant_override("outline_size", 3)
+	btn_menu.add_theme_constant_override("outline_size", 2)
 	btn_menu.pressed.connect(func():
 		if sfx_click and sfx_click.stream: sfx_click.play()
 		_game_over_panel.visible = false
@@ -393,6 +426,67 @@ func _generate_board() -> void:
 				tile.set_level(_pick_start_level(r, c))
 			else:
 				board[r].append(null)
+	_place_start_locks()
+
+
+func _place_start_locks() -> void:
+	var cells: Array = []
+	for r in range(board_rows):
+		for c in range(board_cols):
+			if board[r][c] != null:
+				cells.append(board[r][c])
+	cells.shuffle()
+	for i in range(mini(LOCK_START_COUNT, cells.size())):
+		cells[i].set_locked(true)
+
+
+func _lock_cap() -> int:
+	var cap := LOCK_MAX_ON_BOARD
+	if _level_mode:
+		cap += (_timed_level - 1) * LOCK_LEVEL_BONUS
+	return mini(cap, LOCK_MAX_CAP)
+
+
+func _count_locked() -> int:
+	var n := 0
+	for r in range(board_rows):
+		for c in range(board_cols):
+			var t = board[r][c]
+			if t != null and t.locked:
+				n += 1
+	return n
+
+
+func _is_locked(t) -> bool:
+	return t != null and is_instance_valid(t) and t.locked
+
+
+# Breaks every lock queued in _pending_unlocks (from blasts and neighbouring
+# matches). The gems stay on the board and can match from the next cascade.
+func _apply_pending_unlocks() -> void:
+	if _pending_unlocks.is_empty():
+		return
+	for t in _pending_unlocks.keys():
+		if is_instance_valid(t) and t.locked:
+			t.unlock_animated()
+			_spawn_fx("shatter", t.position + Vector2(0, 6), 0.03, Color(0.82, 0.8, 0.9), randf() * TAU, 3)
+			_spawn_fx("twinkle", t.position + Vector2(0, 14), 0.08, Color(1.0, 0.85, 0.35), 0.0, 4)
+	_pending_unlocks.clear()
+	_play_sfx(sfx_tink)
+
+
+func _queue_unlocks_beside(tiles: Array) -> void:
+	for t in tiles:
+		if not is_instance_valid(t):
+			continue
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nr: int = t.row + d.y
+			var nc: int = t.col + d.x
+			if nr < 0 or nr >= board_rows or nc < 0 or nc >= board_cols or SHAPE[nr][nc] == 0:
+				continue
+			var n = board[nr][nc]
+			if _is_locked(n):
+				_pending_unlocks[n] = true
 
 
 func _pick_start_level(r: int, c: int) -> int:
@@ -586,7 +680,7 @@ func _find_hint_pair() -> Array:
 			var t = board[r][c]
 			if t == null or t.special_type != Tile.SPECIAL_COLOR_BOMB:
 				continue
-			for dir in [Vector2(1, 0), Vector2(0, 1)]:
+			for dir in [Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1)]:
 				var nr := r + int(dir.y)
 				var nc := c + int(dir.x)
 				if nr < 0 or nr >= board_rows or nc < 0 or nc >= board_cols:
@@ -594,13 +688,13 @@ func _find_hint_pair() -> Array:
 				if SHAPE[nr][nc] == 0:
 					continue
 				var adj = board[nr][nc]
-				if adj != null:
+				if adj != null and not adj.locked:
 					return [t, adj]
 
 	for r in range(board_rows):
 		for c in range(board_cols):
 			var tile = board[r][c]
-			if tile == null:
+			if tile == null or tile.locked:
 				continue
 			for dir in [Vector2(1, 0), Vector2(0, 1)]:
 				var nr := r + int(dir.y)
@@ -610,7 +704,7 @@ func _find_hint_pair() -> Array:
 				if SHAPE[nr][nc] == 0:
 					continue
 				var other = board[nr][nc]
-				if other == null:
+				if other == null or other.locked:
 					continue
 				board[r][c] = other; board[nr][nc] = tile
 				tile.row = nr; tile.col = nc
@@ -657,6 +751,13 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 		return
 	var other = board[nr][nc]
 	if other == null:
+		return
+	# Locked gems refuse to move: rattle the lock, nothing else happens.
+	if _is_locked(tile) or _is_locked(other):
+		for t in [tile, other]:
+			if _is_locked(t):
+				t.rattle_lock()
+		_play_sfx(sfx_no_match)
 		return
 
 	_busy = true
@@ -760,6 +861,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 		var had_bomb_det         = false
 		var had_cross_det        = false
 		var bomb_flash_centers: Array = []
+		var matched_step: Array = []     # every gem matched this cascade step
 		var cross_flash_centers: Array = []
 
 		for group_dict in groups:
@@ -776,6 +878,9 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				continue
 
 			any_match = true
+			# A match breaks the locks on gems right beside it.
+			_queue_unlocks_beside(valid)
+			matched_step.append_array(valid)
 
 			# Check whether an existing special gem is in this group.
 			# COLOR_BOMB can't be triggered this way — it fires via swap only.
@@ -797,7 +902,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				# Queue EVERY special in the group — matching a bomb with a
 				# cross fires both (group tiles leave the board before chain
 				# detonation, so the blast-zone collector can't pick them up).
-				# Plain stars in the group also explode as BOMB (max tier).
+				# Plain suns (max tier) in the group also explode as BOMB.
 				for t in valid:
 					if t.special_type == Tile.SPECIAL_BOMB or \
 					   t.special_type == Tile.SPECIAL_CROSS:
@@ -807,7 +912,7 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 						detonate_queue.append(t)
 
 			elif valid[0].level == 7:
-				# Stars are at max tier -- cannot upgrade, so they explode (3x3 BOMB each).
+				# Suns are the max tier -- they can't upgrade, so they explode (3x3 BOMB each).
 				score += valid.size() * 10 * 7 * multiplier
 				for t in valid:
 					if not removed_set.has(t):
@@ -853,6 +958,10 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				cross_flash_centers.append({r = sp.row, c = sp.col})
 
 			for t: Tile in _collect_special_zone(sp):
+				if t.locked:
+					# A blast breaks the lock instead of destroying the gem.
+					_pending_unlocks[t] = true
+					continue
 				if not removed_set.has(t):
 					removed_set[t] = true
 					board[t.row][t.col] = null
@@ -870,38 +979,21 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 			var note_idx: int = clamp(cascade - 2, 0, sfx_notes.size() - 1)
 			_play_sfx(sfx_notes[note_idx])
 
+		_flinch_locks_near(matched_step)
+		_apply_pending_unlocks()
+
 		# 1. Scale matched tiles to zero then free them.
 		if to_remove.size() > 0:
 			for center in bomb_flash_centers:
-				_spawn_shockwave(center.r, center.c, Color(1.0, 0.62, 0.2, 0.9), 1.9)
-				_spawn_sparks(center.r, center.c, Color(1.0, 0.78, 0.3), 22, 340.0)
-				for dr in range(-1, 2):
-					for dc in range(-1, 2):
-						var nr: int = center.r + dr
-						var nc: int = center.c + dc
-						if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols \
-								and SHAPE[nr][nc] == 1:
-							# Center cell flashes first, ring of 8 follows — a tiny
-							# outward blast wave instead of a simultaneous blink.
-							_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.55),
-									maxi(absi(dr), absi(dc)) * 0.05)
+				_fx_fire_blast(center.r, center.c)
 			for center in cross_flash_centers:
-				_spawn_shockwave(center.r, center.c, Color(0.35, 0.65, 1.0, 0.85), 2.4, 0.4, true)
-				_spawn_sparks(center.r, center.c, Color(0.62, 0.86, 1.0), 16, 300.0)
-				for nc in range(board_cols):
-					if SHAPE[center.r][nc] == 1:
-						# Flashes sweep outward along the row/column like a bolt.
-						_flash_cell_in_board(center.r, nc, Color(0.25, 0.55, 1.0, 0.55),
-								absi(nc - center.c) * 0.03)
-				for nr in range(board_rows):
-					if SHAPE[nr][center.c] == 1:
-						_flash_cell_in_board(nr, center.c, Color(0.25, 0.55, 1.0, 0.55),
-								absi(nr - center.r) * 0.03)
+				_fx_lightning(center.r, center.c)
 			_play_sfx(sfx_match)
 			_collect_time_bonus(to_remove)
 			var tw := _board_tween()
 			tw.set_parallel(true)
 			for t in to_remove:
+				_fx_shatter(t)
 				tw.tween_property(t, "scale", Vector2.ZERO, 0.15) \
 					.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			await tw.finished
@@ -931,6 +1023,8 @@ func _resolve_matches_animated(initial_groups: Array) -> void:
 				entry[0].set_special(entry[2])
 				live_upgrades.append(entry[0])
 		if live_upgrades.size() > 0:
+			for t in live_upgrades:
+				_spawn_fx("upgrade_ring", t.position, 0.0, _gem_fx_color(t.level).lightened(0.35), 0.0, 4)
 			var tw2 := _board_tween()
 			tw2.set_parallel(true)
 			for t in live_upgrades:
@@ -1025,8 +1119,8 @@ func _fire_color_bomb(bomb: Tile, target: Tile) -> void:
 			return
 		return
 
-	# Stars already explode as bombs when matched, so heart + star copies
-	# that same behavior to every star on the board.
+	# Suns (max tier) already explode as bombs when matched, so moon + sun
+	# copies that same behavior to every sun on the board.
 	if target_level == 7 and target_special == Tile.SPECIAL_NONE:
 		target_special = Tile.SPECIAL_BOMB
 
@@ -1056,30 +1150,31 @@ func _fire_color_bomb_level_clear(bomb: Tile, target_level: int) -> void:
 		for c in range(board_cols):
 			var t = board[r][c]
 			if t != null and t.level == target_level and not removed_set.has(t):
+				if t.locked:
+					_pending_unlocks[t] = true
+					continue
 				removed_set[t] = true
 				board[r][c] = null
 				to_remove.append(t)
+	_apply_pending_unlocks()
 
 	score += to_remove.size() * 10 * target_level
 	_play_sfx(sfx_color_bomb)
 	_collect_time_bonus(to_remove)
 
-	# Violet shockwave from the heart; cell flashes + sparks ride the wave
-	# outward, delayed by distance from the bomb.
+	# The moon eclipses and the board dims; once the eclipse has formed, a wave
+	# rolls outward and each caught gem is swallowed by a vortex in turn.
 	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
-	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.6)
-	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
-	# Ripple: each gem pops with a delay proportional to its distance from
-	# the heart — a wave of destruction rolling across the board.
+	_fx_void_core(br, bc, 4.5)
 	var max_delay := 0.0
 	for t in to_remove:
 		if not is_instance_valid(t):
 			continue
-		var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.045
+		var delay: float = VOID_WAVE_LEAD + Vector2(t.row - br, t.col - bc).length() * 0.045
 		max_delay = maxf(max_delay, delay)
-		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
-		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
+		if t != bomb:
+			_fx_void_devour(t, delay)
 		var seq := _board_tween()
 		seq.tween_interval(delay)
 		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
@@ -1128,6 +1223,7 @@ func _fire_color_bomb_clear_board(bomb: Tile) -> void:
 		for c in range(board_cols):
 			if SHAPE[r][c] == 1:
 				_mark_tile_for_removal(board[r][c], to_remove, removed_set)
+	_apply_pending_unlocks()
 
 	for t: Tile in to_remove:
 		score += 10 * t.level
@@ -1158,6 +1254,7 @@ func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special
 	for origin in origins:
 		for t: Tile in _collect_special_zone_at(origin.r, origin.c, copied_special):
 			_mark_tile_for_removal(t, to_remove, removed_set)
+	_apply_pending_unlocks()
 
 	for t: Tile in to_remove:
 		score += 10 * t.level
@@ -1179,6 +1276,10 @@ func _fire_color_bomb_special_copy(bomb: Tile, target_level: int, copied_special
 func _mark_tile_for_removal(t: Tile, to_remove: Array, removed_set: Dictionary) -> void:
 	if not is_instance_valid(t) or removed_set.has(t):
 		return
+	if t.locked:
+		# Colour-bomb waves break locks rather than destroying the gem.
+		_pending_unlocks[t] = true
+		return
 	removed_set[t] = true
 	if t.row >= 0 and t.row < board_rows and t.col >= 0 and t.col < board_cols:
 		if board[t.row][t.col] == t:
@@ -1190,17 +1291,16 @@ func _animate_color_bomb_removal(to_remove: Array, bomb: Tile, radius_cells: flo
 	var generation := _game_generation
 	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
-	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), radius_cells, 0.6)
-	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
+	_fx_void_core(br, bc, radius_cells)
 
 	var max_delay := 0.0
 	for t in to_remove:
 		if not is_instance_valid(t):
 			continue
-		var delay: float = Vector2(t.row - br, t.col - bc).length() * 0.045
+		var delay: float = VOID_WAVE_LEAD + Vector2(t.row - br, t.col - bc).length() * 0.045
 		max_delay = maxf(max_delay, delay)
-		_flash_cell_in_board(t.row, t.col, Color(0.12, 0.0, 0.22, 0.55), delay)
-		_spawn_sparks(t.row, t.col, Color(0.82, 0.5, 1.0), 6, 150.0)
+		if t != bomb:
+			_fx_void_devour(t, delay)
 		var seq := _board_tween()
 		seq.tween_interval(delay)
 		seq.tween_property(t, "scale", Vector2(1.18, 1.18), 0.07) \
@@ -1224,37 +1324,27 @@ func _animate_color_bomb_special_copy(
 	var generation := _game_generation
 	var br: int = bomb.row if is_instance_valid(bomb) else int(board_rows / 2.0)
 	var bc: int = bomb.col if is_instance_valid(bomb) else int(board_cols / 2.0)
-	_spawn_shockwave(br, bc, Color(0.72, 0.32, 1.0, 0.8), 4.5, 0.45)
-	_spawn_sparks(br, bc, Color(0.88, 0.62, 1.0), 26, 360.0)
+	_fx_void_core(br, bc, 4.5)
 
+	# Every copied special goes off once the eclipse has formed, nearest first.
+	var last_blast := VOID_WAVE_LEAD
 	for origin in origins:
+		var delay: float = VOID_WAVE_LEAD + Vector2(origin.r - br, origin.c - bc).length() * 0.03
+		last_blast = maxf(last_blast, delay)
+		var blast := _board_tween()
+		blast.tween_interval(delay)
 		if copied_special == Tile.SPECIAL_BOMB:
-			_spawn_shockwave(origin.r, origin.c, Color(1.0, 0.62, 0.2, 0.9), 1.9)
-			_spawn_sparks(origin.r, origin.c, Color(1.0, 0.78, 0.3), 18, 320.0)
-			for dr in range(-1, 2):
-				for dc in range(-1, 2):
-					var nr: int = origin.r + dr
-					var nc: int = origin.c + dc
-					if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols \
-							and SHAPE[nr][nc] == 1:
-						_flash_cell_in_board(nr, nc, Color(1.0, 0.55, 0.08, 0.50),
-								maxi(absi(dr), absi(dc)) * 0.04)
+			blast.tween_callback(_fx_fire_blast.bind(origin.r, origin.c))
 		elif copied_special == Tile.SPECIAL_CROSS:
-			_spawn_shockwave(origin.r, origin.c, Color(0.35, 0.65, 1.0, 0.85), 2.4, 0.4, true)
-			_spawn_sparks(origin.r, origin.c, Color(0.62, 0.86, 1.0), 12, 280.0)
-			for nc in range(board_cols):
-				if SHAPE[origin.r][nc] == 1:
-					_flash_cell_in_board(origin.r, nc, Color(0.25, 0.55, 1.0, 0.50),
-							absi(nc - origin.c) * 0.025)
-			for nr in range(board_rows):
-				if SHAPE[nr][origin.c] == 1:
-					_flash_cell_in_board(nr, origin.c, Color(0.25, 0.55, 1.0, 0.50),
-							absi(nr - origin.r) * 0.025)
+			blast.tween_callback(_fx_lightning.bind(origin.r, origin.c))
 
 	var tw := _board_tween()
+	tw.tween_interval(last_blast)
 	tw.set_parallel(true)
+	tw.chain().tween_interval(0.0)   # new step after the wait; the shrinks below run together in it
 	for t in to_remove:
 		if is_instance_valid(t):
+			tw.tween_callback(_fx_shatter.bind(t))
 			tw.tween_property(t, "scale", Vector2.ZERO, 0.18) \
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
@@ -1347,6 +1437,7 @@ func _animate_fill() -> void:
 	var any := false
 	var tw := _board_tween()
 	tw.set_parallel(true)
+	var locks_left: int = maxi(0, _lock_cap() - _count_locked())
 
 	for c in range(board_cols):
 		var empty_rows: Array = []
@@ -1362,7 +1453,10 @@ func _animate_fill() -> void:
 			board[r][c] = tile
 			board_container.add_child(tile)
 			tile.set_level(randi_range(1, 6))
-			if _timed_mode and randf() < TIME_BONUS_CHANCE:
+			if locks_left > 0 and randf() < LOCK_SPAWN_CHANCE:
+				tile.set_locked(true)
+				locks_left -= 1
+			elif _timed_mode and randf() < TIME_BONUS_CHANCE:
 				tile.set_time_bonus(randi_range(5, 10))
 
 			var target := _cell_pos(r, c)
@@ -1466,12 +1560,12 @@ func _cell_pos(r: int, c: int) -> Vector2:
 func _find_matches() -> Array:
 	var raw_runs: Array = []
 
-	# Horizontal runs of 3+.
+	# Horizontal runs of 3+. Locked gems never match and break runs.
 	for r in range(board_rows):
 		var c := 0
 		while c < board_cols:
 			var tile = board[r][c]
-			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB:
+			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB and not tile.locked:
 				var run: Array = [tile]
 				var cc := c + 1
 				while cc < board_cols:
@@ -1491,7 +1585,7 @@ func _find_matches() -> Array:
 		var r := 0
 		while r < board_rows:
 			var tile = board[r][c]
-			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB:
+			if tile != null and tile.special_type != Tile.SPECIAL_COLOR_BOMB and not tile.locked:
 				var run: Array = [tile]
 				var rr := r + 1
 				while rr < board_rows:
@@ -1567,7 +1661,7 @@ func _find_matches() -> Array:
 
 
 func _tiles_match_for_run(a: Tile, b: Tile) -> bool:
-	return b != null and b.special_type != Tile.SPECIAL_COLOR_BOMB and b.level == a.level
+	return b != null and not b.locked and b.special_type != Tile.SPECIAL_COLOR_BOMB and b.level == a.level
 
 
 # ----- Shuffle & move validation --------------------------------------------
@@ -1582,13 +1676,13 @@ func _has_possible_matches() -> bool:
 					var nr := r + int(dir.y)
 					var nc := c + int(dir.x)
 					if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols:
-						if SHAPE[nr][nc] == 1 and board[nr][nc] != null:
+						if SHAPE[nr][nc] == 1 and board[nr][nc] != null and not board[nr][nc].locked:
 							return true
 
 	for r in range(board_rows):
 		for c in range(board_cols):
 			var tile = board[r][c]
-			if tile == null:
+			if tile == null or tile.locked:
 				continue
 			for dir in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 				var nr := r + int(dir.y)
@@ -1598,7 +1692,7 @@ func _has_possible_matches() -> bool:
 				if SHAPE[nr][nc] == 0:
 					continue
 				var other = board[nr][nc]
-				if other == null:
+				if other == null or other.locked:
 					continue
 				board[r][c] = other; board[nr][nc] = tile
 				tile.row = nr; tile.col = nc
@@ -1749,49 +1843,6 @@ func _flash_screen() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
-# ----- Explosion zone flash --------------------------------------------------
-
-func _flash_rect_in_board(rect: Rect2, color: Color, delay: float = 0.0) -> void:
-	if not is_instance_valid(board_container):
-		return
-	# Chunky pixel sparkle: a blocky ✚ glint built around the node origin so
-	# it can pop-in with a scale tween. Matches the hand-drawn pixel art.
-	var p := Polygon2D.new()
-	var arm: float = min(rect.size.x, rect.size.y) * 0.46
-	var thick: float = arm * 0.3
-	p.polygon = PackedVector2Array([
-		Vector2(-thick, -arm), Vector2(thick, -arm),
-		Vector2(thick, -thick), Vector2(arm, -thick),
-		Vector2(arm, thick), Vector2(thick, thick),
-		Vector2(thick, arm), Vector2(-thick, arm),
-		Vector2(-thick, thick), Vector2(-arm, thick),
-		Vector2(-arm, -thick), Vector2(-thick, -thick),
-	])
-	p.position = rect.position + rect.size * 0.5
-	p.color    = color
-	p.modulate = Color(1, 1, 1, 0)
-	p.scale    = Vector2(0.55, 0.55)
-	p.z_index  = 10
-	board_container.add_child(p)
-	var tw := _board_tween()
-	if delay > 0.0:
-		tw.tween_interval(delay)
-	tw.set_parallel(true)
-	tw.tween_property(p, "modulate:a", 1.0, 0.07).set_ease(Tween.EASE_OUT)
-	tw.tween_property(p, "scale", Vector2.ONE, 0.10) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.set_parallel(false)
-	tw.tween_interval(0.10)
-	tw.tween_property(p, "modulate:a", 0.0, 0.28).set_ease(Tween.EASE_IN)
-	tw.tween_callback(p.queue_free)
-
-
-func _flash_cell_in_board(r: int, c: int, color: Color, delay: float = 0.0) -> void:
-	_flash_rect_in_board(
-		Rect2(c * float(cell_size), r * float(cell_size), float(cell_size), float(cell_size)),
-		color, delay)
-
-
 # ----- Explosion shockwave + sparks ------------------------------------------
 
 # Lazily created Control that clips shockwaves/sparks to the board rect so
@@ -1822,6 +1873,8 @@ func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
 	mat.shader = SHOCKWAVE_SHADER
 	mat.set_shader_parameter("ring_color", color)
 	mat.set_shader_parameter("cross_shape", cross)
+	# Blocks of 2 art pixels (8 board px), the same grid as the gem and FX art.
+	mat.set_shader_parameter("grid_cells", rect.size.x / 8.0)
 	# Must be set explicitly before tweening: an unset shader parameter reads
 	# back as null, which makes tween_property reject the property path.
 	mat.set_shader_parameter("progress", 0.0)
@@ -1833,35 +1886,225 @@ func _spawn_shockwave(r: int, c: int, color: Color, radius_cells: float,
 	tw.tween_callback(rect.queue_free)
 
 
-# Board-wide glitter that grows with the cascade count: gentle gold sparkle
-# puffs at random board cells, scattered over a third of a second. Higher
-# cascades shift the sparkle cooler — gold toward white-blue.
+# ----- Pixel-art FX sprites ---------------------------------------------------
+#
+# All effect animations live in assets/fx/fx_frames.tres (4x pixel art; source
+# .aseprite files in art_src/gem_match/fx/). White-based ones (shatter,
+# twinkle, upgrade_ring) are tinted with the gem colour.
+
+# One-shot effect at a board-space position; frees itself when it finishes.
+func _spawn_fx(anim_name: String, pos: Vector2, delay: float = 0.0,
+		tint: Color = Color.WHITE, rot: float = 0.0, z: int = 1) -> AnimatedSprite2D:
+	if not is_instance_valid(board_container):
+		return null
+	var fx := AnimatedSprite2D.new()
+	fx.sprite_frames = FX_FRAMES
+	fx.animation = anim_name
+	fx.position = pos
+	fx.rotation = rot
+	fx.modulate = tint
+	fx.z_index = z
+	fx.animation_finished.connect(fx.queue_free)
+	_fx_layer().add_child(fx)
+	if delay > 0.0:
+		fx.visible = false
+		var tw := _board_tween()
+		tw.tween_interval(delay)
+		tw.tween_callback(func():
+			if is_instance_valid(fx):
+				fx.visible = true
+				fx.play())
+	else:
+		fx.play()
+	return fx
+
+
+func _gem_fx_color(lv: int) -> Color:
+	return GEM_FX_COLORS[clampi(lv, 1, GEM_FX_COLORS.size()) - 1]
+
+
+# Glass shards in the gem's own colour as it leaves the board.
+func _fx_shatter(t: Tile, delay: float = 0.0) -> void:
+	if is_instance_valid(t):
+		_spawn_fx("shatter", t.position, delay, _gem_fx_color(t.level), randf() * TAU)
+
+
+# BOMB: a fireball over the 3x3, flame puffs rippling outward, flying embers.
+func _fx_fire_blast(r: int, c: int) -> void:
+	_spawn_fx("fire_blast", _cell_pos(r, c), 0.0, Color.WHITE, 0.0, 3)
+	for dr in range(-1, 2):
+		for dc in range(-1, 2):
+			var nr: int = r + dr
+			var nc: int = c + dc
+			if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols and SHAPE[nr][nc] == 1:
+				_spawn_fx("flame_puff", _cell_pos(nr, nc) + Vector2(randf_range(-8, 8), randf_range(-8, 8)),
+						0.05 + maxi(absi(dr), absi(dc)) * 0.06, Color.WHITE, 0.0, 2)
+	_spawn_sparks(r, c, Color(1.0, 0.78, 0.3), 18, 340.0)
+	_leave_embers(r, c)
+
+
+# A few embers smoulder on the scorched cells for a second after a bomb. They
+# sit behind the gems, so they glow in the gaps as the new gems fall in.
+func _leave_embers(r: int, c: int) -> void:
+	if not is_instance_valid(board_container):
+		return
+	var cells: Array = []
+	for dr in range(-1, 2):
+		for dc in range(-1, 2):
+			var nr: int = r + dr
+			var nc: int = c + dc
+			if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols and SHAPE[nr][nc] == 1:
+				cells.append(Vector2i(nc, nr))
+	cells.shuffle()
+	for i in range(mini(4, cells.size())):
+		var cell: Vector2i = cells[i]
+		var ember := AnimatedSprite2D.new()
+		ember.sprite_frames = FX_FRAMES
+		ember.animation = "ember_linger"
+		ember.z_index = -1          # on the board floor, under the gems
+		ember.position = _cell_pos(cell.y, cell.x) + Vector2(randf_range(-30, 30), randf_range(-24, 30))
+		ember.visible = false
+		ember.animation_finished.connect(ember.queue_free)
+		board_container.add_child(ember)
+		var tw := _board_tween()
+		tw.tween_interval(0.3 + randf() * 0.25)
+		tw.tween_callback(func():
+			if is_instance_valid(ember):
+				ember.visible = true
+				ember.play())
+
+
+# Now and then the moon sheds a star that arcs onto a neighbouring gem and
+# twinkles out there. Called by the moon tile; only while the board is idle.
+func moon_star_drift(moon: Tile) -> void:
+	if not _game_active or _busy or not is_instance_valid(moon):
+		return
+	var options: Array = []
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+			Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
+		var nr: int = moon.row + d.y
+		var nc: int = moon.col + d.x
+		if nr >= 0 and nr < board_rows and nc >= 0 and nc < board_cols and board[nr][nc] != null:
+			options.append(board[nr][nc])
+	if options.is_empty():
+		return
+	var target: Tile = options.pick_random()
+	var mote := _spawn_fx("twinkle", moon.position + Vector2(12, -16), 0.0, Color(0.93, 0.84, 1.0), 0.0, 6)
+	if mote == null:
+		return
+	mote.stop()
+	mote.frame = 1                  # a small star while it travels
+	var start: Vector2 = mote.position
+	var end: Vector2 = target.position + Vector2(randf_range(-16, 16), randf_range(-18, 6))
+	var peak: Vector2 = (start + end) * 0.5 + Vector2(0, -34)
+	var tw := _board_tween()
+	tw.tween_method(func(t: float):
+		if is_instance_valid(mote):
+			mote.position = start.lerp(peak, t).lerp(peak.lerp(end, t), t), 0.0, 1.0, 0.75) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(func():
+		if is_instance_valid(mote):
+			mote.play())            # finishes the twinkle on the gem, then frees itself
+
+
+# Locked gems near a match (within two cells) that the match didn't free
+# give a little start.
+func _flinch_locks_near(matched: Array) -> void:
+	if matched.is_empty():
+		return
+	for r in range(board_rows):
+		for c in range(board_cols):
+			var t = board[r][c]
+			if not _is_locked(t) or _pending_unlocks.has(t):
+				continue
+			for m in matched:
+				if is_instance_valid(m) and maxi(absi(m.row - r), absi(m.col - c)) <= 2:
+					t.flinch_lock(randf() * 0.06)
+					break
+
+
+# CROSS: bolts crackle along the whole row and column from an electric burst.
+func _fx_lightning(r: int, c: int) -> void:
+	_spawn_fx("bolt_core", _cell_pos(r, c), 0.0, Color.WHITE, 0.0, 4)
+	for nc in range(board_cols):
+		if SHAPE[r][nc] == 1 and nc != c:
+			var bolt := _spawn_fx("bolt_h", _cell_pos(r, nc), absi(nc - c) * 0.025)
+			if bolt: bolt.flip_v = randf() < 0.5
+	for nr in range(board_rows):
+		if SHAPE[nr][c] == 1 and nr != r:
+			var bolt := _spawn_fx("bolt_h", _cell_pos(nr, c), absi(nr - r) * 0.025, Color.WHITE, PI * 0.5)
+			if bolt: bolt.flip_v = randf() < 0.5
+	for i in range(4):
+		var along_row := i % 2 == 0
+		var zc: int = randi() % board_cols if along_row else c
+		var zr: int = r if along_row else randi() % board_rows
+		if SHAPE[zr][zc] == 1:
+			_spawn_fx("zap", _cell_pos(zr, zc) + Vector2(randf_range(-20, 20), randf_range(-20, 20)),
+					0.08 + randf() * 0.15, Color.WHITE, 0.0, 5)
+	_spawn_sparks(r, c, Color(0.62, 0.92, 1.0), 12, 300.0)
+
+
+# COLOR_BOMB: the moon eclipses, the board dims and a void ring rolls out.
+func _fx_void_core(r: int, c: int, radius_cells: float = 4.5) -> void:
+	_spawn_fx("void_core", _cell_pos(r, c), 0.0, Color.WHITE, 0.0, 6)
+	_spawn_shockwave(r, c, Color(0.62, 0.3, 1.0, 0.5), radius_cells, 0.7)
+	_dim_board(0.42, 0.95)
+
+
+# A gem caught by the moon is swallowed by a little vortex, spinning as it shrinks.
+func _fx_void_devour(t: Tile, delay: float) -> void:
+	if not is_instance_valid(t):
+		return
+	_spawn_fx("void_devour", t.position, delay, Color.WHITE, randf() * TAU, 2)
+	var spin := _board_tween()
+	spin.tween_interval(delay + 0.05)
+	spin.tween_property(t, "rotation", t.rotation + TAU * 0.75, 0.3) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+# Darkens the board (not the effects above it) for a moment.
+func _dim_board(strength: float, duration: float) -> void:
+	if not is_instance_valid(board_container):
+		return
+	if _dim_rect == null or not is_instance_valid(_dim_rect):
+		_dim_rect = ColorRect.new()
+		_dim_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_dim_rect.color = Color(0.07, 0.02, 0.13, 0.0)
+		_dim_rect.position = Vector2.ZERO
+		_dim_rect.size = Vector2(board_cols * cell_size, board_rows * cell_size)
+		_dim_rect.z_index = 10
+		board_container.add_child(_dim_rect)
+	var tw := _board_tween()
+	tw.tween_property(_dim_rect, "color:a", strength, duration * 0.25)
+	tw.tween_interval(duration * 0.35)
+	tw.tween_property(_dim_rect, "color:a", 0.0, duration * 0.4)
+
+
+# Board-wide glitter that grows with the cascade count: pixel twinkles at
+# random cells over a third of a second. Higher cascades shift the twinkles
+# cooler — gold toward white-blue.
 func _spawn_cascade_sparkle(cascade: int) -> void:
 	var count: int = clampi(3 + cascade * 2, 5, 14)
 	var cool := clampf((cascade - 2) * 0.12, 0.0, 0.7)
-	var color := Color(1.0, 0.93, 0.6).lerp(Color(0.75, 0.9, 1.0), cool)
+	var color := Color(1.0, 0.9, 0.5).lerp(Color(0.7, 0.88, 1.0), cool)
 	for i in range(count):
 		var r := randi() % board_rows
 		var c := randi() % board_cols
 		if SHAPE[r][c] == 0:
 			continue
-		var tw := _board_tween()
-		tw.tween_interval(randf() * 0.35)
-		tw.tween_callback(_spawn_sparks.bind(r, c, color, 5, 130.0))
+		_spawn_fx("twinkle", _cell_pos(r, c) + Vector2(randf_range(-30, 30), randf_range(-30, 30)),
+				randf() * 0.35, color, 0.0, 6)
 
 
-# Chunky square debris burst — pixel-art sparks, no texture asset needed.
+# Debris burst of pixel embers (assets/fx/ember_4x.png): one fixed size, so
+# every particle sits on the same 4x pixel grid as the gems.
 func _spawn_sparks(r: int, c: int, color: Color, count: int = 18,
 		speed: float = 300.0) -> void:
 	if not is_instance_valid(board_container):
 		return
-	if _spark_texture == null:
-		var img := Image.create(3, 3, false, Image.FORMAT_RGBA8)
-		img.fill(Color.WHITE)
-		_spark_texture = ImageTexture.create_from_image(img)
 	var fx := CPUParticles2D.new()
 	fx.position = Vector2((c + 0.5) * cell_size, (r + 0.5) * cell_size)
-	fx.texture = _spark_texture
+	fx.texture = EMBER_TEXTURE
 	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	fx.one_shot = true
 	fx.explosiveness = 1.0
@@ -1872,8 +2115,8 @@ func _spawn_sparks(r: int, c: int, color: Color, count: int = 18,
 	fx.gravity = Vector2(0, 420)
 	fx.initial_velocity_min = speed * 0.3
 	fx.initial_velocity_max = speed
-	fx.scale_amount_min = 1.4
-	fx.scale_amount_max = 3.2
+	fx.scale_amount_min = 1.0
+	fx.scale_amount_max = 1.0
 	fx.color = color
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 1))

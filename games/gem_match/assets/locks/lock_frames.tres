@@ -1,0 +1,97 @@
+[gd_resource type="SpriteFrames" load_steps=12 format=3 uid="uid://bxen1vklqt18t"]
+
+[ext_resource type="Texture2D" uid="uid://chtocdit2nnxk" path="res://games/gem_match/assets/locks/lock_4x.png" id="1_lock"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock4"]
+atlas = ExtResource("1_lock")
+region = Rect2(320, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock5"]
+atlas = ExtResource("1_lock")
+region = Rect2(400, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock6"]
+atlas = ExtResource("1_lock")
+region = Rect2(480, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock7"]
+atlas = ExtResource("1_lock")
+region = Rect2(560, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock8"]
+atlas = ExtResource("1_lock")
+region = Rect2(640, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock9"]
+atlas = ExtResource("1_lock")
+region = Rect2(720, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock0"]
+atlas = ExtResource("1_lock")
+region = Rect2(0, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock1"]
+atlas = ExtResource("1_lock")
+region = Rect2(80, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock2"]
+atlas = ExtResource("1_lock")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_lock3"]
+atlas = ExtResource("1_lock")
+region = Rect2(240, 0, 80, 80)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock8")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock9")
+}],
+"loop": false,
+"name": &"break",
+"speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock0")
+}],
+"loop": false,
+"name": &"glint",
+"speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lock0")
+}],
+"loop": false,
+"name": &"locked",
+"speed": 14.0
+}]

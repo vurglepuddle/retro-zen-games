@@ -1,14 +1,14 @@
 [gd_scene load_steps=124 format=3 uid="uid://dygorywe1fhrg"]
 
 [ext_resource type="Script" path="res://games/gem_match/scripts/Tile.gd" id="1"]
-[ext_resource type="Texture2D" uid="uid://c56hb6xg3xtip" path="res://games/gem_match/assets/gems/1_gem_pearl.png" id="2_guuil"]
-[ext_resource type="Texture2D" uid="uid://b0cfnjldtl385" path="res://games/gem_match/assets/gems/2_gem_yellow.png" id="3_860dc"]
-[ext_resource type="Texture2D" uid="uid://bmb0f3xqnsssh" path="res://games/gem_match/assets/gems/3_gem_green.png" id="4_1lchh"]
-[ext_resource type="Texture2D" uid="uid://dw4rr2eqq10jo" path="res://games/gem_match/assets/gems/4_gem_pink.png" id="5_tmjyl"]
-[ext_resource type="Texture2D" uid="uid://bhlmobhmpcl3f" path="res://games/gem_match/assets/gems/5_gem_blue.png" id="6_61hvt"]
-[ext_resource type="Texture2D" uid="uid://k74oys5xj35e" path="res://games/gem_match/assets/gems/7_gem_star.png" id="7_8qgbf"]
-[ext_resource type="Texture2D" uid="uid://i87yin0mifa4" path="res://games/gem_match/assets/gems/6-gem-red.png" id="7_vc7i0"]
-[ext_resource type="Texture2D" uid="uid://bmrnj7tv7quuh" path="res://games/gem_match/assets/gems/sp-gem_heart.png" id="9_385xa"]
+[ext_resource type="Texture2D" uid="uid://2efabegmev4q" path="res://games/gem_match/assets/gems/v3/1_moonstone_diamond.png" id="2_guuil"]
+[ext_resource type="Texture2D" uid="uid://closneegekex2" path="res://games/gem_match/assets/gems/v3/2_citrine_sun.png" id="3_860dc"]
+[ext_resource type="Texture2D" uid="uid://e45f5edela7r" path="res://games/gem_match/assets/gems/v3/3_emerald_drop.png" id="4_1lchh"]
+[ext_resource type="Texture2D" uid="uid://brs0qhe8spw4e" path="res://games/gem_match/assets/gems/v3/4_rose_heart.png" id="5_tmjyl"]
+[ext_resource type="Texture2D" uid="uid://b7ddb2pddngoh" path="res://games/gem_match/assets/gems/v3/5_sapphire_egg.png" id="6_61hvt"]
+[ext_resource type="Texture2D" uid="uid://ey2gd4x7hmmw" path="res://games/gem_match/assets/gems/v3/7_aqua_star.png" id="7_8qgbf"]
+[ext_resource type="Texture2D" uid="uid://cfj3w6lykwuuu" path="res://games/gem_match/assets/gems/v3/6_fire_topaz.png" id="7_vc7i0"]
+[ext_resource type="Texture2D" uid="uid://cqsfyxx32sf6g" path="res://games/gem_match/assets/gems/v3/sp_amethyst_moon.png" id="9_385xa"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_u70d0"]
 size = Vector2(80, 80)
@@ -834,6 +834,45 @@ animations = [{
 }, {
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_aekv2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_mf2cv")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_rpxiu")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6hyn6")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_lnjnp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_talon")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_kw24g")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_whnh7")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_o8gqp")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_7f386")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_kaa0r")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u8vl5")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_v3yw4")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_4sm88")
 }],
 "loop": true,
 "name": &"sp_heart",
