@@ -1,0 +1,63 @@
+[gd_resource type="Theme" load_steps=10 format=3 uid="uid://dj5yfbpt82cnm"]
+
+[ext_resource type="Texture2D" uid="uid://d1li4pemsa5t7" path="res://games/tile_chain/assets/ui/ui_pass/button_normal.png" id="1"]
+[ext_resource type="Texture2D" uid="uid://kax654bfo8q5" path="res://games/tile_chain/assets/ui/ui_pass/button_hover.png" id="2"]
+[ext_resource type="Texture2D" uid="uid://vscub5pndcdo" path="res://games/tile_chain/assets/ui/ui_pass/button_pressed.png" id="3"]
+[ext_resource type="Texture2D" uid="uid://djjsahdpievut" path="res://games/tile_chain/assets/ui/ui_pass/button_focus.png" id="4"]
+[ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="5"]
+
+[sub_resource type="StyleBoxTexture" id="Focus"]
+texture = ExtResource("4")
+texture_margin_left = 28.0
+texture_margin_top = 20.0
+texture_margin_right = 28.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxTexture" id="Hover"]
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 20.0
+texture = ExtResource("2")
+texture_margin_left = 28.0
+texture_margin_top = 20.0
+texture_margin_right = 28.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxTexture" id="Pressed"]
+content_margin_left = 28.0
+content_margin_top = 16.0
+content_margin_right = 28.0
+content_margin_bottom = 16.0
+texture = ExtResource("3")
+texture_margin_left = 28.0
+texture_margin_top = 20.0
+texture_margin_right = 28.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxTexture" id="Normal"]
+content_margin_left = 28.0
+content_margin_top = 12.0
+content_margin_right = 28.0
+content_margin_bottom = 20.0
+texture = ExtResource("1")
+texture_margin_left = 28.0
+texture_margin_top = 20.0
+texture_margin_right = 28.0
+texture_margin_bottom = 24.0
+
+[resource]
+Button/colors/font_color = Color(1, 0.945, 0.788, 1)
+Button/colors/font_focus_color = Color(1, 0.945, 0.788, 1)
+Button/colors/font_hover_color = Color(1, 0.945, 0.788, 1)
+Button/colors/font_hover_pressed_color = Color(1, 0.945, 0.788, 1)
+Button/colors/font_outline_color = Color(0.08, 0.08, 0.08, 1)
+Button/colors/font_pressed_color = Color(1, 0.945, 0.788, 1)
+Button/constants/outline_size = 2
+Button/font_sizes/font_size = 38
+Button/fonts/font = ExtResource("5")
+Button/styles/focus = SubResource("Focus")
+Button/styles/hover = SubResource("Hover")
+Button/styles/hover_pressed = SubResource("Pressed")
+Button/styles/normal = SubResource("Normal")
+Button/styles/pressed = SubResource("Pressed")

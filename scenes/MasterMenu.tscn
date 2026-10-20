@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/MasterMenu.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
-[ext_resource type="Texture2D" uid="uid://dl0wetvwuq73w" path="res://games/gem_match/assets/Logo_gem.png" id="3_logo"]
+[ext_resource type="Theme" uid="uid://c00xd2t44f4mq" path="res://assets/UI/hub/hub_buttons.tres" id="3_buttons"]
 [ext_resource type="Texture2D" uid="uid://dum8jx465xdsr" path="res://assets/bg_master.png" id="4_jjcy0"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="5_kmhc1"]
 [ext_resource type="Script" path="res://scripts/AudioToggleButton.gd" id="6_toggle"]
@@ -64,119 +64,65 @@ text = "choose your game"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="GemMatchTile2" type="TextureButton" parent="."]
-layout_mode = 0
-offset_left = 185.0
-offset_top = 266.0
-offset_right = 892.0
-offset_bottom = 805.0
-scale = Vector2(0.25, 0.25)
-texture_normal = ExtResource("3_logo")
-texture_pressed = ExtResource("3_logo")
-
 [node name="GemMatchTile" type="Button" parent="."]
-visible = false
+texture_filter = 1
 layout_mode = 0
-offset_left = 136.0
-offset_top = 198.0
-offset_right = 421.0
-offset_bottom = 391.0
-flat = true
-
-[node name="Logo" type="Sprite2D" parent="GemMatchTile"]
-visible = false
-position = Vector2(145, 91)
-scale = Vector2(0.295, 0.295)
-texture = ExtResource("3_logo")
+offset_left = 104.0
+offset_top = 282.0
+offset_right = 436.0
+offset_bottom = 390.0
+tooltip_text = "Match colourful gems."
+mouse_default_cursor_shape = 2
+theme = ExtResource("3_buttons")
+text = "GEM MATCH"
 
 [node name="TileChainTile" type="Button" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 136.0
-offset_top = 437.0
-offset_right = 405.0
-offset_bottom = 545.0
-
-[node name="TileLabel" type="Label" parent="TileChainTile"]
-layout_mode = 0
-offset_top = 6.0
-offset_right = 269.0
-offset_bottom = 98.0
-theme_override_colors/font_color = Color(0.95097, 0.844711, 0.318433, 1)
-theme_override_colors/font_outline_color = Color(0.0449087, 0.0968395, 0.407093, 1)
-theme_override_constants/outline_size = 6
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 46
+offset_left = 104.0
+offset_top = 444.0
+offset_right = 436.0
+offset_bottom = 552.0
+tooltip_text = "Connect matching tiles."
+mouse_default_cursor_shape = 2
+theme = ExtResource("3_buttons")
 text = "TILE CHAIN"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="AlchSortTile" type="Button" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 136.0
-offset_top = 600.0
-offset_right = 405.0
-offset_bottom = 701.0
-
-[node name="TileLabel" type="Label" parent="AlchSortTile"]
-layout_mode = 0
-offset_top = 3.0
-offset_right = 269.0
-offset_bottom = 97.0
-theme_override_colors/font_color = Color(0.95097, 0.844711, 0.318433, 1)
-theme_override_colors/font_outline_color = Color(0.0449087, 0.0968395, 0.407093, 1)
-theme_override_constants/line_spacing = -18
-theme_override_constants/outline_size = 6
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 46
-text = "LIQUID
-SORT"
-horizontal_alignment = 1
-vertical_alignment = 1
+offset_left = 104.0
+offset_top = 606.0
+offset_right = 436.0
+offset_bottom = 714.0
+tooltip_text = "Pour matching colours between bottles."
+mouse_default_cursor_shape = 2
+theme = ExtResource("3_buttons")
+text = "COLOR POUR"
 
 [node name="Potion3Tile" type="Button" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 136.0
-offset_top = 771.0
-offset_right = 405.0
-offset_bottom = 868.0
-
-[node name="TileLabel" type="Label" parent="Potion3Tile"]
-layout_mode = 0
-offset_top = 3.0
-offset_right = 269.0
-offset_bottom = 97.0
-theme_override_colors/font_color = Color(0.95097, 0.844711, 0.318433, 1)
-theme_override_colors/font_outline_color = Color(0.0449087, 0.0968395, 0.407093, 1)
-theme_override_constants/line_spacing = -18
-theme_override_constants/outline_size = 6
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 46
-text = "ITEM
-SORT"
-horizontal_alignment = 1
-vertical_alignment = 1
+offset_left = 104.0
+offset_top = 768.0
+offset_right = 436.0
+offset_bottom = 876.0
+tooltip_text = "Sort three matching items onto a shelf."
+mouse_default_cursor_shape = 2
+theme = ExtResource("3_buttons")
+text = "SHELF SORT"
 
 [node name="ZenFarmTile" type="Button" parent="."]
+texture_filter = 1
 layout_mode = 0
-offset_left = 136.0
-offset_top = 933.0
-offset_right = 405.0
+offset_left = 104.0
+offset_top = 930.0
+offset_right = 436.0
 offset_bottom = 1038.0
-
-[node name="TileLabel" type="Label" parent="ZenFarmTile"]
-layout_mode = 0
-offset_left = -1.0
-offset_top = 24.0
-offset_right = 268.0
-offset_bottom = 80.0
-theme_override_colors/font_color = Color(0.95097, 0.844711, 0.318433, 1)
-theme_override_colors/font_outline_color = Color(0.0449087, 0.0968395, 0.407093, 1)
-theme_override_constants/outline_size = 6
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 46
+tooltip_text = "Grow a quiet little garden."
+mouse_default_cursor_shape = 2
+theme = ExtResource("3_buttons")
 text = "ZEN FARM"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("5_kmhc1")
@@ -211,7 +157,6 @@ z_index = -2
 position = Vector2(270, 660)
 texture = ExtResource("4_jjcy0")
 
-[connection signal="pressed" from="GemMatchTile2" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="GemMatchTile" to="." method="_on_gem_match_pressed"]
 [connection signal="pressed" from="TileChainTile" to="." method="_on_tile_chain_pressed"]
 [connection signal="pressed" from="AlchSortTile" to="." method="_on_alch_sort_pressed"]

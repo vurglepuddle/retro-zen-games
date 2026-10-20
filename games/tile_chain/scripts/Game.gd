@@ -7,9 +7,9 @@ var _game_generation: int = 0
 
 signal back_to_menu
 
-const ROWS := 8 #8
+const ROWS := 6 #8
 const COLS := 5 #5
-const CELL_SIZE := 90  # must match BoardCell.CELL_SIZE
+const CELL_SIZE := BoardCell.CELL_SIZE
 const SAVE_PATH := "user://tile_chain_save.cfg"
 
 # Combo milestone words — index 0 fires at ×10, escalating to index 6 at ×70+.
@@ -20,11 +20,10 @@ const COMBO_WORDS := [
 
 # Screen zones where border sparkles may appear (x, y, w, h in screen pixels).
 const SPARKLE_ZONES: Array = [
-	Rect2(115, 90,  39,  22),   # top rune strip
-	Rect2(18,  194, 12,  91),   # left rune column (upper)
-	Rect2(512, 228, 13, 152),   # right rune column
-	Rect2(18,  698, 12,  98),   # left rune column (lower)
-	Rect2(388, 866, 75,  17),   # bottom rune strip
+	Rect2(30, 148, 90, 12),
+	Rect2(420, 148, 90, 12),
+	Rect2(26, 1060, 90, 12),
+	Rect2(424, 1060, 90, 12),
 ]
 
 var _cells: Array = []  # [row][col] -> BoardCell
@@ -201,7 +200,9 @@ func _build_board() -> void:
 	var board_h := ROWS * CELL_SIZE
 	var vp      := get_viewport_rect().size
 	var origin_x := int((vp.x - board_w) / 2.0)
-	var origin_y := int(80.0 + (vp.y - 80.0 - board_h) / 2.0)
+	var origin_y := int(192.0 + maxf(0.0, (vp.y - 192.0 - 136.0 - board_h) / 2.0))
+	$BgSmall.position = Vector2(origin_x - 6, origin_y - 6)
+	$BgSmall.size = Vector2(board_w + 12, board_h + 12)
 
 	var a_count := _a_textures.size() - 1
 	var b_count := _b_textures.size() - 1

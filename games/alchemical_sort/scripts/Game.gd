@@ -375,6 +375,11 @@ func _build_vials() -> void:
 	for v: Vial in _vials:
 		v.modulate.a = 0.0
 	_refresh_completed_states()  # rare: random distribution made a vial pure
+	# GUI picking follows sibling order, independently of z_index. Keep the
+	# prompts above the dynamically added vials so every button can be tapped.
+	move_child(_reshuffle_lbl, -1)
+	move_child(_reshuffle_btn, -1)
+	move_child(_win_panel, -1)
 
 
 func _generate_shuffled_layers() -> Array:
@@ -824,10 +829,10 @@ func _on_win() -> void:
 	_win_moves_lbl.text = "in %d moves" % _move_count
 	if is_new_best:
 		_win_best_lbl.text = "NEW BEST!"
-		_win_best_lbl.add_theme_color_override("font_color", Color(1, 0.82, 0.1))
+		_win_best_lbl.add_theme_color_override("font_color", Color("773421"))
 	else:
 		_win_best_lbl.text = "Best: %d moves" % _best_moves
-		_win_best_lbl.add_theme_color_override("font_color", Color(0.7, 0.75, 0.82))
+		_win_best_lbl.add_theme_color_override("font_color", Color("36170c"))
 	_win_panel.modulate.a = 0.0
 	_win_panel.visible = true
 	var tw := _board_tween()

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://djiijshkeheyn"]
+[gd_scene load_steps=9 format=3 uid="uid://djiijshkeheyn"]
 
 [ext_resource type="Script" path="res://games/gem_match/scripts/Menu.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://lfx73a34jolm" path="res://assets/font/vetka.ttf" id="2_font"]
@@ -7,6 +7,7 @@
 [ext_resource type="Texture2D" uid="uid://ccexwl5lgc1cn" path="res://games/gem_match/assets/START_normal.png" id="6_ef1nh"]
 [ext_resource type="Texture2D" uid="uid://bhqs3tubwyn0r" path="res://games/gem_match/assets/START_pressed.png" id="7_8dfl1"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="8_click"]
+[ext_resource type="Theme" path="res://games/gem_match/assets/ui/ui_pass/action_buttons.tres" id="9_buttons"]
 
 [node name="Menu" type="Control"]
 layout_mode = 3
@@ -65,48 +66,88 @@ texture_pressed = ExtResource("7_8dfl1")
 
 [node name="BackButton" type="Button" parent="."]
 z_index = 999
+texture_filter = 1
 layout_mode = 0
-offset_left = 135.0
-offset_top = 693.0
-offset_right = 413.0
-offset_bottom = 804.0
-theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
-theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
-theme_override_constants/outline_size = 3
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 44
-text = "‹"
-flat = true
+offset_left = 180.0
+offset_top = 1080.0
+offset_right = 360.0
+offset_bottom = 1160.0
+theme = ExtResource("9_buttons")
+text = "BACK"
 
 [node name="TimedButton" type="Button" parent="."]
 z_index = 999
+texture_filter = 1
 layout_mode = 0
-offset_left = 135.0
-offset_top = 820.0
-offset_right = 413.0
-offset_bottom = 931.0
-theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
-theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
-theme_override_constants/outline_size = 3
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 36
+offset_left = 114.0
+offset_top = 738.0
+offset_right = 426.0
+offset_bottom = 818.0
+theme = ExtResource("9_buttons")
 text = "TIMED MODE"
-flat = true
 
 [node name="LevelButton" type="Button" parent="."]
 z_index = 999
+texture_filter = 1
 layout_mode = 0
-offset_left = 135.0
-offset_top = 940.0
-offset_right = 413.0
-offset_bottom = 1051.0
-theme_override_colors/font_color = Color(1, 0.945098, 0.627451, 1)
-theme_override_colors/font_outline_color = Color(0.219608, 0.164706, 0.152941, 1)
-theme_override_constants/outline_size = 3
-theme_override_fonts/font = ExtResource("2_font")
-theme_override_font_sizes/font_size = 36
+offset_left = 114.0
+offset_top = 886.0
+offset_right = 426.0
+offset_bottom = 966.0
+theme = ExtResource("9_buttons")
 text = "LEVEL MODE"
-flat = true
+
+[node name="RelaxedHint" type="Label" parent="."]
+z_index = 999
+layout_mode = 0
+offset_top = 658.0
+offset_right = 540.0
+offset_bottom = 692.0
+theme_override_colors/font_color = Color(1, 0.945, 0.627, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "Relaxed play, no timer"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="OptionalModes" type="Label" parent="."]
+z_index = 999
+layout_mode = 0
+offset_top = 696.0
+offset_right = 540.0
+offset_bottom = 730.0
+theme_override_colors/font_color = Color(0.79, 0.72, 0.55, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "OPTIONAL MODES"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimedHint" type="Label" parent="."]
+z_index = 999
+layout_mode = 0
+offset_top = 824.0
+offset_right = 540.0
+offset_bottom = 860.0
+theme_override_colors/font_color = Color(1, 0.945, 0.627, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "90 seconds to beat your score"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LevelHint" type="Label" parent="."]
+z_index = 999
+layout_mode = 0
+offset_top = 972.0
+offset_right = 540.0
+offset_bottom = 1008.0
+theme_override_colors/font_color = Color(1, 0.945, 0.627, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 28
+text = "Reach score targets to earn more time"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SfxClick" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("8_click")

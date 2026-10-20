@@ -4,7 +4,9 @@ extends Control
 
 signal tapped(cell: BoardCell)
 
-const CELL_SIZE := 90
+const CELL_SIZE := 104
+const TILE_RIM = preload("res://games/tile_chain/assets/ui/ui_pass/tile_rim.png")
+const SELECTION_BORDER = preload("res://games/tile_chain/assets/ui/ui_pass/selection_border.png")
 
 var a_id: int = 0  # 1..N, 0 = removed
 var b_id: int = 0
@@ -56,7 +58,15 @@ func setup(z_tex: Texture2D, a_tex: Texture2D, a_val: int,
 	_b_rect = _make_layer(b_tex)
 	_c_rect = _make_layer(c_tex)
 
-	# Z tile renders below bgsmall (z 100); A/B/C render above it.
+	# Keep the original symbol sheets, inset into a separate pixel-art tile rim.
+	var rim := TextureRect.new()
+	rim.texture = TILE_RIM
+	rim.size = Vector2(CELL_SIZE, CELL_SIZE)
+	rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rim.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rim.z_as_relative = false
+	rim.z_index = 6
+	# A/B/C retain their original stacking above the Z tile and board surround.
 	# z_as_relative=false makes these absolute in the canvas, ignoring parent z.
 	_z_rect.z_as_relative = false
 	_z_rect.z_index = 5
@@ -67,24 +77,19 @@ func setup(z_tex: Texture2D, a_tex: Texture2D, a_val: int,
 	# A/B/C start invisible and tiny so the board shows just the Z background
 	# until play_entrance() blooms them in.  Pivot at centre for all transforms.
 	for rect in [_a_rect, _b_rect, _c_rect]:
-		rect.pivot_offset = Vector2(CELL_SIZE * 0.5, CELL_SIZE * 0.5)
+		rect.pivot_offset = rect.size * 0.5
 		rect.modulate.a = 0.0
 		rect.scale = Vector2(0.15, 0.15)
 
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0, 0, 0, 0)
-	style.border_width_left = 3
-	style.border_width_right = 3
-	style.border_width_top = 3
-	style.border_width_bottom = 3
-	style.border_color = Color(1, 0.85, 0.2, 0.95)
+	var style := StyleBoxTexture.new()
+	style.texture = SELECTION_BORDER
 	_outline = Panel.new()
 	_outline.add_theme_stylebox_override("panel", style)
 	_outline.size = Vector2(CELL_SIZE, CELL_SIZE)
 	_outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_outline.visible = false
 	_outline.z_as_relative = false
-	_outline.z_index = 115  # above A/B/C (110) and bgsmall (100)
+	_outline.z_index = 115  # above A/B/C (110)
 
 	# Soft outer halo — a wider, fainter golden ring behind the outline that
 	# breathes while the cell is selected.
@@ -103,6 +108,7 @@ func setup(z_tex: Texture2D, a_tex: Texture2D, a_val: int,
 	_halo.z_index = 114
 
 	add_child(_z_rect)
+	add_child(rim)
 	add_child(_a_rect)
 	add_child(_b_rect)
 	add_child(_c_rect)
@@ -151,7 +157,7 @@ func remove_element(layer: String) -> void:
 
 
 func _spin_out(rect: TextureRect) -> void:
-	rect.pivot_offset = Vector2(CELL_SIZE * 0.5, CELL_SIZE * 0.5)
+	rect.pivot_offset = rect.size * 0.5
 	play_sparkle(8, 140.0, Color(1.0, 0.95, 0.75))
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -387,7 +393,7 @@ func _do_idle_spin(layer: String) -> void:
 		"b": duration = randf_range(0.85, 1.15)
 		"c": duration = randf_range(0.65, 0.9)
 
-	rect.pivot_offset = Vector2(CELL_SIZE * 0.5, CELL_SIZE * 0.5)
+	rect.pivot_offset = rect.size * 0.5
 	var tw := create_tween()
 	# Use relative target so the spin works regardless of current rotation value.
 	tw.tween_property(rect, "rotation_degrees", rect.rotation_degrees + 360.0, duration) \
@@ -408,7 +414,10 @@ func _do_idle_spin(layer: String) -> void:
 func _make_layer(tex: Texture2D) -> TextureRect:
 	var r := TextureRect.new()
 	r.texture = tex
-	r.size = Vector2(CELL_SIZE, CELL_SIZE)
+	r.position = Vector2(2, 2)
+	r.size = Vector2(CELL_SIZE - 4, CELL_SIZE - 4)
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	r.stretch_mode = TextureRect.STRETCH_SCALE
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r

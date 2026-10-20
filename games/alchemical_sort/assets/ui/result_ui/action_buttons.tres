@@ -1,0 +1,58 @@
+[gd_resource type="Theme" load_steps=9 format=3]
+
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/result_ui/button_normal.png" id="1"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/result_ui/button_hover.png" id="2"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/result_ui/button_pressed.png" id="3"]
+[ext_resource type="Texture2D" path="res://games/alchemical_sort/assets/ui/result_ui/button_focus.png" id="4"]
+
+[sub_resource type="StyleBoxTexture" id="Normal"]
+content_margin_left = 24.0
+content_margin_top = 8.0
+content_margin_right = 24.0
+content_margin_bottom = 16.0
+texture = ExtResource("1")
+texture_margin_left = 24.0
+texture_margin_top = 12.0
+texture_margin_right = 24.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="Hover"]
+content_margin_left = 24.0
+content_margin_top = 8.0
+content_margin_right = 24.0
+content_margin_bottom = 16.0
+texture = ExtResource("2")
+texture_margin_left = 24.0
+texture_margin_top = 12.0
+texture_margin_right = 24.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="Pressed"]
+content_margin_left = 24.0
+content_margin_top = 12.0
+content_margin_right = 24.0
+content_margin_bottom = 12.0
+texture = ExtResource("3")
+texture_margin_left = 24.0
+texture_margin_top = 16.0
+texture_margin_right = 24.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxTexture" id="Focus"]
+texture = ExtResource("4")
+texture_margin_left = 24.0
+texture_margin_top = 12.0
+texture_margin_right = 24.0
+texture_margin_bottom = 12.0
+
+[resource]
+Button/colors/font_color = Color(0.212, 0.09, 0.047, 1)
+Button/colors/font_hover_color = Color(0.212, 0.09, 0.047, 1)
+Button/colors/font_pressed_color = Color(0.212, 0.09, 0.047, 1)
+Button/colors/font_hover_pressed_color = Color(0.212, 0.09, 0.047, 1)
+Button/colors/font_focus_color = Color(0.212, 0.09, 0.047, 1)
+Button/styles/normal = SubResource("Normal")
+Button/styles/hover = SubResource("Hover")
+Button/styles/pressed = SubResource("Pressed")
+Button/styles/hover_pressed = SubResource("Pressed")
+Button/styles/focus = SubResource("Focus")
