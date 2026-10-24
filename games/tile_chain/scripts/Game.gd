@@ -483,6 +483,8 @@ func _sparkle_loop() -> void:
 
 
 func _spawn_sparkle() -> void:
+	if not can_process() or not is_visible_in_tree():
+		return
 	var zone: Rect2 = SPARKLE_ZONES[randi() % SPARKLE_ZONES.size()]
 	var px := randf_range(zone.position.x, zone.end.x)
 	var py := randf_range(zone.position.y, zone.end.y)

@@ -219,6 +219,10 @@ func _glint_loop(initial_delay: float) -> void:
 
 
 func _play_glint() -> void:
+	# SceneTreeTimer callbacks keep arriving while the hidden board is disabled.
+	# Do not create effects whose bound tweens cannot run or free them yet.
+	if not can_process() or not is_visible_in_tree():
+		return
 	var p := Polygon2D.new()
 	var arm := 6.0
 	var th := 2.0
@@ -364,6 +368,8 @@ func _idle_loop(layer: String, initial_delay: float) -> void:
 # Attempts a single lazy 360° spin on the given layer.  Uses tween_callback
 # to reset state so there is no await and no lifecycle issues on node free.
 func _do_idle_spin(layer: String) -> void:
+	if not can_process() or not is_visible_in_tree():
+		return
 	# Never spin a selected cell — it would fight with the outline visually.
 	if _outline.visible:
 		return

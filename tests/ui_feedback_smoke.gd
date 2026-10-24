@@ -38,6 +38,56 @@ func key(code: Key) -> void:
 	root.push_input(event, true)
 
 
+func well_touch(game: Control) -> void:
+	# Android can deliver both events for a single physical tap.
+	for pressed in [true, false]:
+		var touch := InputEventScreenTouch.new()
+		touch.position = game._well_panel.get_global_rect().get_center()
+		touch.pressed = pressed
+		root.push_input(touch, true)
+		mouse(game._well_panel, pressed, true)
+
+
+func check_well_input(game: Control) -> void:
+	game.prepare_farm(true)
+	game.set_process(false)
+	game._tip_panel.hide()
+	game._active_tool = game.Tool.WATERING_CAN
+	for level in range(3):
+		game._can_level = level
+		var capacity: int = game._can_max()
+		var filled := "Can filled! (%d/%d)" % [capacity, capacity]
+		for remaining in [0, capacity - 1]:
+			game._can_water = remaining
+			game._refresh_ui()
+			well_touch(game)
+			check(game._can_water == capacity and game._status_label.text == filled, "Well touch refills once from %d/%d and keeps confirmation" % [remaining, capacity])
+		well_touch(game)
+		check(game._status_label.text == "Can is already full.", "A later tap on a full level-%d can reports full" % level)
+		game._can_water = 0
+		game._refresh_ui()
+		mouse(game._well_panel, true)
+		mouse(game._well_panel, false)
+		check(game._can_water == capacity and game._status_label.text == filled, "Physical mouse still refills level-%d can" % level)
+	game._can_level = 0
+	game._can_water = 0
+	game._active_tool = game.Tool.HAND
+	game._refresh_ui()
+	well_touch(game)
+	check(game._active_tool == game.Tool.WATERING_CAN and game._can_water == 0 and game._status_label.text == "Watering Can selected.", "First well tap selects the can once")
+	var cell: FarmCell = game._cell_at_grid(0, 0)
+	cell.reset_slots()
+	cell.slot_states[0] = FarmCell.SlotState.CROP
+	cell.slot_crop_ids[0] = 0
+	game._can_water = 1
+	game._try_water_cell(cell)
+	check(game._can_water == 0 and game._can_btn.text == "0/5", "Last watering charge empties the can and updates its count")
+	game._try_water_cell(cell)
+	check(game._status_label.text == "Can is empty - fill at the Well.", "Empty can reports empty before refill")
+	well_touch(game)
+	check(game._can_water == 5 and game._status_label.text == "Can filled! (5/5)", "Empty-to-refilled can keeps the correct confirmation")
+
+
 func capture(label: String) -> void:
 	if not "--render-review" in OS.get_cmdline_user_args(): return
 	await process_frame
@@ -149,6 +199,8 @@ func _run() -> void:
 		await process_frame
 		for button in game.get_node("AudioControls").get_children():
 			check(button.get_tooltip().is_empty(), kind + ": runtime audio has no touch tooltip")
+		if kind == "zen_farm":
+			check_well_input(game)
 		game.queue_free()
 		await process_frame
 	# Freed focus owners must not leave dangling style overrides behind.

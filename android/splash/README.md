@@ -23,3 +23,9 @@ Splash settings control a later screen and do not configure this native screen.
 
 Android controls the native splash's placement and size. This changes the
 artwork and filtering within that system screen.
+
+For smaller phone APKs while keeping this Gradle splash, run
+`python android/configure_phone_export.py` from the project root. It enables
+native-library compression, keeps ARM32/ARM64, disables Intel engine copies,
+and excludes development folders. Package identity and signing settings stay
+intact; the original local preset is backed up under `.godot/android_size_review/`.

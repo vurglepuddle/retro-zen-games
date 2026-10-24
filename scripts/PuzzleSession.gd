@@ -8,6 +8,7 @@ var kind := ""
 var _saved := {}
 var _encoded := ""
 var _stamp := []
+var _pending_write := false
 var _elapsed := 0.0
 var _armed := false
 var _restoring := false
@@ -66,6 +67,7 @@ func discard() -> void:
 	_saved = {}
 	_encoded = ""
 	_stamp = []
+	_pending_write = false
 	_armed = false
 	for path in [_path(), _path() + ".bak"]:
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
@@ -99,14 +101,20 @@ func save_now() -> void:
 			if State.valid(data, kind):
 				_saved = data
 				_stamp = current
-	if _saved.is_empty(): return
+				_pending_write = true
+	# Unchanged rounds need only the small board stamp, never the full undo
+	# history serialized again. Keep failed writes pending so they retry.
+	if _saved.is_empty() or not _pending_write: return
 	var serialized := var_to_str(_saved)
-	if serialized == _encoded: return
+	if serialized == _encoded:
+		_pending_write = false
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("round", "version", 1)
 	cfg.set_value("round", "state", _saved)
 	if SafeFile.save_config(cfg, _path(), "round", ["version", "state"], _valid_config) == OK:
 		_encoded = serialized
+		_pending_write = false
 		if is_instance_valid(_continue): _continue.show()
 
 func _process(delta: float) -> void:
