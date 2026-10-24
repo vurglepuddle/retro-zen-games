@@ -71,6 +71,7 @@ func _ready() -> void:
 
 func prepare_board() -> void:
 	stop_game()
+	if has_node("RoundSession"): get_node("RoundSession").begin_new()
 	_load_textures()
 	_clear_board()
 	_build_board()
@@ -123,8 +124,15 @@ func _pick_random_tileset() -> void:
 	_c_path = base + "C-%d.png"
 
 
-func _load_textures() -> void:
-	_pick_random_tileset()
+func _load_textures(tileset: int = 0) -> void:
+	if tileset == 0:
+		_pick_random_tileset()
+	else:
+		var base := "res://games/tile_chain/assets/Set_%d/" % tileset
+		_z_path = base + "z-%d.png"
+		_a_path = base + "A-%d.png"
+		_b_path = base + "B-%d.png"
+		_c_path = base + "C-%d.png"
 	_z_textures.clear()
 	_a_textures.clear()
 	_b_textures.clear()
@@ -243,6 +251,7 @@ func _build_board() -> void:
 func _on_cell_tapped(cell: BoardCell) -> void:
 	if not _board_active or _reshuffling:
 		return
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 
 	# Tapping an empty cell never breaks the combo.
 	if cell.is_empty():
@@ -418,6 +427,7 @@ func _apply_reshuffle() -> void:
 # ----- Board cleared ---------------------------------------------------------
 
 func _on_board_cleared() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").discard()
 	_board_active = false
 	if _selected:
 		_selected.show_outline(false)
@@ -524,6 +534,7 @@ func _on_back_pressed() -> void:
 
 
 func stop_game() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	_game_generation += 1
 	_board_active = false
 	_reshuffling = false

@@ -146,7 +146,7 @@ func free_slots() -> int:
 # Local Y of the current liquid surface — where a poured drop should land.
 # Empty vial → the glass bottom.
 func surface_y() -> float:
-	return BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - top_index()) * _cell_h
+	return BOTTLE_PAD_TOP + (capacity - 1 - top_index()) * _cell_h
 
 
 # ---- fog of war -------------------------------------------------------------
@@ -497,7 +497,7 @@ func _build_visuals() -> void:
 	# Liquid cell size from the sprite sheet.
 	var cell_w: int = sheet.get_width()  / SHEET_COLS   # 64
 	var cell_h: int = sheet.get_height() / SHEET_ROWS   # 32
-	_cell_h = float(cell_h)
+	_cell_h = float(cell_h * MAX_LAYERS) / float(capacity)
 	# Horizontal offset to center the 64-wide liquid inside the 72-wide bottle.
 	var pad_x: int  = (VIAL_W - cell_w) / 2             # 4
 
@@ -549,7 +549,10 @@ func _build_visuals() -> void:
 		rect.stretch_mode  = TextureRect.STRETCH_KEEP
 		rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		rect.size          = Vector2(cell_w, cell_h)
-		rect.position      = Vector2(pad_x, BOTTLE_PAD_TOP + (MAX_LAYERS - 1 - i) * cell_h)
+		rect.position      = Vector2(pad_x, BOTTLE_PAD_TOP + (capacity - 1 - i) * _cell_h)
+		# A helper holds one logical layer, filling its entire glass window.
+		rect.scale.y       = float(MAX_LAYERS) / float(capacity)
+		rect.visible       = i < capacity
 		rect.mouse_filter  = Control.MOUSE_FILTER_IGNORE
 		_set_layer_color(rect, _layers[i], _fog_mode and i < _fog_reveal_from)
 		add_child(rect)

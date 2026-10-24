@@ -6,6 +6,19 @@ var _transitioning := false
 
 func _enter_tree() -> void:
 	get_tree().quit_on_go_back = false
+	_install_game_controls.call_deferred()
+
+
+func _install_game_controls() -> void:
+	var game := get_node_or_null("Game")
+	if game and not game.has_node("AudioControls"):
+		game.add_child(preload("res://scripts/InGameAudio.gd").new())
+	if game and not game.has_node("RoundSession"):
+		var kind: String = game.scene_file_path.split("/")[3]
+		if kind in preload("res://scripts/PuzzleSession.gd").KINDS:
+			var session := preload("res://scripts/PuzzleSession.gd").new()
+			session.name = "RoundSession"
+			game.add_child(session)
 
 
 func _notification(what: int) -> void:

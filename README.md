@@ -40,6 +40,9 @@ validation and release setup all have work remaining.
 
 
 
+Puzzle games offer **Continue** for unfinished rounds. Music and sound effects
+can be toggled during play, with controls styled to each game's artwork.
+
 ## Run and develop
 
 Open [project.godot](project.godot) in Godot **4.3** and press **F5**. The entry

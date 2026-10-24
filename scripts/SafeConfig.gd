@@ -27,7 +27,7 @@ static func copy_file(source: String, destination: String) -> Error:
 	return result
 
 
-static func save_config(cfg: ConfigFile, path: String, required_section: String = "", required_keys: Array[String] = []) -> Error:
+static func save_config(cfg: ConfigFile, path: String, required_section: String = "", required_keys: Array[String] = [], validate_previous: Callable = Callable()) -> Error:
 	var serialized := cfg.encode_to_text()
 	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
 	var result: Error = FileAccess.get_open_error()
@@ -45,6 +45,8 @@ static func save_config(cfg: ConfigFile, path: String, required_section: String 
 			readable = previous.has_section(required_section)
 			for key in required_keys:
 				readable = readable and previous.has_section_key(required_section, key)
+		if readable and validate_previous.is_valid():
+			readable = validate_previous.call(previous)
 		if readable:
 			result = copy_file(path, path + ".bak")
 	if result == OK:

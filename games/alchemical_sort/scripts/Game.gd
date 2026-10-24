@@ -196,6 +196,7 @@ func _tinted_palette(cid: int) -> Color:
 # Called by Main.gd before the fade-in.
 func prepare_board() -> void:
 	stop_game()
+	if has_node("RoundSession"): get_node("RoundSession").begin_new()
 	_mystery_label.visible = false
 	_apply_difficulty_layout()  # re-roll Zen / Mystery every new game
 	_roll_tints()
@@ -215,7 +216,6 @@ func prepare_board() -> void:
 func start_game() -> void:
 	var generation := _game_generation
 	_board_active = false
-	_undo_stack.clear()
 	_update_ui()
 
 	if _fog_mode:
@@ -359,6 +359,20 @@ func _build_vials() -> void:
 		add_child(cauldron)
 		_vials.append(cauldron)
 
+	# Centre each shelf by its visible contents, including the scaled helper.
+	# Control scaling happens around the pivot, so account for that inset too.
+	for row in range(num_rows):
+		var shelf := _vials.slice(row * _vials_per_row, mini((row + 1) * _vials_per_row, total))
+		if row == num_rows - 1 and _difficulty == 3:
+			shelf.append(_vials.back())
+		var shelf_width := float((shelf.size() - 1) * VIAL_SPACING)
+		for vial: Vial in shelf:
+			shelf_width += vial.VIAL_W * vial.scale.x
+		var shelf_x := (vp.x - shelf_width) * 0.5
+		for vial: Vial in shelf:
+			vial.position.x = roundf(shelf_x - vial.pivot_offset.x * (1.0 - vial.scale.x))
+			shelf_x += vial.VIAL_W * vial.scale.x + VIAL_SPACING
+
 	# Catalyst rune: rarely, one starting vial bears a faint glowing sigil.
 	_rune_vial = null
 	_rune_fired = false
@@ -451,6 +465,8 @@ func _process_tap(vial: Vial) -> void:
 
 
 func _can_pour(src: Vial, dst: Vial) -> bool:
+	if src == dst:
+		return false
 	if src.is_empty():
 		return false
 	if dst.is_full():
@@ -461,6 +477,8 @@ func _can_pour(src: Vial, dst: Vial) -> bool:
 
 
 func _do_pour(src: Vial, dst: Vial) -> void:
+	if _pouring or not _board_active or not _can_pour(src, dst): return
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	var generation := _game_generation
 	_pouring = true
 	src.show_selected(false)
@@ -818,6 +836,7 @@ func _check_win() -> bool:
 
 
 func _on_win() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").discard()
 	_board_active = false
 	if _selected:
 		_selected.show_selected(false)
@@ -984,6 +1003,7 @@ func _board_tween() -> Tween:
 
 
 func stop_game() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	_game_generation += 1
 	if is_instance_valid(_selected):
 		_selected.show_selected(false)

@@ -6,10 +6,10 @@
 [ext_resource type="Texture2D" uid="uid://dum8jx465xdsr" path="res://assets/bg_master.png" id="4_jjcy0"]
 [ext_resource type="AudioStream" uid="uid://d07andchlek7f" path="res://games/gem_match/assets/sfx/no_match.mp3" id="5_kmhc1"]
 [ext_resource type="Script" path="res://scripts/AudioToggleButton.gd" id="6_toggle"]
-[ext_resource type="Texture2D" uid="uid://b8fp7m6u01ay1" path="res://assets/UI/Music_on_button.png" id="7_music_on"]
-[ext_resource type="Texture2D" uid="uid://dl1mi8mkiobc3" path="res://assets/UI/Music_off_button.png" id="8_music_off"]
-[ext_resource type="Texture2D" uid="uid://bcllrktorsdbf" path="res://assets/UI/SFX_on_button.png" id="9_sfx_on"]
-[ext_resource type="Texture2D" uid="uid://11twb50r57by" path="res://assets/UI/SFX_off_button.png" id="10_sfx_off"]
+[ext_resource type="Texture2D" uid="uid://bpr67jey2lhho" path="res://assets/UI/hub/audio/music_on.png" id="7_music_on"]
+[ext_resource type="Texture2D" uid="uid://cj5fb7k8tjh6h" path="res://assets/UI/hub/audio/music_off.png" id="8_music_off"]
+[ext_resource type="Texture2D" uid="uid://bjgho8r6uox6t" path="res://assets/UI/hub/audio/sfx_on.png" id="9_sfx_on"]
+[ext_resource type="Texture2D" uid="uid://7ijljy4d7g27" path="res://assets/UI/hub/audio/sfx_off.png" id="10_sfx_off"]
 
 [node name="MasterMenu" type="Control"]
 layout_mode = 3
