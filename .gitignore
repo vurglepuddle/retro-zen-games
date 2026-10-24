@@ -63,6 +63,7 @@ tests/*
 !tests/export_alchemical_boards.gd
 !tests/run_puzzle_checks.ps1
 !tests/ui_feedback_smoke.gd
+!tests/puzzle_session_benchmark.gd
 
 # Generated Android Gradle template; splash overrides live in android/splash/.
 android/build/

@@ -19,6 +19,14 @@ func _install_game_controls() -> void:
 			var session := preload("res://scripts/PuzzleSession.gd").new()
 			session.name = "RoundSession"
 			game.add_child(session)
+			game.visibility_changed.connect(_sync_game_processing.bind(game))
+			_sync_game_processing(game)
+
+
+func _sync_game_processing(game: CanvasItem) -> void:
+	# Hidden boards keep their round data, but should not animate/process behind
+	# the menu. The farm already owns this transition in its Main controller.
+	game.process_mode = Node.PROCESS_MODE_INHERIT if game.is_visible_in_tree() else Node.PROCESS_MODE_DISABLED
 
 
 func _notification(what: int) -> void:

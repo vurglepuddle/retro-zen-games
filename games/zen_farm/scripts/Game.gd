@@ -2777,6 +2777,10 @@ func _reset_tool_icon(icon: TextureRect) -> void:
 
 # ── well ─────────────────────────────────────────────────────────────────
 func _on_well_gui_input(event: InputEvent) -> void:
+	# A touch also generates a mouse press. Handling both would refill first,
+	# then overwrite the confirmation with "Can is already full."
+	if event is InputEventMouseButton and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return
 	var pressed := false
 	if event is InputEventMouseButton:
 		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT

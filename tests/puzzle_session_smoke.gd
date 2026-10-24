@@ -29,9 +29,11 @@ func _run() -> void:
 		await process_frame
 		var game = main.get_node("Game")
 		var session = game.get_node("RoundSession")
+		check(not game.can_process(), kind + ": initial menu pauses the hidden board")
 		session.discard()
 		main.get_node("Menu").hide()
 		game.show()
+		check(game.can_process(), kind + ": showing the board resumes processing")
 		if kind in ["potion_3", "alchemical_sort"]: game.set_difficulty(3)
 		if kind == "gem_match": game.set_timed_mode(true)
 		game.prepare_board()
@@ -84,6 +86,27 @@ func _run() -> void:
 		session.save_now()
 		check(FileAccess.file_exists(session._path()), kind + ": round saved")
 		snapshot = session._saved.duplicate(true)
+		check(not session._pending_write, kind + ": successful checkpoint has no pending work")
+		# A failed write must retry even when the next board stamp is unchanged.
+		# A directory blocks the temporary file without touching the valid primary.
+		var previous_file := FileAccess.get_file_as_string(session._path())
+		var previous_encoded: String = session._encoded
+		var temp_path: String = session._path() + ".tmp"
+		check(DirAccess.make_dir_absolute(temp_path) == OK, kind + ": write-failure fixture installed")
+		var counter := "_move_count" if kind in ["potion_3", "alchemical_sort"] else ("score" if kind == "gem_match" else "_current_combo")
+		var previous_counter: int = game.get(counter)
+		game.set(counter, previous_counter + 1)
+		session.save_now()
+		check(session._pending_write and session._encoded == previous_encoded, kind + ": failed save stays pending")
+		check(FileAccess.get_file_as_string(session._path()) == previous_file, kind + ": failed save preserves the primary")
+		check(DirAccess.remove_absolute(temp_path) == OK, kind + ": write-failure fixture removed")
+		session.save_now()
+		check(not session._pending_write and session._encoded != previous_encoded, kind + ": unchanged next checkpoint retries successfully")
+		var retried := ConfigFile.new()
+		var retried_key := "moves" if kind in ["potion_3", "alchemical_sort"] else ("score" if kind == "gem_match" else "combo")
+		check(retried.load(session._path()) == OK and retried.get_value("round", "state", {}).get(retried_key) == previous_counter + 1, kind + ": retry persisted the latest counter")
+		game.set(counter, previous_counter)
+		session.save_now()
 		var invalid := snapshot.duplicate(true)
 		if kind == "alchemical_sort":
 			invalid.vials.back().layers = [1, 2, 0, 0, 0]
@@ -153,6 +176,22 @@ func _run() -> void:
 		if kind in ["potion_3", "alchemical_sort"]:
 			await game._on_undo_pressed()
 			check(game._move_count == snapshot.moves - 1, kind + ": undo remains usable after reload")
+		game.hide()
+		var hidden_processing := 0
+		for node in [game] + game.find_children("*", "", true, false):
+			if node.is_processing() and node.can_process(): hidden_processing += 1
+		check(hidden_processing == 0, kind + ": hidden round has no active process callbacks")
+		if kind == "tile_chain":
+			# SceneTreeTimers still fire for disabled nodes. Waiting behind the
+			# menu must not accumulate sparkles/glints whose animations are frozen.
+			await process_frame
+			var hidden_nodes: int = game.find_children("*", "", true, false).size()
+			Engine.time_scale = 120.0
+			await create_timer(120.0).timeout
+			Engine.time_scale = 12.0
+			check(game.find_children("*", "", true, false).size() == hidden_nodes, kind + ": hidden ambient timers do not accumulate effects")
+		game.show()
+		check(game.can_process(), kind + ": restored round resumes processing after menu return")
 		session.discard()
 		main.queue_free()
 		await process_frame
