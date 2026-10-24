@@ -359,6 +359,7 @@ func back_button_pressed() -> void:
 
 func prepare_board() -> void:
 	stop_game()
+	if has_node("RoundSession"): get_node("RoundSession").begin_new()
 	_game_active = false
 	_next_milestone = 1000
 	_busy = false
@@ -629,6 +630,10 @@ func start_drag(tile, press_pos: Vector2) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	var audio := get_node_or_null("AudioControls")
+	if audio and audio.blocks_event(event):
+		_drag_tile = null
+		return
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		_hint_timer = 0.0
 		_stop_hints()
@@ -741,6 +746,7 @@ func _attempt_swap(tile, dir: Vector2) -> void:
 	var generation := _game_generation
 	if not _game_active or _busy:
 		return
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	var r: int = tile.row
 	var c: int = tile.col
 	var nr: int = r + int(dir.y)
@@ -2159,6 +2165,7 @@ func _update_timer_display() -> void:
 
 
 func _time_up() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").discard()
 	_stop_hints()
 	for child in get_children():
 		if child is AudioStreamPlayer and child != sfx_click:
@@ -2296,6 +2303,7 @@ func _board_tween() -> Tween:
 
 
 func stop_game() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	_game_generation += 1
 	for tween in _operation_tweens:
 		if tween.is_valid():

@@ -19,6 +19,7 @@ const SLOT_OVERLAP  := 12    # each slot nudged this many px into the one above 
 const SLOT_Y_OFFSET   := 15    # shift the whole stack down inside the cell
 const DISP_BG_Y      := -3     # small box sits 1 art px higher so its rim shows above the item
 const LOCK_FONT_SIZE := 48     # locked-cell counter
+const MYSTERY_FONT_SIZE := 48
 const LOCK_SEAL_Y    := 132    # centre of the lid's wax seal (art row 44); x is CELL_W / 2
 
 # Box frames are 35 art px wide, so neighbouring boxes in a row are exactly
@@ -49,6 +50,8 @@ const FILL_CONVEYOR := Color("292c36")
 const FILL_BELT     := Color("322a2d")
 const SHADOW_COLOR  := Color("16120e")
 const WAX_RED       := Color("550f0a")   # lock counter outline, from the wax seal
+const MYSTERY_GOLD  := Color("efac28cc") # palette amber gold at 80% opacity
+const MYSTERY_PREVIEW_GOLD := Color(MYSTERY_GOLD, 0.15) # faint next-layer contour
 
 enum Box { SHELF, CONVEYOR, CRATE, BELT_CRATE }
 const BOX_FILLS := [FILL_NEUTRAL, FILL_CONVEYOR, FILL_NEUTRAL, FILL_BELT]
@@ -90,6 +93,7 @@ var _slot_rects:      Array[TextureRect] = []
 var _preview_rects:   Array[TextureRect] = []
 var _slot_highlights: Array[TextureRect] = []
 var _mystery_panels:  Array[Panel]       = []
+var _mystery_ink_offset := Vector2.ZERO  # centres the visible glyph, not its line box
 var _box:         Control = null       # shadow + fill; moved/resized by _dress_box()
 var _box_shadow:  ColorRect = null
 var _box_fill:    ColorRect = null
@@ -108,13 +112,16 @@ var _disp_pips:    Array[TextureRect] = []   # lit pips over the depth indicator
 # Both use mystery_item.gdshader: a SOLID swirling-smoke cutout (binarized
 # alpha), so overlapping silhouettes never show through each other.
 # Top layer + drag: near-black blue. Preview layer: lighter dusty blue.
+# 2-game-pixel gold contour: 80% opacity on top, 15% on the layer below.
 static var _mystery_mat_top:  ShaderMaterial = null
 static var _mystery_mat_prev: ShaderMaterial = null
+static var _mystery_centers: Dictionary = {}  # Texture2D -> interior centre in UVs
 
 static func _get_mystery_mat() -> ShaderMaterial:
 	if _mystery_mat_top == null:
 		_mystery_mat_top = ShaderMaterial.new()
 		_mystery_mat_top.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
+		_mystery_mat_top.set_shader_parameter("outline_color", MYSTERY_GOLD)
 	return _mystery_mat_top
 
 static var _preview_mats: Dictionary = {}   # lining colour (html) → ShaderMaterial
@@ -149,9 +156,69 @@ static func _get_mystery_mat_prev() -> ShaderMaterial:
 	if _mystery_mat_prev == null:
 		_mystery_mat_prev = ShaderMaterial.new()
 		_mystery_mat_prev.shader = load("res://games/potion_3/assets/mystery_item.gdshader")
+		_mystery_mat_prev.set_shader_parameter("outline_color", MYSTERY_PREVIEW_GOLD)
 		_mystery_mat_prev.set_shader_parameter("base_color", Color(0.15, 0.17, 0.25))
 		_mystery_mat_prev.set_shader_parameter("swirl_color", Color(0.22, 0.25, 0.36))
 	return _mystery_mat_prev
+
+
+static func _get_mystery_center(texture: Texture2D) -> Vector2:
+	## Centre of the largest solid patch, with ties nearest the silhouette's
+	## centre of mass. Unlike a bounding-box centre, this avoids holes/handles.
+	var fallback := Vector2(0.5, 0.5)
+	if texture == null:
+		return fallback
+	if _mystery_centers.has(texture):
+		return _mystery_centers[texture]
+	var image := texture.get_image()
+	if image == null or image.is_empty():
+		return fallback
+	var width := image.get_width()
+	var height := image.get_height()
+	# A transparent border makes edge-touching art behave like any other edge.
+	var stride := width + 2
+	var distance := PackedInt32Array()
+	distance.resize(stride * (height + 2))
+	var mass := Vector2.ZERO
+	var count := 0
+	for y in range(height):
+		for x in range(width):
+			if image.get_pixel(x, y).a >= 0.5:  # same cutout threshold as the shader
+				distance[(y + 1) * stride + x + 1] = width + height
+				mass += Vector2(x + 0.5, y + 0.5)
+				count += 1
+	if count == 0:
+		_mystery_centers[texture] = fallback
+		return fallback
+	mass /= float(count)
+	# Two-pass distance to transparency (including diagonals): the widest
+	# interior wins, rather than a thin stem or the rim of a hollow object.
+	for y in range(1, height + 1):
+		for x in range(1, width + 1):
+			var i := y * stride + x
+			var nearest := mini(mini(distance[i - 1], distance[i - stride]),
+				mini(distance[i - stride - 1], distance[i - stride + 1]))
+			distance[i] = mini(distance[i], nearest + 1)
+	var best := mass
+	var best_depth := 0
+	var best_offset := INF
+	for y in range(height, 0, -1):
+		for x in range(width, 0, -1):
+			var i := y * stride + x
+			var nearest := mini(mini(distance[i + 1], distance[i + stride]),
+				mini(distance[i + stride - 1], distance[i + stride + 1]))
+			distance[i] = mini(distance[i], nearest + 1)
+			if distance[i] == 0:
+				continue
+			var point := Vector2(x - 0.5, y - 0.5)
+			var offset := point.distance_squared_to(mass)
+			if distance[i] > best_depth or (distance[i] == best_depth and offset < best_offset):
+				best = point
+				best_depth = distance[i]
+				best_offset = offset
+	var center := best / Vector2(width, height)
+	_mystery_centers[texture] = center
+	return center
 
 
 # ============================================================================
@@ -731,7 +798,15 @@ func _build_visuals() -> void:
 
 	# 4. Mystery overlays — transparent panel + "?" label over darkened sprite, hidden by default.
 	_mystery_panels.clear()
-	var mystery_font: Font = load("res://assets/font/vetka.ttf")
+	var mystery_font: FontFile = load("res://assets/font/vetka.ttf")
+	var glyph := mystery_font.get_glyph_index(MYSTERY_FONT_SIZE, "?".unicode_at(0), 0)
+	var glyph_size := Vector2i(MYSTERY_FONT_SIZE, 0)
+	mystery_font.render_glyph(0, glyph_size, glyph)
+	var ink_center := mystery_font.get_glyph_offset(0, glyph_size, glyph) \
+		+ mystery_font.get_glyph_size(0, glyph_size, glyph) * 0.5
+	var text_size := mystery_font.get_string_size("?", HORIZONTAL_ALIGNMENT_LEFT, -1, MYSTERY_FONT_SIZE)
+	_mystery_ink_offset = Vector2(text_size.x * 0.5,
+		text_size.y * 0.5 - mystery_font.get_ascent(MYSTERY_FONT_SIZE)) - ink_center
 	for i in range(SLOTS):
 		var mp := Panel.new()
 		var mp_style := StyleBoxFlat.new()
@@ -750,8 +825,10 @@ func _build_visuals() -> void:
 		ql.vertical_alignment    = VERTICAL_ALIGNMENT_CENTER
 		ql.mouse_filter          = Control.MOUSE_FILTER_IGNORE
 		ql.add_theme_font_override("font", mystery_font)
-		ql.add_theme_font_size_override("font_size", 44)
-		ql.add_theme_color_override("font_color", Color(0.90, 0.88, 1.0, 0.95))
+		ql.add_theme_font_size_override("font_size", MYSTERY_FONT_SIZE)
+		ql.add_theme_color_override("font_color", MYSTERY_GOLD)
+		ql.add_theme_color_override("font_outline_color", Color.BLACK)
+		ql.add_theme_constant_override("outline_size", 3)
 		mp.add_child(ql)
 		_mystery_panels.append(mp)
 
@@ -761,6 +838,18 @@ func _refresh_all() -> void:
 		_refresh_slot(i)
 	_refresh_preview()
 	_refresh_dispenser_indicator()
+
+
+func _position_mystery_mark(idx: int) -> void:
+	var rect := _slot_rects[idx]
+	if rect.texture == null or idx >= _mystery_panels.size():
+		return
+	# Match STRETCH_KEEP_ASPECT_CENTERED, including non-square item textures.
+	var texture_size := rect.texture.get_size()
+	var drawn_size := texture_size * minf(rect.size.x / texture_size.x, rect.size.y / texture_size.y)
+	var center := rect.size * 0.5 + (_get_mystery_center(rect.texture) - Vector2(0.5, 0.5)) * drawn_size
+	var label := _mystery_panels[idx].get_child(0) as Label
+	label.position = (center - label.size * 0.5 + _mystery_ink_offset).round()
 
 
 func _refresh_slot(idx: int) -> void:
@@ -775,6 +864,7 @@ func _refresh_slot(idx: int) -> void:
 			rect.material = _get_mystery_mat()
 			rect.modulate = Color.WHITE
 			if idx < _mystery_panels.size():
+				_position_mystery_mark(idx)
 				_mystery_panels[idx].visible = true
 		else:
 			rect.texture  = _item_textures[item_id]

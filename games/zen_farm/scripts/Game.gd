@@ -2032,6 +2032,9 @@ func _end_poke() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	var audio := get_node_or_null("AudioControls")
+	if audio and audio.blocks_event(event):
+		return
 	if not _game_active:
 		return
 	if event is InputEventScreenTouch or event is InputEventScreenDrag \

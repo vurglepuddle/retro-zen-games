@@ -55,7 +55,14 @@ mono_crash.*.json
 !CREDITS.md
 docs/
 art_src/
-tests/
+tests/*
+!tests/potion_stress_smoke.gd
+!tests/puzzle_session_smoke.gd
+!tests/alchemical_rules_smoke.gd
+!tests/alchemical_solver_audit.py
+!tests/export_alchemical_boards.gd
+!tests/run_puzzle_checks.ps1
+!tests/ui_feedback_smoke.gd
 
 # Generated Android Gradle template; splash overrides live in android/splash/.
 android/build/

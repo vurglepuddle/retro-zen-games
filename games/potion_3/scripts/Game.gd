@@ -194,6 +194,7 @@ func _apply_difficulty_layout() -> void:
 
 func prepare_board() -> void:
 	stop_game()
+	if has_node("RoundSession"): get_node("RoundSession").begin_new()
 	_board_active = false
 	_animating = false
 	_match_streak = 0
@@ -248,7 +249,6 @@ func start_game() -> void:
 		return
 	_started_generation = gen
 	_board_active = false
-	_undo_stack.clear()
 	_update_ui()
 
 	# Staggered drop-in animation.
@@ -679,6 +679,9 @@ func _on_slot_tapped(cell: PotionCell, slot_idx: int) -> void:
 # ===========================================================================
 
 func _input(event: InputEvent) -> void:
+	var audio := get_node_or_null("AudioControls")
+	if audio and audio.blocks_event(event):
+		return
 	if not visible or _animating or _win_panel.visible:
 		return
 
@@ -835,6 +838,8 @@ func _end_drag(pos: Vector2) -> void:
 					for s in range(PotionCell.SLOTS):
 						if c.get_item(s) == 0:
 							var slot_center := c.get_global_rect().position + c.get_slot_center(s)
+							if not _slot_on_screen(c, s):
+								continue
 							var d := pos.distance_to(slot_center)
 							if d < best_dist:
 								best_dist = d
@@ -865,24 +870,35 @@ func _cancel_drag() -> void:
 
 
 func _find_cell_slot_at(pos: Vector2) -> Variant:
+	if not get_viewport_rect().has_point(pos):
+		return null
 	for row in _cells:
 		for cell in row:
 			var c := cell as PotionCell
+			if c.modulate.a <= 0.01:
+				continue
 			var rect := c.get_global_rect()
 			if rect.has_point(pos):
-				var local_y := pos.y - rect.position.y
-				var slot_idx := clampi(int(local_y / float(PotionCell.ITEM_SIZE)), 0, PotionCell.SLOTS - 1)
-				return [c, slot_idx]
+				# Later slots draw on top in the overlap; hit the same artwork.
+				for slot_idx in range(PotionCell.SLOTS - 1, -1, -1):
+					if c._slot_rects[slot_idx].get_global_rect().has_point(pos):
+						return [c, slot_idx]
 	# Also check dispenser cells (they always map to slot 0).
 	for dc in _dispenser_cells:
 		var c := dc as PotionCell
-		if c.get_global_rect().has_point(pos):
+		if c.modulate.a > 0.01 and c.get_global_rect().has_point(pos):
 			return [c, 0]
 	for dc in _disp_scroll_cells:
 		var c := dc as PotionCell
-		if c.get_global_rect().has_point(pos):
+		if c.modulate.a > 0.01 and c.get_global_rect().has_point(pos):
 			return [c, 0]
 	return null
+
+
+func _slot_on_screen(cell: PotionCell, slot: int) -> bool:
+	# Conveyor buffers hold real items but are not off-screen drop targets.
+	return cell.is_visible_in_tree() and cell.modulate.a > 0.01 \
+		and get_viewport_rect().has_point(cell.global_position + cell.get_slot_center(slot))
 
 
 func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
@@ -896,7 +912,7 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 			if c.is_locked():
 				continue   # locked cells can't be interacted with
 			for s in range(PotionCell.SLOTS):
-				if c.get_item(s) == 0:
+				if c.get_item(s) == 0 or not _slot_on_screen(c, s):
 					continue
 				var center := c.get_global_rect().position + c.get_slot_center(s)
 				var d := pos.distance_to(center)
@@ -907,7 +923,7 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 	# Also check dispenser cells (slot 0 only).
 	for dc in _dispenser_cells:
 		var c := dc as PotionCell
-		if c.get_item(0) == 0:
+		if c.get_item(0) == 0 or not _slot_on_screen(c, 0):
 			continue
 		var center := c.get_global_rect().position + c.get_slot_center(0)
 		var d := pos.distance_to(center)
@@ -917,7 +933,7 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 			best_slot = 0
 	for dc in _disp_scroll_cells:
 		var c := dc as PotionCell
-		if c.get_item(0) == 0:
+		if c.get_item(0) == 0 or not _slot_on_screen(c, 0):
 			continue
 		var center := c.get_global_rect().position + c.get_slot_center(0)
 		var d := pos.distance_to(center)
@@ -935,6 +951,19 @@ func _find_pickup_slot_near(pos: Vector2, radius: float) -> Variant:
 # ===========================================================================
 
 func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_slot: int, animate_fly := true) -> void:
+	# Validate at the mutation boundary too: duplicate/stale input must never
+	# overwrite an item or bypass locked and one-way dispenser cells.
+	if not _board_active or _animating or from_cell == null or to_cell == null:
+		return
+	if from_slot < 0 or from_slot >= 3 or to_slot < 0 or to_slot >= 3:
+		return
+	if from_cell.is_locked() or to_cell.is_locked() or to_cell.is_dispenser():
+		return
+	if from_cell.get_item(from_slot) == 0 or to_cell.get_item(to_slot) != 0:
+		return
+	if from_cell == to_cell and from_slot == to_slot:
+		return
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	var generation := _game_generation
 	_save_undo_snapshot()
 	_animating = true
@@ -1097,6 +1126,7 @@ func _check_win() -> bool:
 
 
 func _on_win() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").discard()
 	_board_active = false
 	_save_progress()
 	_win_moves_lbl.text = "in %d moves" % _move_count
@@ -1613,11 +1643,13 @@ func _board_tween() -> Tween:
 
 
 func stop_game() -> void:
+	if has_node("RoundSession"): get_node("RoundSession").save_now()
 	_game_generation += 1
 	for tween in _operation_tweens:
 		if tween.is_valid():
 			tween.kill()
 	_operation_tweens.clear()
+	_scroll_tweens.clear()
 	for child in get_children():
 		if child.has_meta("board_effect"):
 			child.queue_free()
@@ -1637,5 +1669,6 @@ func request_back() -> void:
 func _forget_tween(instance_id: int) -> void:
 	for tween in _operation_tweens:
 		if tween.get_instance_id() == instance_id:
+			_scroll_tweens.erase(tween)
 			_operation_tweens.erase(tween)
 			return
