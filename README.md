@@ -8,9 +8,9 @@ There are no timers. No energy systems. Just tap-tap, clink-clink and some music
 
 ## Android download
 
-You can find the latest v 1.0.2 in releases. 
+You can find the latest v 1.0.2 in Releases. 
 
-It's a release APK signed with the project's release key, for ARM32 and
+It's an APK signed with the project's release key, for ARM32 and
 ARM64 phones running Android 7.0 or newer. Google Play is not required.
 Download it on your phone, open it, and allow your browser to install apps
 when Android asks. Play Protect should let it install without question.
