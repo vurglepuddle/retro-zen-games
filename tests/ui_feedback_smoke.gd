@@ -95,6 +95,46 @@ func capture(label: String) -> void:
 	root.get_texture().get_image().save_png("res://.godot/ui_feedback_review/%s.png" % label)
 
 
+func check_audio_overlays(game: CanvasItem, kind: String) -> void:
+	var audio: Control = game.get_node("AudioControls")
+	var manager := root.get_node("AudioManager")
+	game.show()
+	await process_frame
+	var panels: Array[Control] = []
+	match kind:
+		"gem_match": panels.append(game._game_over_panel)
+		"tile_chain": panels.append(game.get_node("ClearPanel"))
+		"alchemical_sort", "potion_3": panels.append(game.get_node("WinPanel"))
+		"zen_farm":
+			panels.assign([game.get_node("SeedPanel"), game.get_node("UpgradePanel"), game.get_node("TipPanel")])
+	for panel in panels:
+		panel.show()
+		await process_frame
+		for channel in range(2):
+			var button: Control = audio.get_child(channel)
+			check(panel.get_global_rect().has_point(button.get_global_rect().get_center()), kind + ": overlay covers audio test point")
+			var before: bool = manager.music_on if channel == 0 else manager.sfx_on
+			mouse(button, true)
+			mouse(button, false)
+			var after: bool = manager.music_on if channel == 0 else manager.sfx_on
+			check(before == after, kind + ": " + panel.name + " blocks covered audio taps")
+		await capture(kind + "_audio_" + str(panel.get_index()))
+		panel.hide()
+		await process_frame
+	for channel in range(2):
+		var button: Control = audio.get_child(channel)
+		var before: bool = manager.music_on if channel == 0 else manager.sfx_on
+		mouse(button, true)
+		mouse(button, false)
+		var after: bool = manager.music_on if channel == 0 else manager.sfx_on
+		check(before != after, kind + ": uncovered audio button still responds")
+		mouse(button, true)
+		mouse(button, false)
+	await capture(kind + "_audio_hud")
+	game.hide()
+	check(not audio.is_visible_in_tree(), kind + ": audio controls hide with the game menu")
+
+
 func _run() -> void:
 	var isolated := ProjectSettings.globalize_path("res://.godot/puzzle_test_user/").replace("\\", "/")
 	if not OS.get_user_data_dir().replace("\\", "/").begins_with(isolated):
@@ -192,6 +232,14 @@ func _run() -> void:
 	await process_frame
 	check(late.get_tooltip().is_empty(), "Tooltip assigned during runtime ready is suppressed on touch")
 	late.queue_free()
+	# The hub's audio uses a CanvasLayer, so hide it explicitly while reviewing
+	# standalone game scenes, as normal scene navigation frees the whole hub.
+	var hub_layers: Array[CanvasLayer] = []
+	for child in hub.get_children():
+		if child is CanvasLayer and child.visible:
+			hub_layers.append(child)
+			child.hide()
+	hub.hide()
 	for kind in ["gem_match","tile_chain","alchemical_sort","potion_3","zen_farm"]:
 		var game = load("res://games/%s/scenes/Game.tscn" % kind).instantiate()
 		root.add_child(game)
@@ -201,11 +249,17 @@ func _run() -> void:
 			check(button.get_tooltip().is_empty(), kind + ": runtime audio has no touch tooltip")
 		if kind == "zen_farm":
 			check_well_input(game)
+		await check_audio_overlays(game, kind)
 		game.queue_free()
 		await process_frame
+	hub.show()
+	for layer in hub_layers:
+		layer.show()
 	# Freed focus owners must not leave dangling style overrides behind.
+	hub_button.grab_focus()
 	key(KEY_TAB)
-	check(root.gui_get_focus_owner().get_theme_stylebox("focus") is StyleBoxTexture, "Keyboard focus works after touch and scene disposal")
+	var focus := root.gui_get_focus_owner()
+	check(focus != null and focus.get_theme_stylebox("focus") is StyleBoxTexture, "Keyboard focus works after touch and scene disposal")
 	hub.queue_free()
 	await process_frame
 	print("UI FEEDBACK: %d checks, %d failures" % [checks, failures.size()])

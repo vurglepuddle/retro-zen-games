@@ -34,16 +34,27 @@ const GAME_SHEETS := {
 		preload("res://games/zen_farm/assets/ui/audio/sfx_off.png"),
 	],
 }
+const HUD_ANCHORS := {
+	"gem_match": "Back_Button",
+	"tile_chain": "BackButton",
+	"alchemical_sort": "BackButton",
+	"potion_3": "BackButton",
+	"zen_farm": "WellPanel",
+}
 var _game: CanvasItem
 
 func _ready() -> void:
 	name = "AudioControls"
 	_game = get_parent()
-	z_index = 120
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_constant_override("separation", 12)
 	var kind := _game.scene_file_path.get_slice("/", 3)
+	var hud := _game.get_node(HUD_ANCHORS[kind]) as CanvasItem
+	z_index = hud.z_index
+	# GUI picking uses sibling order rather than z_index. Keep the audio row
+	# with the HUD in both orders, before result cards and the farm's panels.
+	_game.move_child.call_deferred(self, hud.get_index() + 1)
 	var sheets: Array = GAME_SHEETS[kind]
 	for channel in range(2):
 		var button := Toggle.new()

@@ -8,7 +8,7 @@ There are no timers. No energy systems. Just tap-tap, clink-clink and some music
 
 ## Android download
 
-You can find the latest v 1.0.2 in Releases. 
+You can find the latest v 1.0.3 in Releases.
 
 It's an APK signed with the project's release key, for ARM32 and
 ARM64 phones running Android 7.0 or newer. Google Play is not required.
@@ -17,7 +17,7 @@ when Android asks. Play Protect should let it install without question.
 The only permission requested will be Vibration (granted automatically).
 Installing updates on top should preserve your saves.
 
-See the [release notes and SHA-256 checksums](https://github.com/vurglepuddle/retro-zen-games/releases/tag/v1.0.2)
+See the [release notes and SHA-256 checksums](https://github.com/vurglepuddle/retro-zen-games/releases/tag/v1.0.3)
 for this build.
 
 ## Screenshots
