@@ -68,6 +68,12 @@ Commercial use requires separate permission from
 projects. See [CREDITS.md](CREDITS.md) for the full asset terms, contact details,
 and exclusions. The source code remains under [GPL-3.0](LICENSE).
 
+Zen Farm / Zen Garden uses flowers, grass, and the stone-road texture from
+[kathychow's 16x16 tiny garden free pack](https://kathychow.itch.io/16x16-tiny-garden-free-pack),
+with modified and expanded flowers. The garden's original tileset work, water,
+most decor, and other original additions are by `vurglepuddle`. Retained pack
+artwork keeps its own terms; see [the garden credits](CREDITS.md#zen-farm--zen-garden-artwork).
+
 ## Potion Sort item artwork
 
 The numbered item sets in `games/potion_3/assets/items/set*/` are third-party

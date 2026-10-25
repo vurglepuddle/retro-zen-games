@@ -21,7 +21,7 @@ permissions.
 
 | Asset category | Included locations | Author / rights holder | License |
 | --- | --- | --- | --- |
-| Pixel artwork, sprites, tiles, backgrounds, UI, icons, and owner-created content in screenshots | Visual assets in `assets/` and `games/*/assets/`; `android/splash/res/drawable-nodpi/zen_splash_art.png` | `vurglepuddle` | CC BY-NC-SA 4.0 |
+| Original pixel artwork, sprites, tiles, backgrounds, UI, icons, and owner-created content in screenshots, excluding the third-party artwork credited below | Visual assets in `assets/` and `games/*/assets/`; `android/splash/res/drawable-nodpi/zen_splash_art.png` | `vurglepuddle` | CC BY-NC-SA 4.0 |
 | Music and ambience | `assets/music/`; `games/*/assets/music/` | `vurglepuddle` | CC BY-NC-SA 4.0 |
 | Sound effects | `games/*/assets/sfx/`, including nested folders | `vurglepuddle` | CC BY-NC-SA 4.0 |
 | Vetka pixel font | `assets/font/vetka.ttf` | `vurglepuddle` | CC BY-NC-SA 4.0 |
@@ -56,6 +56,22 @@ adaptation under this license. See the
 [Creative Commons FAQ](https://creativecommons.org/faq/) for the distinction
 between adaptations and collections and the absence of a source-code requirement.
 
+## Zen Farm / Zen Garden artwork
+
+Zen Farm / Zen Garden uses **flower sprites, grass, and the stone-road texture**
+from [16x16 tiny garden free pack](https://kathychow.itch.io/16x16-tiny-garden-free-pack)
+by [kathychow](https://kathychow.itch.io/). The flowers were modified and expanded
+by `vurglepuddle`.
+
+The garden's original tileset work, water, most decor, and additional flower
+artwork are by `vurglepuddle`. The asset grant above covers these original
+contributions only; retained artwork from the pack keeps its original terms.
+
+The creator permits use and editing in commercial and noncommercial projects;
+credit is appreciated but not required. See the linked pack page for its full
+terms, including restrictions on redistribution or resale of the assets,
+claiming them as your own, NFT use, and feeding them to AI.
+
 ## Editable artwork retention
 
 The public repository provides the exported assets. Editable artwork is retained
@@ -66,6 +82,9 @@ published.
 
 ## Exclusions and code license
 
+- The kathychow artwork credited above, including retained elements in modified
+  artwork, is outside the project's CC BY-NC-SA grant, attribution waiver, and
+  GPL license. The pack's own terms apply to that material.
 - The numbered Potion Sort item sets at `games/potion_3/assets/items/set*/` are
   third-party licensed artwork, excluded from the public repository. They are
   outside this grant and outside the project's GPL license. Obtain permission
