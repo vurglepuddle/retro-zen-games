@@ -11,15 +11,15 @@ music, sound effects, and Vetka pixel font included with Zen Games under
 - [Full legal terms](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en)
 - [Asset source repository](https://github.com/vurglepuddle/retro-zen-games)
 
-This notice records the owner's license choice on 11 October 2026. The grant
-applies only to copyright and similar rights the owner holds and can license.
-It does not revoke any permissions already granted under earlier releases or
-other licenses. Material already available to a recipient under GPL-3.0 remains
-usable by that recipient under those terms.
+The asset license was selected on 11 October 2026. The attribution waiver
+below was added on 25 October 2026. This grant covers only copyright and similar
+rights the owner holds and can license. Permissions already granted under
+earlier releases or other licenses remain valid, including earlier GPL-3.0
+permissions.
 
-## Sources and attribution
+## Covered assets
 
-| Asset category | Included locations | Credit / rights holder | License |
+| Asset category | Included locations | Author / rights holder | License |
 | --- | --- | --- | --- |
 | Pixel artwork, sprites, tiles, backgrounds, UI, icons, and owner-created content in screenshots | Visual assets in `assets/` and `games/*/assets/`; `android/splash/res/drawable-nodpi/zen_splash_art.png` | `vurglepuddle` | CC BY-NC-SA 4.0 |
 | Music and ambience | `assets/music/`; `games/*/assets/music/` | `vurglepuddle` | CC BY-NC-SA 4.0 |
@@ -28,20 +28,26 @@ usable by that recipient under those terms.
 
 ## Reusing the assets
 
-You may copy, share, and adapt the covered assets for non-commercial purposes
-under CC BY-NC-SA 4.0. When sharing them, retain the supplied attribution and
-notices, link to the license and original material where reasonably practicable,
-and indicate changes. Shared adaptations must use the same license or another
-license allowed by its ShareAlike terms. Do not impose additional legal or
-effective technological restrictions on the licensed material. The full legal
-terms govern, including their disclaimer of warranties.
+You may copy, share, and modify the covered assets for noncommercial purposes.
+If you share adaptations, license your contributions under CC BY-NC-SA 4.0 or
+a license officially designated as compatible. Private modifications do not
+have to be published.
 
-Example credit, with changes described as appropriate:
+**Credit to the project author is optional.** The owner waives attribution
+requirements only insofar as they require identifying or crediting the owner
+of these original assets, including the VETKA font. Keep the license and waiver
+information, indicate modifications, and retain any required third-party
+notices. The waiver continues to apply to the owner's contributions when they
+are included in adaptations. All other CC BY-NC-SA 4.0 conditions remain,
+including the prohibition on additional legal or effective technological
+restrictions. The full legal terms govern, including their disclaimer of
+warranties.
 
-> Zen Games assets by vurglepuddle, licensed under
-> [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
-> [Original assets](https://github.com/vurglepuddle/retro-zen-games).
-> Changes: describe your modifications here, or state that the assets are unmodified.
+For commercial use or other permissions beyond these terms, contact
+[vurglepuddle](https://github.com/vurglepuddle) through an issue in the
+[project repository](https://github.com/vurglepuddle/retro-zen-games/issues).
+Commercial use requires separate permission even when the project using the
+assets is open source.
 
 ShareAlike applies to shared adaptations of the licensed material. It does not
 by itself require publication of a game's program source or editable asset

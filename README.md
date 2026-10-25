@@ -56,13 +56,17 @@ checkout needs its own configuration.
 
 ## Asset credits and reuse
 
-The project's original artwork, music, sound effects, and Vetka pixel font are
-licensed for non-commercial reuse under Creative Commons
-Attribution-NonCommercial-ShareAlike 4.0 International. Credit `vurglepuddle`, link
-to the license, identify changes, and keep shared adaptations under the same
-license or another license permitted by its ShareAlike terms. See
-[CREDITS.md](CREDITS.md) for the asset scope, sources, attribution example,
-and exclusions. The source code's GPL-3.0 license is in [LICENSE](LICENSE).
+The project's original artwork, music, sound effects, and VETKA pixel font use
+**CC BY-NC-SA 4.0, with credit to the project author optional**. You may copy,
+share, and modify these assets for noncommercial purposes. Shared adaptations
+must use the same license or an officially compatible license. Keep the license
+and waiver information, indicate changes, and retain required third-party
+notices.
+
+Commercial use requires separate permission from
+[vurglepuddle](https://github.com/vurglepuddle), including in open-source
+projects. See [CREDITS.md](CREDITS.md) for the full asset terms, contact details,
+and exclusions. The source code remains under [GPL-3.0](LICENSE).
 
 ## Potion Sort item artwork
 

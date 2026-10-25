@@ -963,7 +963,7 @@ func _try_move(from_cell: PotionCell, from_slot: int, to_cell: PotionCell, to_sl
 		return
 	if from_cell == to_cell and from_slot == to_slot:
 		return
-	if has_node("RoundSession"): get_node("RoundSession").save_now()
+	if has_node("RoundSession"): get_node("RoundSession").save_in_background()
 	var generation := _game_generation
 	_save_undo_snapshot()
 	_animating = true

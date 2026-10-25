@@ -2,6 +2,7 @@ extends Node
 
 const State := preload("res://scripts/PuzzleState.gd")
 const SafeFile := preload("res://scripts/SafeConfig.gd")
+const PotionCheckpoint := preload("res://scripts/PotionCheckpoint.gd")
 const KINDS := ["gem_match", "tile_chain", "alchemical_sort", "potion_3"]
 var game: Node
 var kind := ""
@@ -13,6 +14,11 @@ var _elapsed := 0.0
 var _armed := false
 var _restoring := false
 var _continue: Button
+var _writer: Thread
+var _inflight_stamp := []
+var _queued_save := {}
+var _queued_stamp := []
+var _checkpoint_source: RefCounted
 
 func _ready() -> void:
 	game = get_parent()
@@ -64,6 +70,10 @@ func begin_new() -> void:
 	_armed = true
 
 func discard() -> void:
+	_finish_background_write(true)
+	_queued_save = {}
+	_queued_stamp = []
+	if _checkpoint_source: _checkpoint_source.reset()
 	_saved = {}
 	_encoded = ""
 	_stamp = []
@@ -90,10 +100,21 @@ func _stable() -> bool:
 	return false
 
 func save_now() -> void:
+	_finish_background_write(true)
 	if _restoring or not _armed: return
 	if _completed():
 		discard()
 		return
+	# A transition can interrupt a move while its preceding stable checkpoint
+	# is still queued. Flush that checkpoint before examining the live board.
+	if not _queued_save.is_empty():
+		var queued := PotionCheckpoint.materialize(_queued_save)
+		if State.valid(queued, kind):
+			_saved = queued
+			_stamp = _queued_stamp
+			_pending_write = true
+		_queued_save = {}
+		_queued_stamp = []
 	if _stable():
 		var current := State.stamp(game, kind)
 		if current != _stamp:
@@ -117,11 +138,55 @@ func save_now() -> void:
 		_pending_write = false
 		if is_instance_valid(_continue): _continue.show()
 
+func save_in_background() -> void:
+	# Web exports may not enable threads; keep their existing synchronous path.
+	if kind != "potion_3" or OS.has_feature("web"):
+		save_now()
+		return
+	_finish_background_write()
+	if _restoring or not _armed: return
+	if _completed():
+		discard()
+		return
+	if _stable():
+		var current := State.stamp(game, kind)
+		var latest: Array = _queued_stamp if not _queued_save.is_empty() else (_inflight_stamp if _writer else _stamp)
+		if current != latest:
+			if _checkpoint_source == null: _checkpoint_source = PotionCheckpoint.new()
+			_queued_save = _checkpoint_source.capture(game)
+			_queued_stamp = current
+	if _writer: return  # One writer and at most one newer, coalesced checkpoint.
+	var request: Dictionary = _queued_save if not _queued_save.is_empty() else (_saved if _pending_write else {})
+	if request.is_empty(): return
+	var next_stamp: Array = _queued_stamp if not _queued_save.is_empty() else _stamp
+	var thread := Thread.new()
+	if thread.start(PotionCheckpoint.write.bind(request, _path()), Thread.PRIORITY_LOW) != OK:
+		save_now()  # A platform/resource failure must not disable checkpoints.
+		return
+	_writer = thread
+	_inflight_stamp = next_stamp
+	_queued_save = {}
+	_queued_stamp = []
+
+func _finish_background_write(wait := false) -> void:
+	if _writer == null or (_writer.is_alive() and not wait): return
+	var result: Dictionary = _writer.wait_to_finish()
+	_writer = null
+	if result.get("valid", false):
+		_saved = result.state
+		_stamp = _inflight_stamp
+		_pending_write = result.error != OK
+		if not _pending_write:
+			_encoded = result.encoded
+			if is_instance_valid(_continue): _continue.show()
+	_inflight_stamp = []
+
 func _process(delta: float) -> void:
 	_elapsed += delta
 	if _elapsed >= 1.0:
 		_elapsed = 0.0
-		save_now()
+		if kind == "potion_3": save_in_background()
+		else: save_now()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -129,7 +194,8 @@ func _notification(what: int) -> void:
 
 func _exit_tree() -> void:
 	# stop_game takes the final live snapshot before scene teardown.
-	if _armed and not _saved.is_empty() and is_instance_valid(game): save_now()
+	_finish_background_write(true)
+	if _armed and (not _saved.is_empty() or not _queued_save.is_empty()) and is_instance_valid(game): save_now()
 
 func _resume() -> void:
 	var main := game.get_parent()
@@ -141,6 +207,9 @@ func _resume() -> void:
 	_restoring = false
 	if restored:
 		_armed = true
+		if kind == "potion_3" and not OS.has_feature("web"):
+			_checkpoint_source = PotionCheckpoint.new()
+			_checkpoint_source.capture(game)  # Prime long loaded histories behind the fade.
 		main.get_node("Menu").hide()
 		game.show()
 		if kind == "gem_match": main._last_mode = _saved.mode

@@ -31,20 +31,23 @@ static func stamp(game: Node, kind: String) -> Array:
 			return [game._game_generation, cells, game.score, int(game._time_remaining), game._timed_level]
 	return []
 
-static func capture(game: Node, kind: String) -> Dictionary:
+static func capture(game: Node, kind: String, include_undo := true) -> Dictionary:
 	match kind:
 		"potion_3":
 			var cells: Array = game._all_cells()
 			var snapshots := []
 			for cell in cells: snapshots.append(cell.get_snapshot())
 			var undo := []
-			for step in game._undo_stack:
-				var saved := []
-				saved.resize(cells.size())
-				for entry in step: saved[cells.find(entry[0])] = entry[1]
-				undo.append(saved)
+			if include_undo:
+				for step in game._undo_stack:
+					var saved := []
+					saved.resize(cells.size())
+					for entry in step: saved[cells.find(entry[0])] = entry[1]
+					undo.append(saved)
 			var item_paths := {}
-			var initial: Array = snapshots + (undo.front() if not undo.is_empty() else [])
+			var initial: Array = snapshots.duplicate()
+			if not game._undo_stack.is_empty():
+				for entry in game._undo_stack.front(): initial.append(entry[1])
 			for cell in initial:
 				for layer in [cell.slots] + cell.z_stack:
 					for id in layer:

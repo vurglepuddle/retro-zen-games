@@ -64,6 +64,7 @@ tests/*
 !tests/run_puzzle_checks.ps1
 !tests/ui_feedback_smoke.gd
 !tests/puzzle_session_benchmark.gd
+!tests/potion_checkpoint_smoke.gd
 
 # Generated Android Gradle template; splash overrides live in android/splash/.
 android/build/

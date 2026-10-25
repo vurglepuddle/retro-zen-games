@@ -38,6 +38,7 @@ try {
     Run-GodotCheck 'potion_stress_smoke' 'POTION STRESS: \d+ checks, 0 failures'
     Run-GodotCheck 'alchemical_rules_smoke' 'ALCHEMY RULES: \d+ checks, 0 failures'
     Run-GodotCheck 'puzzle_session_smoke' 'PUZZLE SESSION: \d+ checks, 0 failures'
+    Run-GodotCheck 'potion_checkpoint_smoke' 'POTION CHECKPOINT: \d+ checks, 0 failures'
     Run-GodotCheck 'ui_feedback_smoke' 'UI FEEDBACK: \d+ checks, 0 failures'
 } finally {
     $env:APPDATA = $previousAppData
