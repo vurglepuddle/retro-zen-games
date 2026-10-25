@@ -8,7 +8,7 @@ There are no timers. No energy systems. Just tap-tap, clink-clink and some music
 
 ## Android download
 
-[Download Zen Games 1.0.2 — signed APK](https://github.com/vurglepuddle/retro-zen-games/releases/download/v1.0.2/Zen-Games-1.0.2.apk)
+[Zen Games 1.0.2](https://github.com/vurglepuddle/retro-zen-games/releases/download/v1.0.2/Zen-Games-1.0.2.apk)
 
 This is a release APK signed with the project's release key, for ARM32 and
 ARM64 phones running Android 7.0 or newer. Download it on your phone, open it,
