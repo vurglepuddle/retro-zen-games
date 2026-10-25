@@ -20,10 +20,12 @@ them at installation, so installed native-code size does not shrink by the same
 amount. Intel Android emulators need an x86/x86_64 preset of their own. Keep both
 ARM options for older phones whose Android OS may still be 32-bit.
 
-Use a release export when comparing APK sizes. Put review APKs under `.godot/`
-so builds containing the separately licensed Potion artwork stay local. Export
-and signature validation do not replace installation and gameplay checks on
-the target phones.
+Use a release export when comparing APK sizes. Put review APKs under `.godot/`.
+Publish signed releases as GitHub Release assets, with the code and asset
+license notices; keep raw licensed Potion item images out of the repository.
+Keep the release keystore and passwords private, and reuse the signing key
+for updates. Export and signature validation do not replace installation and
+gameplay checks on the target phones.
 
 On 24 October 2026, this changed the existing 342.4 MiB release to
 105.5 MiB (69% smaller), with the same release certificate, package/version,

@@ -6,6 +6,18 @@ Godot 4.3, primarily for Android. Web support is incoming.
 There are no timers. No energy systems. Just tap-tap, clink-clink and some music. Gem Match also offers
 **optional timed and level modes**; Zen Farm uses growth and weather cycles. All vibes.
 
+## Android download
+
+[Download Zen Games 1.0.2 — signed APK](https://github.com/vurglepuddle/retro-zen-games/releases/download/v1.0.2/Zen-Games-1.0.2.apk)
+
+This is a release APK signed with the project's release key, for ARM32 and
+ARM64 phones running Android 7.0 or newer. Download it on your phone, open it,
+and allow your browser to install apps when Android asks. Google Play is not
+required. Installing updates signed with the same key preserves your saves.
+
+See the [release notes and SHA-256 checksums](https://github.com/vurglepuddle/retro-zen-games/releases/tag/v1.0.2)
+for this build.
+
 ## Screenshots
 
 Captured 20 October 2026 from the current scenes. Potion Sort and Zen Farm show
